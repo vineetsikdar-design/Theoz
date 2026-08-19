@@ -61,11 +61,25 @@ jobs:
         run: |  
           make package FINALPACKAGE=1  
 
-      - name: 📦 Build Release IPA (TrollStore)  
-        run: |  
-          chmod +x scripts/build_release_ipa.sh  
-          bash scripts/build_release_ipa.sh  
-        continue-on-error: true  
+            - name: 📦 Build Release IPA
+        run: |
+          mkdir -p packages
+
+          test -f base/FilzaSlop-v1.0.0-unsigned.ipa
+
+          echo "Base IPA found:"
+          ls -lh base/FilzaSlop-v1.0.0-unsigned.ipa
+
+          chmod +x scripts/build_release_ipa.sh
+
+          bash scripts/build_release_ipa.sh \
+            base/FilzaSlop-v1.0.0-unsigned.ipa \
+            packages/Zentrax-VIP-Unsigned.ipa
+
+          test -f packages/Zentrax-VIP-Unsigned.ipa
+
+          echo "Final IPA created:"
+          ls -lh packages/Zentrax-VIP-Unsigned.ipa  
 
       - name: 🚀 Upload Final Release  
         uses: actions/upload-artifact@v4  
