@@ -26,7 +26,7 @@ jobs:
           rm -rf $THEOS/sdks
           git clone https://github.com/theos/sdks.git $THEOS/sdks
 
-       - name: 🔐 Install ldid
+      - name: 🔐 Install ldid
         run: |
           brew install ldid
           ldid --version
