@@ -29,7 +29,8 @@ jobs:
       - name: 🔐 Install ldid
         run: |
           brew install ldid
-          ldid --version
+          which ldid
+          brew list --versions ldid
 
       - name: 🔧 Fix ChOma Headers
         run: |
