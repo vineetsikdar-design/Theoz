@@ -23,6 +23,7 @@ FilzaSlop_FILES = \
     kpf/patchfinder.m \
     sandbox_escape.m \
     apfs_own.m \
+    utils/hexdump.c
 
 # ============================================================
 # XPF SOURCE
