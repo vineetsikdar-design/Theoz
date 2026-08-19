@@ -75,5 +75,3 @@ steps:
         packages/*.deb  
         packages/*.ipa  
         *.ipa
-
-Lo ise full update kar do and uske baad kya karna hai ki 0 error aaye bolo
