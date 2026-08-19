@@ -1,3 +1,11 @@
+//
+//  Tweak.m
+//  Zentrax VIP - Core System Hooks & Execution Bridge
+//
+//  Created by Zentrax Team.
+//  Status: PRODUCTION READY
+//
+
 @import UIKit;
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -18,7 +26,7 @@
 #import "ZentraxUI.h"
 #import "ZentraxNetworkManager.h"
 
-#pragma mark - Root Helper Hooks (Privilege Escalation)
+#pragma mark - ================= ROOT HELPER HOOKS =================
 
 static BOOL hook_isRootHelperAvailable(id self, SEL _cmd) { return NO; }
 static int hook_spawnRootHelper(id self, SEL _cmd) { return 0; }
@@ -45,7 +53,7 @@ static void hook_sendObjectWithReplyAsync(id self, SEL _cmd, id msg, id queue, i
     if (completion) { void (^block)(id) = completion; block(nil); }
 }
 
-#pragma mark - Apps Manager Fix (For Resolving Bundle IDs)
+#pragma mark - ================= PATH RESOLUTION UTILITIES =================
 
 static NSString *findBundlePath(NSString *bundleId) {
     NSFileManager *fm = [NSFileManager defaultManager];
@@ -66,17 +74,17 @@ static NSString *findBundlePath(NSString *bundleId) {
 static NSString *findDataContainer(NSString *bundleId) {
     NSString *error = nil;
     NSString *path = MCMFilzaDataContainerPath(bundleId, &error);
-    if (!path) NSLog(@"[Zentrax] Data lookup failed id=%@ detail=%@", bundleId, error);
+    if (!path) NSLog(@"[Zentrax] Dynamic Container Lookup Failed for id=%@ detail=%@", bundleId, error);
     return path;
 }
+
+#pragma mark - ================= APPS MANAGER HOOKS =================
 
 static IMP orig_allApplications = NULL;
 static id hook_allApplications(id self, SEL _cmd) {
     NSArray *origResult = ((id(*)(id,SEL))orig_allApplications)(self, _cmd);
     if (origResult && origResult.count > 0) return origResult;
-    NSMutableArray *apps = [NSMutableArray array];
-    // Custom resolution logic preserved for background Zentrax ops
-    return apps;
+    return [NSMutableArray array];
 }
 
 static IMP orig_setAppProxy = NULL;
@@ -110,7 +118,7 @@ static void hook_setAppProxy(id self, SEL _cmd, id proxy) {
     }
 }
 
-#pragma mark - License / Integrity Bypass (Silent Anti-Crash)
+#pragma mark - ================= INTEGRITY BYPASS HOOKS =================
 
 static IMP orig_showAlert = NULL;
 static id hook_showAlertWithTitle(id self, SEL _cmd, id title, id text, id cancelButton, id otherButtons, id completion) {
@@ -135,34 +143,160 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSLog(@"[Zentrax] Suppressed activation nag");
 }
 
-#pragma mark - UI Hijack (The Zentrax Bootloader)
+#pragma mark - ================= ZENTRAX EXECUTION BRIDGE =================
+
+@interface ZXCoreBridge : NSObject <ZentraxUIDelegate>
+@property (nonatomic, weak) ZentraxUI *uiController;
++ (instancetype)sharedBridge;
+@end
+
+@implementation ZXCoreBridge
+
++ (instancetype)sharedBridge {
+    static ZXCoreBridge *instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[ZXCoreBridge alloc] init];
+    });
+    return instance;
+}
+
+// 1. Authentication Bridge
+- (void)zentraxDidRequestAuthenticationWithKey:(NSString *)key completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion {
+    [[ZentraxNetworkManager sharedManager] authenticateWithKey:key completion:^(BOOL success, NSDictionary * _Nullable responseData, NSString * _Nullable errorMsg) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (success) {
+                // Populate Modules list dynamically from Server
+                NSArray *modules = responseData[@"modules"];
+                if (modules && [modules isKindOfClass:[NSArray class]]) {
+                    [self.uiController updateDashboardWithModules:modules];
+                }
+                
+                // Populate Subscription details dynamically from Server
+                NSDictionary *subscription = responseData[@"subscription"];
+                if (subscription && [subscription isKindOfClass:[NSDictionary class]]) {
+                    [self.uiController updateSubscriptionState:subscription];
+                }
+                
+                completion(YES, nil);
+            } else {
+                completion(NO, errorMsg ?: @"Authentication failed.");
+            }
+        });
+    }];
+}
+
+// 2. Module Execution & File Writing Bridge
+- (void)zentraxDidRequestModuleToggle:(NSString *)moduleId state:(BOOL)isOn completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion {
+    [[ZentraxNetworkManager sharedManager] toggleModule:moduleId state:isOn completion:^(BOOL success, NSDictionary * _Nullable modulePayload, NSString * _Nullable errorMsg) {
+        if (!success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(NO, errorMsg ?: @"Failed to fetch payload from server.");
+            });
+            return;
+        }
+        
+        // Extract Payload Details
+        NSString *base64Data = modulePayload[@"file_data"];
+        NSString *bundleId = modulePayload[@"bundle_id"];
+        NSString *relativePath = modulePayload[@"relative_path"];
+        
+        if (!base64Data || !bundleId || !relativePath) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(NO, @"Invalid module configuration received from server.");
+            });
+            return;
+        }
+        
+        // Decode File Content
+        NSData *fileData = [[NSData alloc] initWithBase64EncodedString:base64Data options:NSDataBase64DecodingIgnoreUnknownCharacters];
+        if (!fileData) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(NO, @"Corrupted file payload data.");
+            });
+            return;
+        }
+        
+        // Resolve Target Application Dynamic Data Directory
+        NSString *dataContainer = findDataContainer(bundleId);
+        if (!dataContainer) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(NO, [NSString stringWithFormat:@"Target app container (%@) not found.", bundleId]);
+            });
+            return;
+        }
+        
+        NSString *finalPath = [dataContainer stringByAppendingPathComponent:relativePath];
+        NSString *parentDir = [finalPath stringByDeletingLastPathComponent];
+        
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSError *fsError = nil;
+        
+        // Ensure destination folder exists
+        if (![fm fileExistsAtPath:parentDir]) {
+            [fm createDirectoryAtPath:parentDir withIntermediateDirectories:YES attributes:nil error:&fsError];
+            if (fsError) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, @"Failed to prepare target directory.");
+                });
+                return;
+            }
+        }
+        
+        // Atomically write the file
+        BOOL written = [fileData writeToFile:finalPath options:NSDataWritingAtomic error:&fsError];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (written) {
+                completion(YES, nil);
+            } else {
+                completion(NO, fsError.localizedDescription ?: @"File write execution failed.");
+            }
+        });
+    }];
+}
+
+// 3. Logout Bridge
+- (void)zentraxDidRequestLogoutWithCompletion:(void(^)(void))completion {
+    [[ZentraxNetworkManager sharedManager] logout];
+    if (completion) completion();
+}
+
+@end
+
+#pragma mark - ================= UI HIJACK BOOTLOADER =================
 
 static IMP orig_UIWindow_makeKeyAndVisible = NULL;
 static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         
-        // 1. Initialize MCM Container & Sandbox Escape silently
+        // 1. Initialize MCM Container & Sandbox Escape
         MCMFilzaStart();
         
-        // 2. Load Zentrax Dashboard UI
+        // 2. Load Zentrax UI & Wire the Execution Delegate
         Class ZentraxUIClass = NSClassFromString(@"ZentraxUI");
         if (ZentraxUIClass) {
-            UIViewController *zentraxVC = [[ZentraxUIClass alloc] init];
+            ZentraxUI *zentraxVC = [[ZentraxUIClass alloc] init];
+            
+            // Connect Bridge to UI
+            ZXCoreBridge *bridge = [ZXCoreBridge sharedBridge];
+            bridge.uiController = zentraxVC;
+            zentraxVC.delegate = bridge;
+            
             UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:zentraxVC];
             navController.navigationBarHidden = YES;
             
-            // 3. Override Filza's Original Root View Controller
+            // 3. Set as Main Root Window
             self.rootViewController = navController;
-            NSLog(@"[Zentrax] Successfully Hijacked Main Window");
+            NSLog(@"[Zentrax] Successfully Hijacked Main Window & Connected Execution Bridge");
         }
     });
     
-    // Call Original to render our hijacked UI
     ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
 }
 
-#pragma mark - Hook Installation
+#pragma mark - ================= HOOK INSTALLATION =================
 
 static void installSystemHooks(void) {
     // 1. Root Helper Hooks
@@ -216,7 +350,7 @@ static void installSystemHooks(void) {
         if (m) { orig_setAppProxy = method_getImplementation(m); method_setImplementation(m, (IMP)hook_setAppProxy); }
     }
 
-    // 4. UI Hijack Hook (The Magic)
+    // 4. UI Hijack Hook
     Class windowClass = NSClassFromString(@"UIWindow");
     if (windowClass) {
         Method m = class_getInstanceMethod(windowClass, @selector(makeKeyAndVisible));
@@ -226,10 +360,10 @@ static void installSystemHooks(void) {
         }
     }
 
-    NSLog(@"[Zentrax] Core System Hooks Installed");
+    NSLog(@"[Zentrax] Core System Hooks & Bridge Active");
 }
 
-#pragma mark - Entry Point
+#pragma mark - ================= ENTRY POINT =================
 
 __attribute__((constructor)) void ZentraxInit(void) {
     installSystemHooks();
