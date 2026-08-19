@@ -20,7 +20,7 @@ FilzaSlop_FILES = Tweak.m \
     sandbox_escape.m \
     apfs_own.m
 
-FilzaSlop_CFLAGS = -fobjc-arc -Wno-unused-variable -Wno-unused-function -Wno-arc-performSelector-leaks -Wno-error
+FilzaSlop_CFLAGS = -fobjc-arc -Wno-unused-variable -Wno-unused-function -Wno-arc-performSelector-leaks -Wno-error -I. -IXPF
 FilzaSlop_FRAMEWORKS = Foundation UIKit CoreGraphics Security
 
 include $(THEOS_MAKE_PATH)/tweak.mk
