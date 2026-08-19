@@ -19,12 +19,12 @@ jobs:
 
       - name: ⚙️ Install Theos Framework
         run: |
-          git clone --recursive https://github.com/theos/theos.git $THEOS
+          git clone --recursive https://github.com/theos/theos.git "$THEOS"
 
       - name: 📱 Install Patched iOS SDKs
         run: |
-          rm -rf $THEOS/sdks
-          git clone https://github.com/theos/sdks.git $THEOS/sdks
+          rm -rf "$THEOS/sdks"
+          git clone https://github.com/theos/sdks.git "$THEOS/sdks"
 
       - name: 🔐 Install ldid
         run: |
@@ -42,36 +42,29 @@ jobs:
           rm -rf XPF/external/ChOma/include/choma
           mkdir -p XPF/external/ChOma/include/choma
 
-          cp XPF/external/ChOma/src/*.h XPF/external/ChOma/include/choma/
+          cp XPF/external/ChOma/src/*.h \
+            XPF/external/ChOma/include/choma/
 
           echo "ChOma headers installed:"
           ls -la XPF/external/ChOma/include/choma
 
-      - name: 🔍 Check All Files
+      - name: 🔍 Verify ChOma Headers
         run: |
-          echo "Checking ChOma..."
-          find XPF/external/ChOma -maxdepth 3 -type f | sort
-
-          echo "Checking required header..."
+          echo "Checking required ChOma header..."
           test -f XPF/external/ChOma/include/choma/Fat.h
-
           echo "Fat.h found successfully"
 
-      - name: 🔨 Build Package (DEB)
+      - name: 🧹 Clean Previous Build
+        run: |
+          make clean || true
+
+      - name: 🔨 Build Package DEB
         run: |
           make package FINALPACKAGE=1
 
-      - name: 📦 Build Release IPA (TrollStore)
-        run: |
-          chmod +x scripts/build_release_ipa.sh
-          bash scripts/build_release_ipa.sh
-        continue-on-error: true
-
-      - name: 🚀 Upload Final Release
+      - name: 📦 Upload DEB Release
         uses: actions/upload-artifact@v4
         with:
           name: Zentrax-VIP-Release
-          path: |
-            packages/*.deb
-            packages/*.ipa
-            *.ipa
+          path: packages/*.deb
+          if-no-files-found: error
