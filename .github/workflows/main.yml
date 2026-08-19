@@ -26,6 +26,11 @@ jobs:
           rm -rf $THEOS/sdks
           git clone https://github.com/theos/sdks.git $THEOS/sdks
 
+       - name: 🔐 Install ldid
+        run: |
+          brew install ldid
+          ldid --version
+
       - name: 🔧 Fix ChOma Headers
         run: |
           echo "Checking ChOma structure..."
