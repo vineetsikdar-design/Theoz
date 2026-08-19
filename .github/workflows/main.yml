@@ -3,7 +3,7 @@ name: Build Zentrax VIP
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Ye tumhe manually compile button dabane ka option dega
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,8 +15,6 @@ jobs:
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: ⚙️ Install Theos Framework
         run: |
@@ -24,6 +22,7 @@ jobs:
 
       - name: 📱 Install Patched iOS SDKs
         run: |
+          rm -rf $THEOS/sdks
           git clone https://github.com/theos/sdks.git $THEOS/sdks
 
       - name: 🔨 Build Package (DEB)
@@ -34,7 +33,7 @@ jobs:
         run: |
           chmod +x scripts/build_release_ipa.sh
           bash scripts/build_release_ipa.sh
-        continue-on-error: true # Agar script fail hui toh bhi DEB upload ho jayega
+        continue-on-error: true
 
       - name: 🚀 Upload Final Release
         uses: actions/upload-artifact@v4
