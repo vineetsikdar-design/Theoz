@@ -1,11 +1,4 @@
-l//
-//  ZentraxUI.m
-//  Zentrax VIP - Premium Execution Node UI
-//
-//  Created by Zentrax Team.
-//  Environment: Deep Space Blue / Glassmorphism
-//  Status: PRODUCTION READY (Strictly Dynamic Data, No Fallbacks)
-//
+
 
 #import "ZentraxUI.h"
 #import <QuartzCore/QuartzCore.h>
