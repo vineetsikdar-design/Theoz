@@ -1,10 +1,10 @@
-//
+l//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Execution Node UI
 //
 //  Created by Zentrax Team.
 //  Environment: Deep Space Blue / Glassmorphism
-//  Status: PRODUCTION READY (Strictly Dynamic Data)
+//  Status: PRODUCTION READY (Strictly Dynamic Data, No Fallbacks)
 //
 
 #import "ZentraxUI.h"
@@ -39,41 +39,34 @@
 
 @implementation ZXTheme
 
-// Multi-layer Deep Blue Environment
 + (UIColor *)bgDeepSpace { return [UIColor colorWithRed:0.02 green:0.03 blue:0.06 alpha:1.0]; }
 + (UIColor *)bgCardOuter { return [UIColor colorWithRed:0.06 green:0.08 blue:0.14 alpha:0.45]; }
 + (UIColor *)bgCardInner { return [UIColor colorWithRed:0.08 green:0.11 blue:0.18 alpha:0.60]; }
 + (UIColor *)borderSubtle { return [UIColor colorWithWhite:1.0 alpha:0.05]; }
 + (UIColor *)borderActive { return [UIColor colorWithWhite:1.0 alpha:0.15]; }
 
-// Precision Lighting
 + (UIColor *)accentCyan { return [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:1.0]; }
 + (UIColor *)accentNeonBlue { return [UIColor colorWithRed:0.15 green:0.35 blue:1.0 alpha:1.0]; }
 
-// Hierarchy Typography Colors
 + (UIColor *)textPrimary { return [UIColor colorWithWhite:0.98 alpha:1.0]; }
 + (UIColor *)textSecondary { return [UIColor colorWithWhite:0.70 alpha:1.0]; }
 + (UIColor *)textMuted { return [UIColor colorWithWhite:0.45 alpha:1.0]; }
 
-// Status
 + (UIColor *)statusSuccess { return [UIColor colorWithRed:0.15 green:0.85 blue:0.55 alpha:1.0]; }
 + (UIColor *)statusWarning { return [UIColor colorWithRed:0.96 green:0.65 blue:0.14 alpha:1.0]; }
 + (UIColor *)statusError { return [UIColor colorWithRed:1.0 green:0.25 blue:0.35 alpha:1.0]; }
 
-// Cinematic Typography
 + (UIFont *)fontDisplay:(CGFloat)size { return [UIFont systemFontOfSize:size weight:UIFontWeightBlack]; }
 + (UIFont *)fontHeading:(CGFloat)size { return [UIFont systemFontOfSize:size weight:UIFontWeightBold]; }
 + (UIFont *)fontBody:(CGFloat)size weight:(UIFontWeight)weight { return [UIFont systemFontOfSize:size weight:weight]; }
 + (UIFont *)fontMono:(CGFloat)size weight:(UIFontWeight)weight { return [UIFont monospacedSystemFontOfSize:size weight:weight]; }
 
-// Solves the letterSpacing crash
 + (void)applyTextTracking:(UILabel *)label spacing:(CGFloat)spacing {
     if (!label.text) return;
     NSDictionary *attrs = @{NSKernAttributeName: @(spacing)};
     label.attributedText = [[NSAttributedString alloc] initWithString:label.text attributes:attrs];
 }
 
-// Advanced Multi-Layer Glass
 + (void)applyPremiumGlassmorphismToView:(UIView *)view cornerRadius:(CGFloat)radius {
     view.backgroundColor = [self bgCardOuter];
     view.layer.cornerRadius = radius;
@@ -86,10 +79,9 @@
     effectView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     effectView.layer.cornerRadius = radius;
     effectView.clipsToBounds = YES;
-    effectView.alpha = 0.95; // Deep blur
+    effectView.alpha = 0.95;
     [view insertSubview:effectView atIndex:0];
     
-    // Inner Glow Layer
     UIView *innerGlow = [[UIView alloc] initWithFrame:view.bounds];
     innerGlow.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     innerGlow.layer.cornerRadius = radius;
@@ -137,7 +129,6 @@
         _gradientLayer = [ZXTheme electricGradient];
         [_bgView.layer insertSublayer:_gradientLayer atIndex:0];
         
-        // Premium localized bloom
         self.layer.shadowColor = [ZXTheme accentNeonBlue].CGColor;
         self.layer.shadowOpacity = 0.3;
         self.layer.shadowRadius = 12;
@@ -309,7 +300,7 @@
 // MARK: 3. ZXToggle (Precision Hardware Switch - With Network Binding)
 @interface ZXToggle : UIControl
 @property (nonatomic, assign) BOOL isOn;
-@property (nonatomic, strong) NSString *moduleId; // CRITICAL FIX: To securely hold actual server module name
+@property (nonatomic, strong) NSString *moduleId; 
 @property (nonatomic, strong) UIView *trackView;
 @property (nonatomic, strong) UIView *thumbView;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
@@ -433,7 +424,6 @@
     card.transform = CGAffineTransformMakeScale(0.85, 0.85);
     [overlay addSubview:card];
     
-    // Deep shadow for floating effect
     card.layer.shadowColor = tint.CGColor;
     card.layer.shadowOpacity = 0.15;
     card.layer.shadowRadius = 40;
@@ -496,7 +486,6 @@
         [btn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-24]
     ]];
     
-    // Add dismiss action
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissOverlay:)];
     [btn addTarget:self action:@selector(dismissBtnTapped:) forControlEvents:UIControlEventTouchUpInside];
     [overlay addGestureRecognizer:tap];
@@ -579,7 +568,6 @@
 }
 
 - (void)setupCinematicAmbientBackground {
-    // Top Right Deep Blue Glow
     UIView *topGlow = [[UIView alloc] initWithFrame:CGRectMake(self.view.bounds.size.width - 200, -150, 500, 500)];
     topGlow.backgroundColor = [[ZXTheme accentNeonBlue] colorWithAlphaComponent:0.08];
     topGlow.layer.cornerRadius = 250;
@@ -588,7 +576,6 @@
     topGlow.layer.shadowOpacity = 1.0;
     [self.view addSubview:topGlow];
     
-    // Bottom Left Cyan Glow
     UIView *bottomGlow = [[UIView alloc] initWithFrame:CGRectMake(-150, self.view.bounds.size.height - 250, 400, 400)];
     bottomGlow.backgroundColor = [[ZXTheme accentCyan] colorWithAlphaComponent:0.05];
     bottomGlow.layer.cornerRadius = 200;
@@ -597,7 +584,6 @@
     bottomGlow.layer.shadowOpacity = 1.0;
     [self.view addSubview:bottomGlow];
     
-    // Cinematic Slow Breathing Animation
     [UIView animateWithDuration:12.0 delay:0 options:UIViewAnimationOptionAutoreverse | UIViewAnimationOptionRepeat | UIViewAnimationOptionCurveEaseInOut animations:^{
         topGlow.transform = CGAffineTransformMakeTranslation(-60, 80);
         bottomGlow.transform = CGAffineTransformMakeTranslation(80, -60);
@@ -751,7 +737,6 @@
     [self.loginBtn setLoading:YES];
     [self.keyInput.textField resignFirstResponder];
     
-    // Call the actual delegate to network manager
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestAuthenticationWithKey:completion:)]) {
         [self.delegate zentraxDidRequestAuthenticationWithKey:key completion:^(BOOL success, NSString *errorMsg) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -764,17 +749,17 @@
             });
         }];
     } else {
+        // Strict Functional State: No fallback simulation allowed.
         [self.loginBtn setLoading:NO];
-        [self transitionToDashboard]; // Only for safe-fail continuity
+        [self showGlobalErrorWithTitle:@"Configuration Error" message:@"Authentication delegate is unavailable. Cannot connect to the network manager."];
     }
 }
 
-#pragma mark - Dashboard Flow (Zero Hardcoded Data)
+#pragma mark - Dashboard Flow
 - (void)setupDashboard {
     _dashboardContainer = [[UIView alloc] initWithFrame:self.view.bounds];
     [self.view addSubview:_dashboardContainer];
     
-    // Top Nav Area
     UIView *navBar = [[UIView alloc] init];
     navBar.translatesAutoresizingMaskIntoConstraints = NO;
     [_dashboardContainer addSubview:navBar];
@@ -801,7 +786,6 @@
     statusDot.translatesAutoresizingMaskIntoConstraints = NO;
     [navBar addSubview:statusDot];
     
-    // Subscription Card (Dynamic Content Prepared)
     UIView *statusCard = [[UIView alloc] init];
     [ZXTheme applyPremiumGlassmorphismToView:statusCard cornerRadius:20];
     statusCard.translatesAutoresizingMaskIntoConstraints = NO;
@@ -816,14 +800,14 @@
     [statusCard addSubview:subTitle];
     
     _statusLabel = [[UILabel alloc] init];
-    _statusLabel.text = @"Awaiting Status..."; // Replaced with actual server data on update
+    _statusLabel.text = @"Awaiting Status..."; 
     _statusLabel.textColor = [ZXTheme textPrimary];
     _statusLabel.font = [ZXTheme fontHeading:18];
     _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [statusCard addSubview:_statusLabel];
     
     _expiryLabel = [[UILabel alloc] init];
-    _expiryLabel.text = @"Authenticating..."; // Replaced with actual server data on update
+    _expiryLabel.text = @"Authenticating..."; 
     _expiryLabel.textColor = [ZXTheme textSecondary];
     _expiryLabel.font = [ZXTheme fontBody:13 weight:UIFontWeightRegular];
     _expiryLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -834,7 +818,6 @@
     cardIcon.translatesAutoresizingMaskIntoConstraints = NO;
     [statusCard addSubview:cardIcon];
     
-    // Modules List Area (Empty State Default)
     _modulesScrollView = [[UIScrollView alloc] init];
     _modulesScrollView.showsVerticalScrollIndicator = NO;
     _modulesScrollView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -902,11 +885,9 @@
         [_emptyStateLabel.topAnchor constraintEqualToAnchor:_dashboardSpinner.bottomAnchor constant:16]
     ]];
     
-    // Note: NO dummy data array is passed here. The UI stays empty and spinning until the server responds.
     [_dashboardSpinner startAnimating];
 }
 
-// Strictly populates UI from the Backend Dictionary
 - (void)updateDashboardWithModules:(NSArray<NSDictionary *> *)modules {
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.dashboardSpinner stopAnimating];
@@ -931,7 +912,6 @@
         yOffset += 40;
         
         for (NSDictionary *mod in modules) {
-            // Safely extract whatever the server gives us
             NSString *moduleName = mod[@"name"] ?: @"UNKNOWN MODULE";
             NSString *moduleDesc = mod[@"desc"] ?: mod[@"description"] ?: @"No description provided.";
             
@@ -949,10 +929,9 @@
             s.font = [ZXTheme fontBody:11 weight:UIFontWeightMedium];
             [row addSubview:s];
             
-            // The Functional Network Setup
             ZXToggle *toggle = [[ZXToggle alloc] init];
             toggle.frame = CGRectMake(row.bounds.size.width - 52, 22, 52, 28);
-            toggle.moduleId = moduleName; // Securely binds the real server module name to the switch
+            toggle.moduleId = moduleName; 
             [toggle addTarget:self action:@selector(moduleToggled:) forControlEvents:UIControlEventValueChanged];
             [row addSubview:toggle];
             
@@ -968,7 +947,6 @@
     });
 }
 
-// Dynamic Subscription Processing
 - (void)updateSubscriptionState:(NSDictionary *)subData {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (subData[@"expiry"]) {
@@ -985,18 +963,15 @@
     });
 }
 
-// Module Execution Action
 - (void)moduleToggled:(ZXToggle *)sender {
-    // Uses the actual module name provided by backend payload (e.g. "DRAGHEADSHOT")
     NSString *networkModuleId = sender.moduleId;
     if (!networkModuleId) return;
     
     NSDate *now = [NSDate date];
     
-    // Rate Limiting Logic via Dictionary
     NSMutableArray *stamps = self.toggleTimestamps[networkModuleId] ?: [NSMutableArray array];
     [stamps filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDate *d, NSDictionary *b) {
-        return [now timeIntervalSinceDate:d] < 5.0; // Rolling 5 sec window
+        return [now timeIntervalSinceDate:d] < 5.0; 
     }]];
     [stamps addObject:now];
     self.toggleTimestamps[networkModuleId] = stamps;
@@ -1020,10 +995,10 @@
             });
         }];
     } else {
-        // Fallback for safety (should not reach here in production network loop)
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [sender setLoading:NO];
-        });
+        // Strict Functional State: No fallback simulation allowed. Rollback and show error.
+        [sender setLoading:NO];
+        [sender setOn:!sender.isOn animated:YES]; // Rollback
+        [self showGlobalErrorWithTitle:@"Configuration Error" message:@"Execution delegate is unavailable. Cannot process payload request."];
     }
 }
 
