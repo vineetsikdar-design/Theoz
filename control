@@ -1,0 +1,10 @@
+Package: com.apple.mobile.MobileHouseArrest
+Name: Zentrax VIP
+Depends: mobilesubstrate
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: Zentrax Vip  
+Maintainer: Zentrax Team
+Author: Zentrax Team
+Section: Utilities
+
