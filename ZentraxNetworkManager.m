@@ -1,12 +1,3 @@
-//
-//  ZentraxNetworkManager.m
-//  Zentrax VIP - Premium Execution Node
-//
-//  Created by Zentrax Team.
-//  Architecture: Token-Based Secure Networking (Zero Hardcoded Secrets)
-//  Status: PRODUCTION READY
-//
-
 #import "ZentraxNetworkManager.h"
 #import <Security/Security.h>
 #import <UIKit/UIKit.h>
