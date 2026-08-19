@@ -24,6 +24,8 @@ jobs:
         run: |
           rm -rf $THEOS/sdks
           git clone https://github.com/theos/sdks.git $THEOS/sdks
+      - name: 🔍 Check All Files (Debugging)
+        run: ls -la
 
       - name: 🔨 Build Package (DEB)
         run: |
