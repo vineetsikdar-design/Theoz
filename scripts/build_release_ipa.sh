@@ -50,7 +50,7 @@ if codesign -d "$APP" >/dev/null 2>&1; then
 fi
 
 cp "$DYLIB" "$APP/Frameworks/FilzaApplySandboxExt.dylib"
-codesign --remove-signature "$APP/Frameworks/FilzaApplySandboxExt.dylib"
+codesign --remove-signature "$APP/Frameworks/FilzaSlop.dylib"
 
 if [[ -n "$CATALOG" ]]; then
   cp "$CATALOG" "$APP/MCMIdentifiers.plist"
