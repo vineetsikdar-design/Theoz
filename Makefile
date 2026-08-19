@@ -21,7 +21,10 @@ FilzaSlop_FILES = Tweak.m \
     apfs_own.m
 
 export ADDITIONAL_CFLAGS = -I./XPF -I.
+export ADDITIONAL_OBJCFLAGS = -I./XPF -I.
+
 FilzaSlop_CFLAGS = -fobjc-arc -Wno-unused-variable -Wno-unused-function -Wno-arc-performSelector-leaks -Wno-error -I./XPF -I.
+FilzaSlop_OBJCFLAGS = -fobjc-arc -Wno-unused-variable -Wno-unused-function -Wno-arc-performSelector-leaks -Wno-error -I./XPF -I.
 FilzaSlop_FRAMEWORKS = Foundation UIKit CoreGraphics Security
 
 include $(THEOS_MAKE_PATH)/tweak.mk
