@@ -262,6 +262,24 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     if (completion) completion();
 }
 
+// 4. Session Verification Bridge (NEW INTEGRATION)
+- (void)zentraxDidRequestSessionVerificationWithCompletion:(void(^)(BOOL isValid))completion {
+    // Quickly check if a token even exists locally before bothering the server
+    if (![[ZentraxNetworkManager sharedManager] hasActiveSession]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(NO);
+        });
+        return;
+    }
+    
+    // Validate the existing session token against the backend heartbeat
+    [[ZentraxNetworkManager sharedManager] verifySessionWithCompletion:^(BOOL isValid) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(isValid);
+        });
+    }];
+}
+
 @end
 
 #pragma mark - ================= UI HIJACK BOOTLOADER =================
