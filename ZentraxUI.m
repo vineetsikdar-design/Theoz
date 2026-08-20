@@ -1,5 +1,3 @@
-
-
 #import "ZentraxUI.h"
 #import <QuartzCore/QuartzCore.h>
 
@@ -192,6 +190,7 @@
 @interface ZXTextField : UIView <UITextFieldDelegate>
 @property (nonatomic, strong) UITextField *textField;
 @property (nonatomic, strong) UIButton *visibilityButton;
+@property (nonatomic, strong) UIButton *pasteButton;
 @property (nonatomic, strong) UIView *highlightBorder;
 @end
 
@@ -222,13 +221,22 @@
         _textField.translatesAutoresizingMaskIntoConstraints = NO;
         _textField.autocorrectionType = UITextAutocorrectionTypeNo;
         _textField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        _textField.returnKeyType = UIReturnKeyDone;
         
-        NSAttributedString *ph = [[NSAttributedString alloc] initWithString:@"ENTER LICENCE TOKEN" attributes:@{
+        NSAttributedString *ph = [[NSAttributedString alloc] initWithString:@"ENTER YOUR LICENSE KEY" attributes:@{
             NSForegroundColorAttributeName: [ZXTheme textMuted],
             NSKernAttributeName: @(1.5)
         }];
         _textField.attributedPlaceholder = ph;
         [self addSubview:_textField];
+        
+        _pasteButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [_pasteButton setTitle:@"PASTE" forState:UIControlStateNormal];
+        _pasteButton.titleLabel.font = [ZXTheme fontHeading:13];
+        [_pasteButton setTitleColor:[ZXTheme accentCyan] forState:UIControlStateNormal];
+        _pasteButton.translatesAutoresizingMaskIntoConstraints = NO;
+        [_pasteButton addTarget:self action:@selector(pasteKeyTapped) forControlEvents:UIControlEventTouchUpInside];
+        [self addSubview:_pasteButton];
         
         _visibilityButton = [UIButton buttonWithType:UIButtonTypeSystem];
         [_visibilityButton setImage:[UIImage systemImageNamed:@"eye.slash.fill"] forState:UIControlStateNormal];
@@ -249,9 +257,12 @@
             [icon.heightAnchor constraintEqualToConstant:18],
             
             [_textField.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:16],
-            [_textField.trailingAnchor constraintEqualToAnchor:_visibilityButton.leadingAnchor constant:-12],
+            [_textField.trailingAnchor constraintEqualToAnchor:_pasteButton.leadingAnchor constant:-12],
             [_textField.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
             [_textField.heightAnchor constraintEqualToAnchor:self.heightAnchor],
+            
+            [_pasteButton.trailingAnchor constraintEqualToAnchor:_visibilityButton.leadingAnchor constant:-12],
+            [_pasteButton.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
             
             [_visibilityButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-20],
             [_visibilityButton.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
@@ -260,6 +271,15 @@
         ]];
     }
     return self;
+}
+
+- (void)pasteKeyTapped {
+    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+    if (pasteboard.string.length > 0) {
+        self.textField.text = pasteboard.string;
+        UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        [haptic impactOccurred];
+    }
 }
 
 - (void)toggleVisibility {
@@ -286,6 +306,11 @@
         self.highlightBorder.alpha = 0.0;
         self.layer.shadowOpacity = 0.0;
     }];
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [textField resignFirstResponder];
+    return YES;
 }
 @end
 
@@ -548,6 +573,11 @@
     self.view.backgroundColor = [ZXTheme bgDeepSpace];
     self.toggleTimestamps = [NSMutableDictionary dictionary];
     
+    // Dismiss keyboard gesture setup
+    UITapGestureRecognizer *dismissTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
+    dismissTap.cancelsTouchesInView = NO;
+    [self.view addGestureRecognizer:dismissTap];
+    
     [self setupCinematicAmbientBackground];
     
     [self setupSplash];
@@ -558,6 +588,47 @@
     self.dashboardContainer.alpha = 0;
     
     [self runSplashSequence];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)dismissKeyboard {
+    [self.view endEditing:YES];
+}
+
+#pragma mark - Keyboard Handling
+- (void)keyboardWillShow:(NSNotification *)notification {
+    NSDictionary *info = notification.userInfo;
+    CGRect kbFrame = [info[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    NSTimeInterval duration = [info[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    
+    CGRect btnRect = [self.authContainer convertRect:self.loginBtn.frame toView:self.view];
+    CGFloat btnBottom = CGRectGetMaxY(btnRect);
+    CGFloat kbTop = kbFrame.origin.y;
+    
+    CGFloat overlap = btnBottom - kbTop;
+    if (overlap > 0) {
+        CGFloat shift = overlap + 20; 
+        [UIView animateWithDuration:duration delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+            self.authContainer.transform = CGAffineTransformMakeTranslation(0, -shift);
+        } completion:nil];
+    }
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification {
+    NSTimeInterval duration = [notification.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    [UIView animateWithDuration:duration delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+        self.authContainer.transform = CGAffineTransformIdentity;
+    } completion:nil];
 }
 
 - (void)setupCinematicAmbientBackground {
@@ -599,7 +670,7 @@
     [_splashContainer addSubview:logo];
     
     UILabel *title = [[UILabel alloc] init];
-    title.text = @"ZENTRAX PROXY";
+    title.text = @"ZENTRAX VIP";
     title.textColor = [ZXTheme textPrimary];
     title.font = [ZXTheme fontDisplay:22];
     [ZXTheme applyTextTracking:title spacing:8.0];
@@ -607,7 +678,7 @@
     [_splashContainer addSubview:title];
     
     UILabel *sub = [[UILabel alloc] init];
-    sub.text = @"SECURE EXECUTION NODE";
+    sub.text = @"LICENSE VERIFICATION";
     sub.textColor = [ZXTheme textMuted];
     sub.font = [ZXTheme fontMono:10 weight:UIFontWeightBold];
     [ZXTheme applyTextTracking:sub spacing:3.0];
@@ -665,7 +736,7 @@
     [self.view addSubview:_authContainer];
     
     UILabel *headerSub = [[UILabel alloc] init];
-    headerSub.text = @"NODE AUTHORIZATION";
+    headerSub.text = @"LICENSE VERIFICATION";
     headerSub.textColor = [ZXTheme accentCyan];
     headerSub.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
     [ZXTheme applyTextTracking:headerSub spacing:3.0];
@@ -680,7 +751,7 @@
     [_authContainer addSubview:title];
     
     UILabel *desc = [[UILabel alloc] init];
-    desc.text = @"Provide your master token to establish a secure connection with the execution server.";
+    desc.text = @"Provide your license key to verify your premium ZENTRAX VIP access.";
     desc.textColor = [ZXTheme textSecondary];
     desc.font = [ZXTheme fontBody:14 weight:UIFontWeightRegular];
     desc.numberOfLines = 0;
@@ -692,7 +763,7 @@
     [_authContainer addSubview:_keyInput];
     
     _loginBtn = [[ZXButton alloc] init];
-    [_loginBtn setTitle:@"INITIALIZE NODE" forState:UIControlStateNormal];
+    [_loginBtn setTitle:@"CONTINUE" forState:UIControlStateNormal];
     [_loginBtn addTarget:self action:@selector(handleLogin) forControlEvents:UIControlEventTouchUpInside];
     _loginBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [_authContainer addSubview:_loginBtn];
@@ -721,14 +792,15 @@
 }
 
 - (void)handleLogin {
+    [self dismissKeyboard];
+    
     NSString *key = self.keyInput.textField.text;
     if (key.length == 0) {
-        [self showGlobalErrorWithTitle:@"Authentication Failed" message:@"You must enter a valid authorization token to proceed."];
+        [self showGlobalErrorWithTitle:@"Authentication Failed" message:@"You must enter a valid license key to proceed."];
         return;
     }
     
     [self.loginBtn setLoading:YES];
-    [self.keyInput.textField resignFirstResponder];
     
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestAuthenticationWithKey:completion:)]) {
         [self.delegate zentraxDidRequestAuthenticationWithKey:key completion:^(BOOL success, NSString *errorMsg) {
@@ -737,12 +809,11 @@
                 if (success) {
                     [self transitionToDashboard];
                 } else {
-                    [self showGlobalErrorWithTitle:@"Access Denied" message:errorMsg ?: @"The provided token is invalid or expired."];
+                    [self showGlobalErrorWithTitle:@"Access Denied" message:errorMsg ?: @"The provided license key is invalid or expired."];
                 }
             });
         }];
     } else {
-        // Strict Functional State: No fallback simulation allowed.
         [self.loginBtn setLoading:NO];
         [self showGlobalErrorWithTitle:@"Configuration Error" message:@"Authentication delegate is unavailable. Cannot connect to the network manager."];
     }
@@ -763,7 +834,7 @@
     [navBar addSubview:navIcon];
     
     UILabel *navTitle = [[UILabel alloc] init];
-    navTitle.text = @"ZENTRAX PROXY";
+    navTitle.text = @"ZENTRAX VIP";
     navTitle.textColor = [ZXTheme textPrimary];
     navTitle.font = [ZXTheme fontHeading:15];
     [ZXTheme applyTextTracking:navTitle spacing:2.0];
@@ -785,7 +856,7 @@
     [_dashboardContainer addSubview:statusCard];
     
     UILabel *subTitle = [[UILabel alloc] init];
-    subTitle.text = @"ACTIVE SESSION";
+    subTitle.text = @"ACTIVE";
     subTitle.textColor = [ZXTheme textMuted];
     subTitle.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
     [ZXTheme applyTextTracking:subTitle spacing:1.5];
@@ -822,7 +893,7 @@
     [_modulesScrollView addSubview:_dashboardSpinner];
     
     _emptyStateLabel = [[UILabel alloc] init];
-    _emptyStateLabel.text = @"Synchronizing with Master Node...";
+    _emptyStateLabel.text = @"VERIFYING LICENSE...";
     _emptyStateLabel.textColor = [ZXTheme textMuted];
     _emptyStateLabel.font = [ZXTheme fontBody:13 weight:UIFontWeightMedium];
     _emptyStateLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -888,7 +959,7 @@
         [self.modulesScrollView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
         
         if (modules.count == 0) {
-            self.emptyStateLabel.text = @"No authorized modules found for this key.";
+            self.emptyStateLabel.text = @"No premium features found for this key.";
             [self.modulesScrollView addSubview:self.emptyStateLabel];
             return;
         }
@@ -896,7 +967,7 @@
         CGFloat yOffset = 10;
         
         UILabel *sectionHeader = [[UILabel alloc] initWithFrame:CGRectMake(24, yOffset, 200, 20)];
-        sectionHeader.text = @"✦ EXECUTION NODE";
+        sectionHeader.text = @"✦ FEATURES";
         sectionHeader.textColor = [ZXTheme accentCyan];
         sectionHeader.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
         [ZXTheme applyTextTracking:sectionHeader spacing:2.0];
@@ -905,7 +976,7 @@
         yOffset += 40;
         
         for (NSDictionary *mod in modules) {
-            NSString *moduleName = mod[@"name"] ?: @"UNKNOWN MODULE";
+            NSString *moduleName = mod[@"name"] ?: @"UNKNOWN FEATURE";
             NSString *moduleDesc = mod[@"desc"] ?: mod[@"description"] ?: @"No description provided.";
             
             UIView *row = [[UIView alloc] initWithFrame:CGRectMake(24, yOffset, self.view.bounds.size.width - 48, 80)];
@@ -970,7 +1041,7 @@
     self.toggleTimestamps[networkModuleId] = stamps;
     
     if (stamps.count > 4) {
-        [sender setOn:!sender.isOn animated:YES]; // Local visual rollback
+        [sender setOn:!sender.isOn animated:YES];
         [self showRateLimitErrorWithSecondsRemaining:5];
         return;
     }
@@ -982,16 +1053,15 @@
             dispatch_async(dispatch_get_main_queue(), ^{
                 [sender setLoading:NO];
                 if (!success) {
-                    [sender setOn:!sender.isOn animated:YES]; // Local visual rollback on server failure
-                    [self showGlobalErrorWithTitle:@"Injection Failed" message:errorMsg ?: @"Failed to execute secure payload."];
+                    [sender setOn:!sender.isOn animated:YES];
+                    [self showGlobalErrorWithTitle:@"Action Failed" message:errorMsg ?: @"Failed to verify feature access."];
                 }
             });
         }];
     } else {
-        // Strict Functional State: No fallback simulation allowed. Rollback and show error.
         [sender setLoading:NO];
-        [sender setOn:!sender.isOn animated:YES]; // Rollback
-        [self showGlobalErrorWithTitle:@"Configuration Error" message:@"Execution delegate is unavailable. Cannot process payload request."];
+        [sender setOn:!sender.isOn animated:YES]; 
+        [self showGlobalErrorWithTitle:@"Configuration Error" message:@"Execution delegate is unavailable. Cannot process action."];
     }
 }
 
@@ -1024,11 +1094,11 @@
 }
 
 - (void)showNetworkError {
-    [self showGlobalErrorWithTitle:@"Connection Lost" message:@"Secure connection to the Master Node could not be established. Verify your network access."];
+    [self showGlobalErrorWithTitle:@"CONNECTION ERROR" message:@"Secure connection to the Zentrax VIP network could not be established. Verify your network access."];
 }
 
 - (void)showServerError {
-    [self showGlobalErrorWithTitle:@"Server Error" message:@"The Master Node responded with an unexpected status. Retrying is advised."];
+    [self showGlobalErrorWithTitle:@"Server Error" message:@"The Zentrax server responded with an unexpected status. Retrying is advised."];
 }
 
 - (void)showRateLimitErrorWithSecondsRemaining:(NSInteger)seconds {
