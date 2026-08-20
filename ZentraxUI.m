@@ -11,6 +11,7 @@
 + (UIColor *)borderActive;
 + (UIColor *)accentCyan;
 + (UIColor *)accentNeonBlue;
++ (UIColor *)accentViolet;
 + (UIColor *)textPrimary;
 + (UIColor *)textSecondary;
 + (UIColor *)textMuted;
@@ -38,6 +39,7 @@
 
 + (UIColor *)accentCyan { return [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:1.0]; }
 + (UIColor *)accentNeonBlue { return [UIColor colorWithRed:0.15 green:0.35 blue:1.0 alpha:1.0]; }
++ (UIColor *)accentViolet { return [UIColor colorWithRed:0.55 green:0.0 blue:1.0 alpha:1.0]; }
 
 + (UIColor *)textPrimary { return [UIColor colorWithWhite:0.98 alpha:1.0]; }
 + (UIColor *)textSecondary { return [UIColor colorWithWhite:0.70 alpha:1.0]; }
@@ -90,7 +92,6 @@
     return gradient;
 }
 @end
-
 
 #pragma mark - ================= PREMIUM COMPONENTS =================
 
@@ -157,7 +158,7 @@
     UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleRigid];
     [haptic impactOccurred];
     [UIView animateWithDuration:0.15 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        self.transform = CGAffineTransformMakeScale(0.95, 0.95);
+        self.transform = CGAffineTransformMakeScale(0.97, 0.97);
         self.layer.shadowOpacity = 0.6;
         self.layer.shadowRadius = 8;
         self.bgView.alpha = 0.8;
@@ -179,9 +180,11 @@
         self.originalTitle = [self titleForState:UIControlStateNormal];
         [self setTitle:@"" forState:UIControlStateNormal];
         [self.spinner startAnimating];
+        self.bgView.alpha = 0.7;
     } else {
         [self setTitle:self.originalTitle forState:UIControlStateNormal];
         [self.spinner stopAnimating];
+        self.bgView.alpha = 1.0;
     }
 }
 @end
@@ -274,11 +277,16 @@
 }
 
 - (void)pasteKeyTapped {
-    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
-    if (pasteboard.string.length > 0) {
-        self.textField.text = pasteboard.string;
+    NSString *pb = [[UIPasteboard generalPasteboard].string stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (pb.length > 0) {
+        self.textField.text = pb;
         UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
         [haptic impactOccurred];
+    } else {
+        self.textField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:@"CLIPBOARD EMPTY" attributes:@{NSForegroundColorAttributeName: [ZXTheme statusWarning]}];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            self.textField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:@"ENTER YOUR LICENSE KEY" attributes:@{NSForegroundColorAttributeName: [ZXTheme textMuted], NSKernAttributeName: @(1.5)}];
+        });
     }
 }
 
@@ -313,7 +321,6 @@
     return YES;
 }
 @end
-
 
 // MARK: 3. ZXToggle (Precision Hardware Switch - With Network Binding)
 @interface ZXToggle : UIControl
@@ -415,7 +422,6 @@
     }
 }
 @end
-
 
 #pragma mark - ================= MODAL MANAGER =================
 
@@ -533,17 +539,26 @@
         [overlay removeFromSuperview];
     }];
 }
-
 @end
-
 
 #pragma mark - ================= MAIN VIEW CONTROLLER =================
 
+typedef NS_ENUM(NSInteger, ZXAppState) {
+    ZXAppStateInit,
+    ZXAppStateSplash,
+    ZXAppStateAuth,
+    ZXAppStateVerifying,
+    ZXAppStateDashboard
+};
+
 @interface ZentraxUI ()
+@property (nonatomic, assign) BOOL hasCompletedInitialPresentation;
+@property (nonatomic, assign) ZXAppState currentState;
 
 // Flow Containers
 @property (nonatomic, strong) UIView *splashContainer;
 @property (nonatomic, strong) UIView *authContainer;
+@property (nonatomic, strong) UIView *verificationContainer;
 @property (nonatomic, strong) UIView *dashboardContainer;
 
 // Splash elements
@@ -554,16 +569,18 @@
 @property (nonatomic, strong) ZXTextField *keyInput;
 @property (nonatomic, strong) ZXButton *loginBtn;
 
+// Verification elements
+@property (nonatomic, strong) UILabel *verificationStepLabel;
+@property (nonatomic, strong) UIActivityIndicatorView *verificationSpinner;
+
 // Dashboard elements
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UILabel *expiryLabel;
 @property (nonatomic, strong) UIScrollView *modulesScrollView;
-@property (nonatomic, strong) UIActivityIndicatorView *dashboardSpinner;
-@property (nonatomic, strong) UILabel *emptyStateLabel;
+@property (nonatomic, strong) UIView *emptyStateView;
 
 // Rate limiting state
 @property (nonatomic, strong) NSMutableDictionary *toggleTimestamps;
-
 @end
 
 @implementation ZentraxUI
@@ -572,8 +589,8 @@
     [super viewDidLoad];
     self.view.backgroundColor = [ZXTheme bgDeepSpace];
     self.toggleTimestamps = [NSMutableDictionary dictionary];
+    self.currentState = ZXAppStateInit;
     
-    // Dismiss keyboard gesture setup
     UITapGestureRecognizer *dismissTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
     dismissTap.cancelsTouchesInView = NO;
     [self.view addGestureRecognizer:dismissTap];
@@ -582,18 +599,25 @@
     
     [self setupSplash];
     [self setupAuth];
+    [self setupVerification];
     [self setupDashboard];
     
+    self.splashContainer.alpha = 0;
     self.authContainer.alpha = 0;
+    self.verificationContainer.alpha = 0;
     self.dashboardContainer.alpha = 0;
-    
-    [self runSplashSequence];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+    
+    // Resume Lifecycle Fix: Only run splash on true fresh presentation
+    if (!self.hasCompletedInitialPresentation) {
+        self.hasCompletedInitialPresentation = YES;
+        [self runInitialSessionCheck];
+    }
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -633,15 +657,15 @@
 
 - (void)setupCinematicAmbientBackground {
     UIView *topGlow = [[UIView alloc] initWithFrame:CGRectMake(self.view.bounds.size.width - 200, -150, 500, 500)];
-    topGlow.backgroundColor = [[ZXTheme accentNeonBlue] colorWithAlphaComponent:0.08];
+    topGlow.backgroundColor = [[ZXTheme accentViolet] colorWithAlphaComponent:0.06];
     topGlow.layer.cornerRadius = 250;
-    topGlow.layer.shadowColor = [ZXTheme accentNeonBlue].CGColor;
+    topGlow.layer.shadowColor = [ZXTheme accentViolet].CGColor;
     topGlow.layer.shadowRadius = 150;
     topGlow.layer.shadowOpacity = 1.0;
     [self.view addSubview:topGlow];
     
     UIView *bottomGlow = [[UIView alloc] initWithFrame:CGRectMake(-150, self.view.bounds.size.height - 250, 400, 400)];
-    bottomGlow.backgroundColor = [[ZXTheme accentCyan] colorWithAlphaComponent:0.05];
+    bottomGlow.backgroundColor = [[ZXTheme accentCyan] colorWithAlphaComponent:0.04];
     bottomGlow.layer.cornerRadius = 200;
     bottomGlow.layer.shadowColor = [ZXTheme accentCyan].CGColor;
     bottomGlow.layer.shadowRadius = 150;
@@ -652,6 +676,39 @@
         topGlow.transform = CGAffineTransformMakeTranslation(-60, 80);
         bottomGlow.transform = CGAffineTransformMakeTranslation(80, -60);
     } completion:nil];
+}
+
+#pragma mark - State Machine
+- (void)transitionToState:(ZXAppState)newState {
+    self.currentState = newState;
+    [UIView animateWithDuration:0.6 options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
+        self.splashContainer.alpha = (newState == ZXAppStateSplash) ? 1.0 : 0.0;
+        self.authContainer.alpha = (newState == ZXAppStateAuth) ? 1.0 : 0.0;
+        self.verificationContainer.alpha = (newState == ZXAppStateVerifying) ? 1.0 : 0.0;
+        self.dashboardContainer.alpha = (newState == ZXAppStateDashboard) ? 1.0 : 0.0;
+    } completion:nil];
+}
+
+- (void)runInitialSessionCheck {
+    [self transitionToState:ZXAppStateVerifying];
+    self.verificationStepLabel.text = @"RESTORING SESSION";
+    
+    if ([self.delegate respondsToSelector:@selector(zentraxDidRequestSessionVerificationWithCompletion:)]) {
+        [self.delegate zentraxDidRequestSessionVerificationWithCompletion:^(BOOL isValid) {
+            if (isValid) {
+                self.verificationStepLabel.text = @"SESSION VERIFIED";
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                    [self transitionToState:ZXAppStateDashboard];
+                });
+            } else {
+                [self transitionToState:ZXAppStateSplash];
+                [self runSplashSequence];
+            }
+        }];
+    } else {
+        [self transitionToState:ZXAppStateSplash];
+        [self runSplashSequence];
+    }
 }
 
 #pragma mark - Splash Flow
@@ -665,7 +722,6 @@
     logo.layer.shadowColor = [ZXTheme accentCyan].CGColor;
     logo.layer.shadowRadius = 30;
     logo.layer.shadowOpacity = 0.8;
-    logo.layer.shadowOffset = CGSizeZero;
     logo.translatesAutoresizingMaskIntoConstraints = NO;
     [_splashContainer addSubview:logo];
     
@@ -678,7 +734,7 @@
     [_splashContainer addSubview:title];
     
     UILabel *sub = [[UILabel alloc] init];
-    sub.text = @"LICENSE VERIFICATION";
+    sub.text = @"SECURE INITIALIZATION";
     sub.textColor = [ZXTheme textMuted];
     sub.font = [ZXTheme fontMono:10 weight:UIFontWeightBold];
     [ZXTheme applyTextTracking:sub spacing:3.0];
@@ -725,7 +781,7 @@
         [UIView animateWithDuration:0.4 animations:^{
             self.progressFill.frame = CGRectMake(0, 0, self.view.bounds.size.width - 160, 3);
         } completion:^(BOOL finished) {
-            [self transitionToAuth];
+            [self transitionToState:ZXAppStateAuth];
         }];
     }];
 }
@@ -736,7 +792,7 @@
     [self.view addSubview:_authContainer];
     
     UILabel *headerSub = [[UILabel alloc] init];
-    headerSub.text = @"LICENSE VERIFICATION";
+    headerSub.text = @"ZENTRAX VIP";
     headerSub.textColor = [ZXTheme accentCyan];
     headerSub.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
     [ZXTheme applyTextTracking:headerSub spacing:3.0];
@@ -744,7 +800,7 @@
     [_authContainer addSubview:headerSub];
     
     UILabel *title = [[UILabel alloc] init];
-    title.text = @"Authenticate";
+    title.text = @"Secure Access";
     title.textColor = [ZXTheme textPrimary];
     title.font = [ZXTheme fontDisplay:32];
     title.translatesAutoresizingMaskIntoConstraints = NO;
@@ -763,7 +819,7 @@
     [_authContainer addSubview:_keyInput];
     
     _loginBtn = [[ZXButton alloc] init];
-    [_loginBtn setTitle:@"CONTINUE" forState:UIControlStateNormal];
+    [_loginBtn setTitle:@"VERIFY LICENSE" forState:UIControlStateNormal];
     [_loginBtn addTarget:self action:@selector(handleLogin) forControlEvents:UIControlEventTouchUpInside];
     _loginBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [_authContainer addSubview:_loginBtn];
@@ -801,22 +857,96 @@
     }
     
     [self.loginBtn setLoading:YES];
+    [self transitionToState:ZXAppStateVerifying];
+    
+    // Four Step Visual Sequence
+    self.verificationStepLabel.text = @"SECURE CONNECTION";
+    self.verificationStepLabel.textColor = [ZXTheme accentCyan];
+    [self.verificationSpinner startAnimating];
+    
+    NSArray *steps = @[@"VERIFYING LICENSE", @"VALIDATING ACCESS", @"FINALIZING SESSION"];
+    for (int i = 0; i < steps.count; i++) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (0.5 * (i + 1)) * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            if (self.currentState == ZXAppStateVerifying) {
+                self.verificationStepLabel.text = steps[i];
+            }
+        });
+    }
+    
+    NSTimeInterval startTime = CACurrentMediaTime();
     
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestAuthenticationWithKey:completion:)]) {
         [self.delegate zentraxDidRequestAuthenticationWithKey:key completion:^(BOOL success, NSString *errorMsg) {
-            dispatch_async(dispatch_get_main_queue(), ^{
+            
+            NSTimeInterval elapsed = CACurrentMediaTime() - startTime;
+            NSTimeInterval remainingDelay = MAX(0.0, 2.0 - elapsed); // Enforce ~2s minimum duration
+            
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, remainingDelay * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                 [self.loginBtn setLoading:NO];
                 if (success) {
-                    [self transitionToDashboard];
+                    [self executeSuccessAnimation];
                 } else {
-                    [self showGlobalErrorWithTitle:@"Access Denied" message:errorMsg ?: @"The provided license key is invalid or expired."];
+                    [self transitionToState:ZXAppStateAuth];
+                    
+                    if (errorMsg && [errorMsg.lowercaseString containsString:@"expired"]) {
+                        [ZXModalManager showModalWithIcon:@"exclamationmark.triangle.fill" iconTint:[ZXTheme statusWarning] title:@"License Expired" message:@"This license has expired and can no longer be used." actionTitle:@"TRY ANOTHER KEY" inView:self.view];
+                    } else if (errorMsg && [errorMsg.lowercaseString containsString:@"connection"]) {
+                        [ZXModalManager showModalWithIcon:@"wifi.slash" iconTint:[ZXTheme statusError] title:@"Connection Problem" message:@"We couldn't reach the Zentrax verification service." actionTitle:@"TRY AGAIN" inView:self.view];
+                    } else {
+                        [self showGlobalErrorWithTitle:@"Verification Failed" message:errorMsg ?: @"The license key could not be verified."];
+                    }
                 }
             });
         }];
     } else {
         [self.loginBtn setLoading:NO];
-        [self showGlobalErrorWithTitle:@"Configuration Error" message:@"Authentication delegate is unavailable. Cannot connect to the network manager."];
+        [self transitionToState:ZXAppStateAuth];
+        [self showGlobalErrorWithTitle:@"Configuration Error" message:@"Authentication delegate is unavailable."];
     }
+}
+
+- (void)executeSuccessAnimation {
+    self.verificationStepLabel.text = @"LICENSE VERIFIED";
+    self.verificationStepLabel.textColor = [ZXTheme statusSuccess];
+    [self.verificationSpinner stopAnimating];
+    
+    UIImageView *check = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark.circle.fill"]];
+    check.tintColor = [ZXTheme statusSuccess];
+    check.frame = CGRectMake(0, 0, 50, 50);
+    check.center = self.verificationSpinner.center;
+    check.transform = CGAffineTransformMakeScale(0.1, 0.1);
+    [self.verificationContainer addSubview:check];
+    
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy] impactOccurred];
+    
+    [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.6 initialSpringVelocity:0.5 options:0 animations:^{
+        check.transform = CGAffineTransformIdentity;
+    } completion:^(BOOL finished) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [check removeFromSuperview];
+            self.verificationStepLabel.textColor = [ZXTheme accentCyan];
+            [self.verificationSpinner startAnimating];
+            [self transitionToState:ZXAppStateDashboard];
+        });
+    }];
+}
+
+#pragma mark - Verification Screen
+- (void)setupVerification {
+    _verificationContainer = [[UIView alloc] initWithFrame:self.view.bounds];
+    [self.view addSubview:_verificationContainer];
+    
+    _verificationSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    _verificationSpinner.color = [ZXTheme accentCyan];
+    _verificationSpinner.center = CGPointMake(self.view.center.x, self.view.center.y - 20);
+    [_verificationContainer addSubview:_verificationSpinner];
+    
+    _verificationStepLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, self.view.center.y + 30, self.view.bounds.size.width - 40, 20)];
+    _verificationStepLabel.textColor = [ZXTheme accentCyan];
+    _verificationStepLabel.font = [ZXTheme fontMono:12 weight:UIFontWeightBold];
+    _verificationStepLabel.textAlignment = NSTextAlignmentCenter;
+    [ZXTheme applyTextTracking:_verificationStepLabel spacing:2.0];
+    [_verificationContainer addSubview:_verificationStepLabel];
 }
 
 #pragma mark - Dashboard Flow
@@ -850,13 +980,20 @@
     statusDot.translatesAutoresizingMaskIntoConstraints = NO;
     [navBar addSubview:statusDot];
     
+    UIButton *logoutBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [logoutBtn setImage:[UIImage systemImageNamed:@"rectangle.portrait.and.arrow.right"] forState:UIControlStateNormal];
+    logoutBtn.tintColor = [ZXTheme textMuted];
+    logoutBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [logoutBtn addTarget:self action:@selector(handleLogout) forControlEvents:UIControlEventTouchUpInside];
+    [navBar addSubview:logoutBtn];
+    
     UIView *statusCard = [[UIView alloc] init];
     [ZXTheme applyPremiumGlassmorphismToView:statusCard cornerRadius:20];
     statusCard.translatesAutoresizingMaskIntoConstraints = NO;
     [_dashboardContainer addSubview:statusCard];
     
     UILabel *subTitle = [[UILabel alloc] init];
-    subTitle.text = @"ACTIVE";
+    subTitle.text = @"LICENSE STATUS";
     subTitle.textColor = [ZXTheme textMuted];
     subTitle.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
     [ZXTheme applyTextTracking:subTitle spacing:1.5];
@@ -887,17 +1024,7 @@
     _modulesScrollView.translatesAutoresizingMaskIntoConstraints = NO;
     [_dashboardContainer addSubview:_modulesScrollView];
     
-    _dashboardSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    _dashboardSpinner.color = [ZXTheme accentCyan];
-    _dashboardSpinner.translatesAutoresizingMaskIntoConstraints = NO;
-    [_modulesScrollView addSubview:_dashboardSpinner];
-    
-    _emptyStateLabel = [[UILabel alloc] init];
-    _emptyStateLabel.text = @"VERIFYING LICENSE...";
-    _emptyStateLabel.textColor = [ZXTheme textMuted];
-    _emptyStateLabel.font = [ZXTheme fontBody:13 weight:UIFontWeightMedium];
-    _emptyStateLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [_modulesScrollView addSubview:_emptyStateLabel];
+    [self createEmptyStateView];
     
     [NSLayoutConstraint activateConstraints:@[
         [navBar.topAnchor constraintEqualToAnchor:_dashboardContainer.safeAreaLayoutGuide.topAnchor constant:10],
@@ -913,10 +1040,15 @@
         [navTitle.leadingAnchor constraintEqualToAnchor:navIcon.trailingAnchor constant:12],
         [navTitle.centerYAnchor constraintEqualToAnchor:navBar.centerYAnchor],
         
-        [statusDot.trailingAnchor constraintEqualToAnchor:navBar.trailingAnchor],
+        [statusDot.leadingAnchor constraintEqualToAnchor:navTitle.trailingAnchor constant:8],
         [statusDot.centerYAnchor constraintEqualToAnchor:navBar.centerYAnchor],
         [statusDot.widthAnchor constraintEqualToConstant:8],
         [statusDot.heightAnchor constraintEqualToConstant:8],
+        
+        [logoutBtn.trailingAnchor constraintEqualToAnchor:navBar.trailingAnchor],
+        [logoutBtn.centerYAnchor constraintEqualToAnchor:navBar.centerYAnchor],
+        [logoutBtn.widthAnchor constraintEqualToConstant:30],
+        [logoutBtn.heightAnchor constraintEqualToConstant:30],
         
         [statusCard.topAnchor constraintEqualToAnchor:navBar.bottomAnchor constant:30],
         [statusCard.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
@@ -940,34 +1072,62 @@
         [_modulesScrollView.topAnchor constraintEqualToAnchor:statusCard.bottomAnchor constant:24],
         [_modulesScrollView.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor],
         [_modulesScrollView.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor],
-        [_modulesScrollView.bottomAnchor constraintEqualToAnchor:_dashboardContainer.bottomAnchor],
-        
-        [_dashboardSpinner.centerXAnchor constraintEqualToAnchor:_modulesScrollView.centerXAnchor],
-        [_dashboardSpinner.topAnchor constraintEqualToAnchor:_modulesScrollView.topAnchor constant:100],
-        
-        [_emptyStateLabel.centerXAnchor constraintEqualToAnchor:_modulesScrollView.centerXAnchor],
-        [_emptyStateLabel.topAnchor constraintEqualToAnchor:_dashboardSpinner.bottomAnchor constant:16]
+        [_modulesScrollView.bottomAnchor constraintEqualToAnchor:_dashboardContainer.bottomAnchor]
     ]];
+}
+
+- (void)createEmptyStateView {
+    _emptyStateView = [[UIView alloc] initWithFrame:CGRectMake(0, 100, self.view.bounds.size.width, 200)];
     
-    [_dashboardSpinner startAnimating];
+    UIView *iconContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 70, 70)];
+    iconContainer.center = CGPointMake(self.view.bounds.size.width / 2, 35);
+    iconContainer.layer.cornerRadius = 35;
+    iconContainer.backgroundColor = [[ZXTheme accentCyan] colorWithAlphaComponent:0.1];
+    iconContainer.layer.shadowColor = [ZXTheme accentCyan].CGColor;
+    iconContainer.layer.shadowRadius = 20;
+    iconContainer.layer.shadowOpacity = 0.5;
+    [_emptyStateView addSubview:iconContainer];
+    
+    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"cube.transparent"]];
+    icon.tintColor = [ZXTheme accentCyan];
+    icon.frame = CGRectMake(15, 15, 40, 40);
+    [iconContainer addSubview:icon];
+    
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(20, 90, self.view.bounds.size.width - 40, 25)];
+    title.text = @"No Functions Available";
+    title.textColor = [ZXTheme textPrimary];
+    title.font = [ZXTheme fontHeading:18];
+    title.textAlignment = NSTextAlignmentCenter;
+    [_emptyStateView addSubview:title];
+    
+    UILabel *sub = [[UILabel alloc] initWithFrame:CGRectMake(40, 120, self.view.bounds.size.width - 80, 40)];
+    sub.text = @"There are currently no functions available for your account.\nCheck back later when new functions become available.";
+    sub.textColor = [ZXTheme textSecondary];
+    sub.font = [ZXTheme fontBody:13 weight:UIFontWeightRegular];
+    sub.textAlignment = NSTextAlignmentCenter;
+    sub.numberOfLines = 0;
+    [_emptyStateView addSubview:sub];
 }
 
 - (void)updateDashboardWithModules:(NSArray<NSDictionary *> *)modules {
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self.dashboardSpinner stopAnimating];
-        [self.emptyStateLabel removeFromSuperview];
         [self.modulesScrollView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
         
-        if (modules.count == 0) {
-            self.emptyStateLabel.text = @"No premium features found for this key.";
-            [self.modulesScrollView addSubview:self.emptyStateLabel];
+        if (!modules || modules.count == 0) {
+            [self.modulesScrollView addSubview:self.emptyStateView];
+            self.emptyStateView.alpha = 0;
+            self.emptyStateView.transform = CGAffineTransformMakeScale(0.85, 0.85);
+            [UIView animateWithDuration:0.5 delay:0.2 options:UIViewAnimationOptionCurveEaseOut animations:^{
+                self.emptyStateView.alpha = 1;
+                self.emptyStateView.transform = CGAffineTransformIdentity;
+            } completion:nil];
             return;
         }
         
         CGFloat yOffset = 10;
         
         UILabel *sectionHeader = [[UILabel alloc] initWithFrame:CGRectMake(24, yOffset, 200, 20)];
-        sectionHeader.text = @"✦ FEATURES";
+        sectionHeader.text = @"CONTROL CENTER";
         sectionHeader.textColor = [ZXTheme accentCyan];
         sectionHeader.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
         [ZXTheme applyTextTracking:sectionHeader spacing:2.0];
@@ -979,32 +1139,50 @@
             NSString *moduleName = mod[@"name"] ?: @"UNKNOWN FEATURE";
             NSString *moduleDesc = mod[@"desc"] ?: mod[@"description"] ?: @"No description provided.";
             
-            UIView *row = [[UIView alloc] initWithFrame:CGRectMake(24, yOffset, self.view.bounds.size.width - 48, 80)];
+            UIView *card = [[UIView alloc] initWithFrame:CGRectMake(24, yOffset, self.view.bounds.size.width - 48, 80)];
+            [ZXTheme applyPremiumGlassmorphismToView:card cornerRadius:14];
             
-            UILabel *t = [[UILabel alloc] initWithFrame:CGRectMake(0, 15, row.bounds.size.width - 70, 20)];
+            UIView *iconContainer = [[UIView alloc] initWithFrame:CGRectMake(16, 20, 40, 40)];
+            iconContainer.backgroundColor = [[ZXTheme accentCyan] colorWithAlphaComponent:0.1];
+            iconContainer.layer.cornerRadius = 8;
+            iconContainer.layer.shadowColor = [ZXTheme accentCyan].CGColor;
+            iconContainer.layer.shadowRadius = 8;
+            iconContainer.layer.shadowOpacity = 0.3;
+            [card addSubview:iconContainer];
+            
+            NSString *iconName = mod[@"icon"] ?: @"bolt.fill";
+            UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:iconName]];
+            icon.tintColor = [ZXTheme accentCyan];
+            icon.frame = CGRectMake(10, 10, 20, 20);
+            [iconContainer addSubview:icon];
+            
+            UILabel *t = [[UILabel alloc] initWithFrame:CGRectMake(72, 18, card.bounds.size.width - 140, 20)];
             t.text = [moduleName uppercaseString];
             t.textColor = [ZXTheme textPrimary];
             t.font = [ZXTheme fontHeading:15];
-            [row addSubview:t];
+            [card addSubview:t];
             
-            UILabel *s = [[UILabel alloc] initWithFrame:CGRectMake(0, 40, row.bounds.size.width - 70, 16)];
+            UILabel *s = [[UILabel alloc] initWithFrame:CGRectMake(72, 42, card.bounds.size.width - 140, 16)];
             s.text = [moduleDesc uppercaseString];
             s.textColor = [ZXTheme textMuted];
             s.font = [ZXTheme fontBody:11 weight:UIFontWeightMedium];
-            [row addSubview:s];
+            [card addSubview:s];
             
             ZXToggle *toggle = [[ZXToggle alloc] init];
-            toggle.frame = CGRectMake(row.bounds.size.width - 52, 22, 52, 28);
+            toggle.frame = CGRectMake(card.bounds.size.width - 70, 25, 54, 30);
             toggle.moduleId = moduleName; 
             [toggle addTarget:self action:@selector(moduleToggled:) forControlEvents:UIControlEventValueChanged];
-            [row addSubview:toggle];
+            [card addSubview:toggle];
             
-            UIView *separator = [[UIView alloc] initWithFrame:CGRectMake(0, 79, row.bounds.size.width, 0.5)];
-            separator.backgroundColor = [ZXTheme borderSubtle];
-            [row addSubview:separator];
+            card.alpha = 0;
+            card.transform = CGAffineTransformMakeTranslation(0, 20);
+            [self.modulesScrollView addSubview:card];
+            yOffset += 96;
             
-            [self.modulesScrollView addSubview:row];
-            yOffset += 80;
+            [UIView animateWithDuration:0.5 delay:([modules indexOfObject:mod] * 0.1) usingSpringWithDamping:0.8 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseOut animations:^{
+                card.alpha = 1;
+                card.transform = CGAffineTransformIdentity;
+            } completion:nil];
         }
         
         self.modulesScrollView.contentSize = CGSizeMake(self.view.bounds.size.width, yOffset + 50);
@@ -1022,7 +1200,7 @@
         if (subData[@"status"]) {
             self.statusLabel.text = subData[@"status"];
         } else {
-            self.statusLabel.text = @"Premium License";
+            self.statusLabel.text = @"Active";
         }
     });
 }
@@ -1065,22 +1243,24 @@
     }
 }
 
-#pragma mark - Transitions
-- (void)transitionToAuth {
-    [UIView transitionWithView:self.view duration:0.8 options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
-        self.splashContainer.alpha = 0;
-        self.authContainer.alpha = 1;
-    } completion:nil];
+#pragma mark - Logout and Errors
+- (void)handleLogout {
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Sign out of Zentrax VIP?" message:@"Your saved session will be removed from this device." preferredStyle:UIAlertControllerStyleAlert];
+    
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Logout" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+        if ([self.delegate respondsToSelector:@selector(zentraxDidRequestLogoutWithCompletion:)]) {
+            [self.delegate zentraxDidRequestLogoutWithCompletion:^{
+                self.keyInput.textField.text = @"";
+                [self transitionToState:ZXAppStateAuth];
+            }];
+        }
+    }]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)transitionToDashboard {
-    [UIView transitionWithView:self.view duration:0.8 options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
-        self.authContainer.alpha = 0;
-        self.dashboardContainer.alpha = 1;
-    } completion:nil];
-}
-
-#pragma mark - Public APIs / Modals
 - (void)showGlobalErrorWithTitle:(NSString *)title message:(NSString *)msg {
     dispatch_async(dispatch_get_main_queue(), ^{
         [ZXModalManager showModalWithIcon:@"xmark.octagon.fill" iconTint:[ZXTheme statusError] title:title message:msg actionTitle:@"DISMISS" inView:self.view];
