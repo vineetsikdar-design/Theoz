@@ -2,10 +2,7 @@
 #import <Security/Security.h>
 #import <UIKit/UIKit.h>
 
-// ==========================================
-// 🔐 SERVER CONFIGURATION
-// ==========================================
-#define BASE_URL @"https://host.zentrax.in/api/"
+#define BASE_URL @"https://zentraxmod.in/api/"
 #define KEYCHAIN_SERVICE @"in.zentrax.proxy"
 #define KEYCHAIN_ACCOUNT @"session_token"
 
@@ -57,7 +54,6 @@
         (__bridge id)kSecAttrAccount: KEYCHAIN_ACCOUNT
     };
     
-    // Delete existing before saving new
     SecItemDelete((__bridge CFDictionaryRef)query);
     
     NSMutableDictionary *addQuery = [query mutableCopy];
@@ -101,32 +97,30 @@
 
 #pragma mark - ================= SECURE API EXECUTOR =================
 
-- (void)sendRequestToEndpoint:(NSString *)endpoint payload:(NSDictionary *)payloadDict requiresAuth:(BOOL)requiresAuth completion:(void(^)(BOOL success, NSDictionary * _Nullable responseData, NSString * _Nullable errorMsg))completion {
+- (void)sendRequestToEndpoint:(NSString *)endpoint payload:(NSDictionary *)payloadDict requiresAuth:(BOOL)requiresAuth completion:(void(^)(BOOL success, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg))completion {
     
     NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@", BASE_URL, endpoint]];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     request.HTTPMethod = @"POST";
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     
-    // Inject Authorization Token if required
     if (requiresAuth) {
         NSString *token = [self getTokenFromKeychain];
         if (!token) {
-            completion(NO, nil, @"Authentication token missing. Please log in again.");
+            completion(NO, nil, ZXNetworkErrorInvalidKey, @"Authentication token missing. Please log in again.");
             return;
         }
         NSString *authHeader = [NSString stringWithFormat:@"Bearer %@", token];
         [request setValue:authHeader forHTTPHeaderField:@"Authorization"];
     }
     
-    // Inject Anti-Replay Timestamp
     NSMutableDictionary *securePayload = [payloadDict mutableCopy];
     securePayload[@"timestamp"] = [NSString stringWithFormat:@"%f", [[NSDate date] timeIntervalSince1970]];
     
     NSError *jsonError;
     NSData *bodyData = [NSJSONSerialization dataWithJSONObject:securePayload options:0 error:&jsonError];
     if (jsonError) {
-        completion(NO, nil, @"Internal Payload Formatting Error.");
+        completion(NO, nil, ZXNetworkErrorServer, @"Internal Payload Formatting Error.");
         return;
     }
     request.HTTPBody = bodyData;
@@ -134,16 +128,15 @@
     NSURLSessionDataTask *task = [self.secureSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         
         if (error) {
-            completion(NO, nil, @"Connection lost to Master Node.");
+            completion(NO, nil, ZXNetworkErrorConnection, @"Connection lost to Master Node.");
             return;
         }
         
         NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
         
-        // Handle Session Revocation (Unauthorized)
         if (httpResponse.statusCode == 401 || httpResponse.statusCode == 403) {
             [self logout];
-            completion(NO, nil, @"Session expired or revoked. Please log in again.");
+            completion(NO, nil, ZXNetworkErrorExpiredKey, @"Session expired or revoked. Please log in again.");
             return;
         }
         
@@ -151,14 +144,30 @@
         NSDictionary *parsedResponse = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
         
         if (parseError || !parsedResponse) {
-            completion(NO, nil, @"Malformed response from server.");
+            completion(NO, nil, ZXNetworkErrorServer, @"Malformed response from server.");
             return;
         }
         
         BOOL status = [parsedResponse[@"status"] isEqualToString:@"success"];
         NSString *message = parsedResponse[@"message"];
+        ZXNetworkErrorType errType = ZXNetworkErrorNone;
         
-        completion(status, parsedResponse, message);
+        if (!status) {
+            NSString *errCode = parsedResponse[@"error_code"];
+            if ([errCode isKindOfClass:[NSString class]]) {
+                if ([errCode isEqualToString:@"EXPIRED_KEY"]) {
+                    errType = ZXNetworkErrorExpiredKey;
+                } else if ([errCode isEqualToString:@"INVALID_KEY"]) {
+                    errType = ZXNetworkErrorInvalidKey;
+                } else {
+                    errType = ZXNetworkErrorInvalidKey;
+                }
+            } else {
+                errType = ZXNetworkErrorInvalidKey;
+            }
+        }
+        
+        completion(status, parsedResponse, errType, message);
     }];
     
     [task resume];
@@ -166,20 +175,18 @@
 
 #pragma mark - ================= PUBLIC ACTIONS =================
 
-- (void)authenticateWithKey:(NSString *)key completion:(void(^)(BOOL success, NSDictionary * _Nullable responseData, NSString * _Nullable errorMsg))completion {
+- (void)authenticateWithKey:(NSString *)key completion:(void(^)(BOOL success, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg))completion {
     NSDictionary *payload = @{
         @"action": @"login",
         @"key": key,
         @"hwid": [self getHardwareID]
     };
     
-    // Auth request does NOT require existing token
-    [self sendRequestToEndpoint:@"auth.php" payload:payload requiresAuth:NO completion:^(BOOL success, NSDictionary *responseData, NSString *errorMsg) {
+    [self sendRequestToEndpoint:@"auth.php" payload:payload requiresAuth:NO completion:^(BOOL success, NSDictionary *responseData, ZXNetworkErrorType errorType, NSString *errorMsg) {
         if (success && responseData[@"token"]) {
-            // Save token securely upon successful login
             [self saveTokenToKeychain:responseData[@"token"]];
         }
-        completion(success, responseData, errorMsg);
+        completion(success, responseData, errorType, errorMsg);
     }];
 }
 
@@ -191,14 +198,12 @@
         @"hwid": [self getHardwareID]
     };
     
-    // Toggle requires active auth token
-    [self sendRequestToEndpoint:@"module.php" payload:payload requiresAuth:YES completion:^(BOOL success, NSDictionary *responseData, NSString *errorMsg) {
+    [self sendRequestToEndpoint:@"module.php" payload:payload requiresAuth:YES completion:^(BOOL success, NSDictionary *responseData, ZXNetworkErrorType errorType, NSString *errorMsg) {
         if (!success) {
             completion(NO, nil, errorMsg);
             return;
         }
         
-        // Expecting dictionary with file_data, bundle_id, and relative_path from server
         NSDictionary *payloadData = responseData[@"payload"];
         if (payloadData && payloadData[@"file_data"]) {
             completion(YES, payloadData, nil);
@@ -208,30 +213,26 @@
     }];
 }
 
-- (void)verifySessionWithCompletion:(void(^)(BOOL isValid))completion {
+- (void)verifySessionWithCompletion:(void(^)(BOOL isValid, NSDictionary * _Nullable responseData))completion {
     NSDictionary *payload = @{
         @"action": @"heartbeat",
         @"hwid": [self getHardwareID]
     };
     
-    [self sendRequestToEndpoint:@"heartbeat.php" payload:payload requiresAuth:YES completion:^(BOOL success, NSDictionary *responseData, NSString *errorMsg) {
-        if (!success && [errorMsg containsString:@"expired"]) {
+    [self sendRequestToEndpoint:@"heartbeat.php" payload:payload requiresAuth:YES completion:^(BOOL success, NSDictionary *responseData, ZXNetworkErrorType errorType, NSString *errorMsg) {
+        if (!success) {
             [self logout];
         }
-        completion(success);
+        completion(success, responseData);
     }];
 }
 
-#pragma mark - ================= SSL PINNING (ANTI-SNIFF) =================
+#pragma mark - ================= SSL PINNING =================
 
 - (void)URLSession:(NSURLSession *)session didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential * _Nullable))completionHandler {
     
     if ([challenge.protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust]) {
         SecTrustRef serverTrust = challenge.protectionSpace.serverTrust;
-        
-        // TODO for Production: Extract public key hash from serverTrust and compare against known Zentrax Hash.
-        
-        // Temporarily accepting valid CA trusts while testing API integration
         completionHandler(NSURLSessionAuthChallengeUseCredential, [[NSURLCredential alloc] initWithTrust:serverTrust]);
     } else {
         completionHandler(NSURLSessionAuthChallengeCancelAuthenticationChallenge, nil);
