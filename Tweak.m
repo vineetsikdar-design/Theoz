@@ -313,21 +313,11 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             NSString *directoryPath = [dataContainer stringByAppendingPathComponent:relativePath];
             NSString *finalTargetPath = [directoryPath stringByAppendingPathComponent:targetFilename];
             
-            NSFileManager *fm = [NSFileManager defaultManager];
             NSError *fsError = nil;
+            NSFileManager *fm = [NSFileManager defaultManager];
             
-            // --- UPDATED ERROR LOGGING BLOCK ---
-            if (![fm fileExistsAtPath:directoryPath]) {
-                [fm createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:&fsError];
-                if (fsError) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        completion(NO, [NSString stringWithFormat:@"Folder Error: %@", fsError.localizedDescription]);
-                    });
-                    return;
-                }
-            }
-            
-            // Perform Atomic Local File Replacement
+            // DIRECT WRITE: We assume the target directory already exists per the game's structure.
+            // This prevents iOS Sandbox from unnecessarily blocking "createDirectory" operations.
             BOOL written = [fileData writeToFile:finalTargetPath options:NSDataWritingAtomic error:&fsError];
             
             if (!written) {
@@ -336,7 +326,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 });
                 return;
             }
-            // -----------------------------------
             
             // Perform Local Verification
             if (![fm fileExistsAtPath:finalTargetPath]) {
