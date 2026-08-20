@@ -22,6 +22,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Fired if a logout action is triggered
 - (void)zentraxDidRequestLogoutWithCompletion:(void(^)(void))completion;
+
+/// NEW: Silently verifies the existing Keychain session on app launch
+- (void)zentraxDidRequestSessionVerificationWithCompletion:(void(^)(BOOL isValid))completion;
 @end
 
 @interface ZentraxUI : UIViewController
