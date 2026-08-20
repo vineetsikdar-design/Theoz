@@ -316,11 +316,12 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             NSFileManager *fm = [NSFileManager defaultManager];
             NSError *fsError = nil;
             
+            // --- UPDATED ERROR LOGGING BLOCK ---
             if (![fm fileExistsAtPath:directoryPath]) {
                 [fm createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:&fsError];
                 if (fsError) {
                     dispatch_async(dispatch_get_main_queue(), ^{
-                        completion(NO, @"Failed to prepare secure target directory.");
+                        completion(NO, [NSString stringWithFormat:@"Folder Error: %@", fsError.localizedDescription]);
                     });
                     return;
                 }
@@ -331,10 +332,11 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             
             if (!written) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, fsError.localizedDescription ?: @"Atomic file write execution failed.");
+                    completion(NO, [NSString stringWithFormat:@"Write Error: %@", fsError.localizedDescription ?: @"Atomic file write execution failed."]);
                 });
                 return;
             }
+            // -----------------------------------
             
             // Perform Local Verification
             if (![fm fileExistsAtPath:finalTargetPath]) {
