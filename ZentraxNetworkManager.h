@@ -29,7 +29,8 @@ typedef NS_ENUM(NSInteger, ZXNetworkErrorType) {
 
 /// 2. Module Toggle & Payload Fetch
 /// Requests the specific module payload (ON/OFF file) from the server.
-- (void)toggleModule:(NSString *)moduleName state:(BOOL)isOn completion:(void(^)(BOOL success, NSData * _Nullable fileData, NSString * _Nullable errorMsg))completion;
+/// FIX: Changed NSData to NSDictionary to match the parsed JSON payload expected by Tweak.m
+- (void)toggleModule:(NSString *)moduleName state:(BOOL)isOn completion:(void(^)(BOOL success, NSDictionary * _Nullable modulePayload, NSString * _Nullable errorMsg))completion;
 
 /// 3. Hardware Keychain Helper
 /// Validates if a stored token exists on disk
