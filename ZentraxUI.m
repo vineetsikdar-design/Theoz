@@ -273,7 +273,7 @@
             [_iconView.heightAnchor constraintEqualToConstant:20],
             
             [_floatingLabel.leadingAnchor constraintEqualToAnchor:_iconView.trailingAnchor constant:12],
-            _labelCenterConstraint, // Active by default
+            _labelCenterConstraint, 
             
             [_textField.leadingAnchor constraintEqualToAnchor:_iconView.trailingAnchor constant:12],
             [_textField.trailingAnchor constraintEqualToAnchor:_pasteButton.leadingAnchor constant:-12],
@@ -376,18 +376,21 @@
         _trackView.layer.cornerRadius = 14;
         _trackView.layer.borderWidth = 1.0;
         _trackView.layer.borderColor = [ZXTheme borderSubtle].CGColor;
+        _trackView.userInteractionEnabled = NO; // Prevent touch stealing
         _trackView.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_trackView];
         
         _thumbView = [[UIView alloc] init];
         _thumbView.backgroundColor = [ZXTheme textMuted];
         _thumbView.layer.cornerRadius = 10;
+        _thumbView.userInteractionEnabled = NO; // Prevent touch stealing
         _thumbView.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_thumbView];
         
         _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
         _spinner.transform = CGAffineTransformMakeScale(0.6, 0.6);
         _spinner.hidesWhenStopped = YES;
+        _spinner.userInteractionEnabled = NO;
         _spinner.translatesAutoresizingMaskIntoConstraints = NO;
         [_thumbView addSubview:_spinner];
         
@@ -405,10 +408,19 @@
             [_spinner.centerYAnchor constraintEqualToAnchor:_thumbView.centerYAnchor]
         ]];
         
-        [self addTarget:self action:@selector(handleTap) forControlEvents:UIControlEventTouchUpInside];
+        // Bulletproof tap registration
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap)];
+        [self addGestureRecognizer:tap];
+        
         [self updateStateAnimated:NO];
     }
     return self;
+}
+
+// Drastically increase hit area to prevent missed taps
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    CGRect hitFrame = CGRectInset(self.bounds, -15, -15);
+    return CGRectContainsPoint(hitFrame, point);
 }
 
 - (void)handleTap {
@@ -418,6 +430,8 @@
     UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [haptic impactOccurred];
     [self setOn:!self.isOn animated:YES];
+    
+    // Explicitly send value changed so controller catches it
     [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 
@@ -605,6 +619,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 // Auth elements
 @property (nonatomic, strong) ZXTextField *keyInput;
 @property (nonatomic, strong) ZXButton *loginBtn;
+@property (nonatomic, strong) UITapGestureRecognizer *dismissTap;
 
 // Verification elements
 @property (nonatomic, strong) UILabel *verificationStepLabel;
@@ -626,9 +641,9 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     self.view.backgroundColor = [ZXTheme bgDeepSpace];
     self.currentState = ZXAppStateInit;
     
-    UITapGestureRecognizer *dismissTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
-    dismissTap.cancelsTouchesInView = NO;
-    [self.view addGestureRecognizer:dismissTap];
+    self.dismissTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
+    self.dismissTap.cancelsTouchesInView = NO;
+    [self.view addGestureRecognizer:self.dismissTap];
     
     [self setupCinematicAmbientBackground];
     
@@ -715,6 +730,14 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 #pragma mark - State Machine
 - (void)transitionToState:(ZXAppState)newState {
     self.currentState = newState;
+    
+    // Safely disable background gesture tap on dashboard to prevent toggle blocking
+    if (newState == ZXAppStateDashboard) {
+        self.dismissTap.enabled = NO;
+    } else {
+        self.dismissTap.enabled = YES;
+    }
+    
     [UIView animateWithDuration:0.5 delay:0.0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
         self.splashContainer.alpha = (newState == ZXAppStateSplash) ? 1.0 : 0.0;
         self.authContainer.alpha = (newState == ZXAppStateAuth) ? 1.0 : 0.0;
@@ -1380,12 +1403,15 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         // Delegate invokes the 2-step process (get_payload -> file write -> sync_state)
         [self.delegate zentraxDidRequestModuleToggle:networkModuleId state:sender.isOn completion:^(BOOL success, NSString *errorMsg) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [sender setLoading:NO];
-                if (!success) {
-                    // Safe Rollback - Visual revert without triggering event again
-                    [sender setOn:!sender.isOn animated:YES];
-                    [self showGlobalErrorWithTitle:@"Execution Failed" message:errorMsg ?: @"Failed to safely apply the requested modification to the target file."];
-                }
+                // Introduce a slight delay so the spinner is visible even if failure is instant
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                    [sender setLoading:NO];
+                    if (!success) {
+                        // Safe Rollback - Visual revert without triggering event again
+                        [sender setOn:!sender.isOn animated:YES];
+                        [self showGlobalErrorWithTitle:@"Execution Failed" message:errorMsg ?: @"Failed to safely apply the requested modification to the target file."];
+                    }
+                });
             });
         }];
     } else {
