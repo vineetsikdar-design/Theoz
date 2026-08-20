@@ -681,7 +681,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 #pragma mark - State Machine
 - (void)transitionToState:(ZXAppState)newState {
     self.currentState = newState;
-    [UIView animateWithDuration:0.6 options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
+    [UIView animateWithDuration:0.6 
+                          delay:0.0 
+                        options:UIViewAnimationOptionCurveEaseInOut 
+                     animations:^{
         self.splashContainer.alpha = (newState == ZXAppStateSplash) ? 1.0 : 0.0;
         self.authContainer.alpha = (newState == ZXAppStateAuth) ? 1.0 : 0.0;
         self.verificationContainer.alpha = (newState == ZXAppStateVerifying) ? 1.0 : 0.0;
