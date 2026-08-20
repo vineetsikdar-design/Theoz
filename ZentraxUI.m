@@ -95,7 +95,6 @@
 
 #pragma mark - ================= PREMIUM COMPONENTS =================
 
-// MARK: 1. ZXButton
 @interface ZXButton : UIButton
 @property (nonatomic, strong) CAGradientLayer *gradientLayer;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
@@ -189,7 +188,6 @@
 }
 @end
 
-// MARK: 2. ZXTextField
 @interface ZXTextField : UIView <UITextFieldDelegate>
 @property (nonatomic, strong) UITextField *textField;
 @property (nonatomic, strong) UIButton *visibilityButton;
@@ -322,7 +320,6 @@
 }
 @end
 
-// MARK: 3. ZXToggle (Precision Hardware Switch - With Network Binding)
 @interface ZXToggle : UIControl
 @property (nonatomic, assign) BOOL isOn;
 @property (nonatomic, strong) NSString *moduleId; 
@@ -613,10 +610,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
     
-    // Resume Lifecycle Fix: Only run splash on true fresh presentation
+    // Strict Guard: Launch Flow Executes Only Once Per Memory Lifecycle
     if (!self.hasCompletedInitialPresentation) {
         self.hasCompletedInitialPresentation = YES;
-        [self runInitialSessionCheck];
+        [self runDeterministicLaunchSequence];
     }
 }
 
@@ -681,10 +678,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 #pragma mark - State Machine
 - (void)transitionToState:(ZXAppState)newState {
     self.currentState = newState;
-    [UIView animateWithDuration:0.6 
-                          delay:0.0 
-                        options:UIViewAnimationOptionCurveEaseInOut 
-                     animations:^{
+    [UIView animateWithDuration:0.6 delay:0.0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
         self.splashContainer.alpha = (newState == ZXAppStateSplash) ? 1.0 : 0.0;
         self.authContainer.alpha = (newState == ZXAppStateAuth) ? 1.0 : 0.0;
         self.verificationContainer.alpha = (newState == ZXAppStateVerifying) ? 1.0 : 0.0;
@@ -692,29 +686,76 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     } completion:nil];
 }
 
-- (void)runInitialSessionCheck {
-    [self transitionToState:ZXAppStateVerifying];
-    self.verificationStepLabel.text = @"RESTORING SESSION";
+#pragma mark - Deterministic Launch Sequencer
+- (void)runDeterministicLaunchSequence {
+    // Stage 1: Enforce Splash Visibility
+    self.currentState = ZXAppStateSplash;
+    self.splashContainer.alpha = 1.0;
+    self.authContainer.alpha = 0.0;
+    self.verificationContainer.alpha = 0.0;
+    self.dashboardContainer.alpha = 0.0;
     
+    NSTimeInterval sequenceStartTime = CACurrentMediaTime();
+    
+    // Stage 2: Begin progress visual
+    [UIView animateWithDuration:1.5 delay:0.3 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+        self.progressFill.frame = CGRectMake(0, 0, (self.view.bounds.size.width - 160) * 0.85, 3);
+    } completion:nil];
+    
+    // Stage 3: Concurrently fetch session data
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestSessionVerificationWithCompletion:)]) {
         [self.delegate zentraxDidRequestSessionVerificationWithCompletion:^(BOOL isValid) {
-            if (isValid) {
-                self.verificationStepLabel.text = @"SESSION VERIFIED";
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                    [self transitionToState:ZXAppStateDashboard];
-                });
-            } else {
-                [self transitionToState:ZXAppStateSplash];
-                [self runSplashSequence];
-            }
+            
+            NSTimeInterval elapsed = CACurrentMediaTime() - sequenceStartTime;
+            NSTimeInterval remainingDelay = MAX(0.0, 1.8 - elapsed);
+            
+            // Wait for visual delay to ensure polished splash UX before transitioning
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, remainingDelay * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                [UIView animateWithDuration:0.4 animations:^{
+                    self.progressFill.frame = CGRectMake(0, 0, self.view.bounds.size.width - 160, 3);
+                } completion:^(BOOL finished) {
+                    
+                    if (isValid) {
+                        // The UI delegate already populated the dashboard via Tweak.m before this fired.
+                        // Flash "SESSION VERIFIED" independently so it doesn't overlap splash.
+                        [self transitionToState:ZXAppStateVerifying];
+                        self.verificationStepLabel.text = @"SESSION VERIFIED";
+                        self.verificationStepLabel.textColor = [ZXTheme statusSuccess];
+                        [self.verificationSpinner stopAnimating];
+                        
+                        UIImageView *check = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark.circle.fill"]];
+                        check.tintColor = [ZXTheme statusSuccess];
+                        check.frame = CGRectMake(0, 0, 50, 50);
+                        check.center = self.verificationSpinner.center;
+                        check.transform = CGAffineTransformMakeScale(0.1, 0.1);
+                        [self.verificationContainer addSubview:check];
+                        [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy] impactOccurred];
+                        
+                        [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.6 initialSpringVelocity:0.5 options:0 animations:^{
+                            check.transform = CGAffineTransformIdentity;
+                        } completion:^(BOOL finished) {
+                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                                [check removeFromSuperview];
+                                self.verificationStepLabel.textColor = [ZXTheme accentCyan];
+                                [self.verificationSpinner startAnimating];
+                                [self transitionToState:ZXAppStateDashboard]; // Data already populated. No placeholder text exists.
+                            });
+                        }];
+                    } else {
+                        // Session missing or invalid. Finish splash cleanly -> Auth
+                        [self transitionToState:ZXAppStateAuth];
+                    }
+                }];
+            });
         }];
     } else {
-        [self transitionToState:ZXAppStateSplash];
-        [self runSplashSequence];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [self transitionToState:ZXAppStateAuth];
+        });
     }
 }
 
-#pragma mark - Splash Flow
+#pragma mark - Splash View
 - (void)setupSplash {
     _splashContainer = [[UIView alloc] initWithFrame:self.view.bounds];
     [self.view addSubview:_splashContainer];
@@ -775,18 +816,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [_progressTrack.trailingAnchor constraintEqualToAnchor:_splashContainer.trailingAnchor constant:-80],
         [_progressTrack.heightAnchor constraintEqualToConstant:3]
     ]];
-}
-
-- (void)runSplashSequence {
-    [UIView animateWithDuration:1.5 delay:0.3 options:UIViewAnimationOptionCurveEaseInOut animations:^{
-        self.progressFill.frame = CGRectMake(0, 0, (self.view.bounds.size.width - 160) * 0.85, 3);
-    } completion:^(BOOL finished) {
-        [UIView animateWithDuration:0.4 animations:^{
-            self.progressFill.frame = CGRectMake(0, 0, self.view.bounds.size.width - 160, 3);
-        } completion:^(BOOL finished) {
-            [self transitionToState:ZXAppStateAuth];
-        }];
-    }];
 }
 
 #pragma mark - Auth Flow
@@ -862,7 +891,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [self.loginBtn setLoading:YES];
     [self transitionToState:ZXAppStateVerifying];
     
-    // Four Step Visual Sequence
     self.verificationStepLabel.text = @"SECURE CONNECTION";
     self.verificationStepLabel.textColor = [ZXTheme accentCyan];
     [self.verificationSpinner startAnimating];
@@ -879,10 +907,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     NSTimeInterval startTime = CACurrentMediaTime();
     
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestAuthenticationWithKey:completion:)]) {
-        [self.delegate zentraxDidRequestAuthenticationWithKey:key completion:^(BOOL success, NSString *errorMsg) {
+        [self.delegate zentraxDidRequestAuthenticationWithKey:key completion:^(BOOL success, ZXAuthError errorType, NSString *errorMsg) {
             
             NSTimeInterval elapsed = CACurrentMediaTime() - startTime;
-            NSTimeInterval remainingDelay = MAX(0.0, 2.0 - elapsed); // Enforce ~2s minimum duration
+            NSTimeInterval remainingDelay = MAX(0.0, 2.0 - elapsed);
             
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, remainingDelay * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                 [self.loginBtn setLoading:NO];
@@ -891,12 +919,14 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 } else {
                     [self transitionToState:ZXAppStateAuth];
                     
-                    if (errorMsg && [errorMsg.lowercaseString containsString:@"expired"]) {
+                    if (errorType == ZXAuthErrorExpired) {
                         [ZXModalManager showModalWithIcon:@"exclamationmark.triangle.fill" iconTint:[ZXTheme statusWarning] title:@"License Expired" message:@"This license has expired and can no longer be used." actionTitle:@"TRY ANOTHER KEY" inView:self.view];
-                    } else if (errorMsg && [errorMsg.lowercaseString containsString:@"connection"]) {
+                    } else if (errorType == ZXAuthErrorConnection) {
                         [ZXModalManager showModalWithIcon:@"wifi.slash" iconTint:[ZXTheme statusError] title:@"Connection Problem" message:@"We couldn't reach the Zentrax verification service." actionTitle:@"TRY AGAIN" inView:self.view];
+                    } else if (errorType == ZXAuthErrorServer) {
+                        [ZXModalManager showModalWithIcon:@"server.rack" iconTint:[ZXTheme statusError] title:@"Server Error" message:@"The Zentrax server responded with an unexpected status." actionTitle:@"DISMISS" inView:self.view];
                     } else {
-                        [self showGlobalErrorWithTitle:@"Verification Failed" message:errorMsg ?: @"The license key could not be verified."];
+                        [ZXModalManager showModalWithIcon:@"xmark.octagon.fill" iconTint:[ZXTheme statusError] title:@"Invalid License Key" message:errorMsg ?: @"The license key could not be verified." actionTitle:@"DISMISS" inView:self.view];
                     }
                 }
             });
@@ -1003,15 +1033,16 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     subTitle.translatesAutoresizingMaskIntoConstraints = NO;
     [statusCard addSubview:subTitle];
     
+    // Explicitly blank to guarantee placeholders never flash before population
     _statusLabel = [[UILabel alloc] init];
-    _statusLabel.text = @"Awaiting Status..."; 
+    _statusLabel.text = @"";
     _statusLabel.textColor = [ZXTheme textPrimary];
     _statusLabel.font = [ZXTheme fontHeading:18];
     _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [statusCard addSubview:_statusLabel];
     
     _expiryLabel = [[UILabel alloc] init];
-    _expiryLabel.text = @"Authenticating..."; 
+    _expiryLabel.text = @"";
     _expiryLabel.textColor = [ZXTheme textSecondary];
     _expiryLabel.font = [ZXTheme fontBody:13 weight:UIFontWeightRegular];
     _expiryLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1104,7 +1135,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [_emptyStateView addSubview:title];
     
     UILabel *sub = [[UILabel alloc] initWithFrame:CGRectMake(40, 120, self.view.bounds.size.width - 80, 40)];
-    sub.text = @"There are currently no functions available for your account.\nCheck back later when new functions become available.";
+    sub.text = @"There are currently no functions available for your account.";
     sub.textColor = [ZXTheme textSecondary];
     sub.font = [ZXTheme fontBody:13 weight:UIFontWeightRegular];
     sub.textAlignment = NSTextAlignmentCenter;
