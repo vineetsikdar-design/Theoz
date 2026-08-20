@@ -5,7 +5,7 @@
 // ==========================================
 // 🔐 SERVER CONFIGURATION
 // ==========================================
-#define BASE_URL @"https://zentrax.in/api/"
+#define BASE_URL @"https://host.zentrax.in/api/"
 #define KEYCHAIN_SERVICE @"in.zentrax.proxy"
 #define KEYCHAIN_ACCOUNT @"session_token"
 
