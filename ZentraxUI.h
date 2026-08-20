@@ -11,33 +11,42 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/**
+ * Strict Authentication Error Mapping
+ * Matches exact server-side responses for unified UI handling.
+ */
 typedef NS_ENUM(NSInteger, ZXAuthError) {
     ZXAuthErrorNone,
-    ZXAuthErrorInvalid,
-    ZXAuthErrorExpired,
+    ZXAuthErrorInvalidKey,
+    ZXAuthErrorExpiredKey,
+    ZXAuthErrorRevokedKey,
+    ZXAuthErrorDeviceLimit,
+    ZXAuthErrorInvalidSession,
     ZXAuthErrorConnection,
     ZXAuthErrorServer
 };
 
-/// Delegate protocol for backend network integration
+/// Delegate protocol for secure backend network integration and execution bridge
 @protocol ZentraxUIDelegate <NSObject>
 @optional
-/// Fired when the user attempts to log in
+
+/// Fired when the user attempts to authenticate with a license key
 - (void)zentraxDidRequestAuthenticationWithKey:(NSString *)key completion:(void(^)(BOOL success, ZXAuthError errorType, NSString * _Nullable errorMsg))completion;
 
-/// Fired when a module switch is toggled
+/// Fired when a module switch is toggled. The execution bridge handles the 2-step secure payload synchronization.
 - (void)zentraxDidRequestModuleToggle:(NSString *)moduleId state:(BOOL)isOn completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion;
 
-/// Fired if a logout action is triggered
+/// Fired if a secure logout action is triggered, purging local keychain and state
 - (void)zentraxDidRequestLogoutWithCompletion:(void(^)(void))completion;
 
-/// Silently verifies the existing Keychain session on app launch
+/// Silently verifies the existing Keychain session on app launch and triggers dashboard restore
 - (void)zentraxDidRequestSessionVerificationWithCompletion:(void(^)(BOOL isValid))completion;
+
 @end
 
 @interface ZentraxUI : UIViewController
 
-/// Set this delegate to your ZentraxNetworkManager to handle server requests
+/// Set this delegate to the Core Bridge (Tweak.m) to handle secure execution and requests
 @property (nonatomic, weak) id<ZentraxUIDelegate> delegate;
 
 // MARK: - Global UI Overlays
@@ -52,10 +61,10 @@ typedef NS_ENUM(NSInteger, ZXAuthError) {
 - (void)showGlobalErrorWithTitle:(NSString *)title message:(NSString *)msg;
 
 // MARK: - Dynamic Data Injection
-/// Passes the array of module dictionaries received from the PHP backend to build the list
+/// Passes the array of module dictionaries received from the PHP backend to dynamically build the dashboard
 - (void)updateDashboardWithModules:(NSArray<NSDictionary *> *)modules;
 
-/// Updates the session details (e.g., expiry date, license status) on the dashboard
+/// Updates the session details (e.g., expiry date, license status) on the premium dashboard
 - (void)updateSubscriptionState:(NSDictionary *)subData;
 
 @end
