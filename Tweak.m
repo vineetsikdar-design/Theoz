@@ -140,7 +140,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         ((void(*)(id,SEL,BOOL,id))objc_msgSend)(self,
             NSSelectorFromString(@"dismissViewControllerAnimated:completion:"), NO, nil);
     });
-    NSLog(@"[Zentrax] Suppressed activation nag");
 }
 
 #pragma mark - ================= ZENTRAX EXECUTION BRIDGE =================
@@ -162,25 +161,22 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 }
 
 // 1. Authentication Bridge
-- (void)zentraxDidRequestAuthenticationWithKey:(NSString *)key completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion {
-    [[ZentraxNetworkManager sharedManager] authenticateWithKey:key completion:^(BOOL success, NSDictionary * _Nullable responseData, NSString * _Nullable errorMsg) {
+- (void)zentraxDidRequestAuthenticationWithKey:(NSString *)key completion:(void(^)(BOOL success, ZXAuthError errorType, NSString * _Nullable errorMsg))completion {
+    [[ZentraxNetworkManager sharedManager] authenticateWithKey:key completion:^(BOOL success, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (success) {
-                // Populate Modules list dynamically from Server
+            if (success && responseData) {
                 NSArray *modules = responseData[@"modules"];
                 if (modules && [modules isKindOfClass:[NSArray class]]) {
                     [self.uiController updateDashboardWithModules:modules];
                 }
-                
-                // Populate Subscription details dynamically from Server
                 NSDictionary *subscription = responseData[@"subscription"];
                 if (subscription && [subscription isKindOfClass:[NSDictionary class]]) {
                     [self.uiController updateSubscriptionState:subscription];
                 }
-                
-                completion(YES, nil);
+                completion(YES, ZXAuthErrorNone, nil);
             } else {
-                completion(NO, errorMsg ?: @"Authentication failed.");
+                ZXAuthError mappedError = (ZXAuthError)errorType;
+                completion(NO, mappedError, errorMsg ?: @"Authentication failed.");
             }
         });
     }];
@@ -196,7 +192,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
         
-        // Extract Payload Details
         NSString *base64Data = modulePayload[@"file_data"];
         NSString *bundleId = modulePayload[@"bundle_id"];
         NSString *relativePath = modulePayload[@"relative_path"];
@@ -208,7 +203,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
         
-        // Decode File Content
         NSData *fileData = [[NSData alloc] initWithBase64EncodedString:base64Data options:NSDataBase64DecodingIgnoreUnknownCharacters];
         if (!fileData) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -217,7 +211,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
         
-        // Resolve Target Application Dynamic Data Directory
         NSString *dataContainer = findDataContainer(bundleId);
         if (!dataContainer) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -232,7 +225,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         NSFileManager *fm = [NSFileManager defaultManager];
         NSError *fsError = nil;
         
-        // Ensure destination folder exists
         if (![fm fileExistsAtPath:parentDir]) {
             [fm createDirectoryAtPath:parentDir withIntermediateDirectories:YES attributes:nil error:&fsError];
             if (fsError) {
@@ -243,7 +235,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             }
         }
         
-        // Atomically write the file
         BOOL written = [fileData writeToFile:finalPath options:NSDataWritingAtomic error:&fsError];
         
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -262,9 +253,8 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     if (completion) completion();
 }
 
-// 4. Session Verification Bridge (NEW INTEGRATION)
+// 4. Session Verification Bridge (Restores Dashboard Data)
 - (void)zentraxDidRequestSessionVerificationWithCompletion:(void(^)(BOOL isValid))completion {
-    // Quickly check if a token even exists locally before bothering the server
     if (![[ZentraxNetworkManager sharedManager] hasActiveSession]) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(NO);
@@ -272,9 +262,18 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         return;
     }
     
-    // Validate the existing session token against the backend heartbeat
-    [[ZentraxNetworkManager sharedManager] verifySessionWithCompletion:^(BOOL isValid) {
+    [[ZentraxNetworkManager sharedManager] verifySessionWithCompletion:^(BOOL isValid, NSDictionary * _Nullable responseData) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (isValid && responseData) {
+                NSArray *modules = responseData[@"modules"];
+                if (modules && [modules isKindOfClass:[NSArray class]]) {
+                    [self.uiController updateDashboardWithModules:modules];
+                }
+                NSDictionary *subscription = responseData[@"subscription"];
+                if (subscription && [subscription isKindOfClass:[NSDictionary class]]) {
+                    [self.uiController updateSubscriptionState:subscription];
+                }
+            }
             completion(isValid);
         });
     }];
@@ -288,36 +287,24 @@ static IMP orig_UIWindow_makeKeyAndVisible = NULL;
 static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        
-        // 1. Initialize MCM Container & Sandbox Escape
         MCMFilzaStart();
-        
-        // 2. Load Zentrax UI & Wire the Execution Delegate
         Class ZentraxUIClass = NSClassFromString(@"ZentraxUI");
         if (ZentraxUIClass) {
             ZentraxUI *zentraxVC = [[ZentraxUIClass alloc] init];
-            
-            // Connect Bridge to UI
             ZXCoreBridge *bridge = [ZXCoreBridge sharedBridge];
             bridge.uiController = zentraxVC;
             zentraxVC.delegate = bridge;
-            
             UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:zentraxVC];
             navController.navigationBarHidden = YES;
-            
-            // 3. Set as Main Root Window
             self.rootViewController = navController;
-            NSLog(@"[Zentrax] Successfully Hijacked Main Window & Connected Execution Bridge");
         }
     });
-    
     ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
 }
 
 #pragma mark - ================= HOOK INSTALLATION =================
 
 static void installSystemHooks(void) {
-    // 1. Root Helper Hooks
     Class rfm = NSClassFromString(@"TGRootFileManager");
     if (rfm) {
         Class meta = object_getClass(rfm);
@@ -335,7 +322,6 @@ static void installSystemHooks(void) {
         class_replaceMethod(rfm, NSSelectorFromString(@"sendObjectWithReplyAsync:queue:completion:"), (IMP)hook_sendObjectWithReplyAsync, "v@:@@?");
     }
 
-    // 2. Alert & Activation Bypasses
     Class alertCtrl = NSClassFromString(@"TGAlertController");
     if (alertCtrl) {
         Class alertMeta = object_getClass(alertCtrl);
@@ -356,7 +342,6 @@ static void installSystemHooks(void) {
         }
     }
 
-    // 3. Apps Manager Hooks
     Class lsWorkspace = NSClassFromString(@"LSApplicationWorkspace");
     if (lsWorkspace) {
         Method m = class_getInstanceMethod(lsWorkspace, NSSelectorFromString(@"allApplications"));
@@ -367,8 +352,7 @@ static void installSystemHooks(void) {
         Method m = class_getInstanceMethod(appItem, NSSelectorFromString(@"setAppProxy:"));
         if (m) { orig_setAppProxy = method_getImplementation(m); method_setImplementation(m, (IMP)hook_setAppProxy); }
     }
-
-    // 4. UI Hijack Hook
+    
     Class windowClass = NSClassFromString(@"UIWindow");
     if (windowClass) {
         Method m = class_getInstanceMethod(windowClass, @selector(makeKeyAndVisible));
@@ -377,11 +361,7 @@ static void installSystemHooks(void) {
             method_setImplementation(m, (IMP)hook_UIWindow_makeKeyAndVisible);
         }
     }
-
-    NSLog(@"[Zentrax] Core System Hooks & Bridge Active");
 }
-
-#pragma mark - ================= ENTRY POINT =================
 
 __attribute__((constructor)) void ZentraxInit(void) {
     installSystemHooks();
