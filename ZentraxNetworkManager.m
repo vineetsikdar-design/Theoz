@@ -107,7 +107,7 @@
     if (requiresAuth) {
         NSString *token = [self getTokenFromKeychain];
         if (!token) {
-            completion(NO, nil, ZXNetworkErrorInvalidKey, @"Authentication token missing. Please log in again.");
+            completion(NO, nil, ZXNetworkErrorInvalidSession, @"Authentication token missing. Please log in again.");
             return;
         }
         NSString *authHeader = [NSString stringWithFormat:@"Bearer %@", token];
@@ -132,14 +132,6 @@
             return;
         }
         
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-        
-        if (httpResponse.statusCode == 401 || httpResponse.statusCode == 403) {
-            [self logout];
-            completion(NO, nil, ZXNetworkErrorExpiredKey, @"Session expired or revoked. Please log in again.");
-            return;
-        }
-        
         NSError *parseError;
         NSDictionary *parsedResponse = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
         
@@ -153,17 +145,20 @@
         ZXNetworkErrorType errType = ZXNetworkErrorNone;
         
         if (!status) {
+            // Strictly mapped error codes directly from API contract
             NSString *errCode = parsedResponse[@"error_code"];
-            if ([errCode isKindOfClass:[NSString class]]) {
-                if ([errCode isEqualToString:@"EXPIRED_KEY"]) {
-                    errType = ZXNetworkErrorExpiredKey;
-                } else if ([errCode isEqualToString:@"INVALID_KEY"]) {
-                    errType = ZXNetworkErrorInvalidKey;
-                } else {
-                    errType = ZXNetworkErrorInvalidKey;
-                }
-            } else {
+            if ([errCode isEqualToString:@"EXPIRED_KEY"]) {
+                errType = ZXNetworkErrorExpiredKey;
+            } else if ([errCode isEqualToString:@"REVOKED_KEY"]) {
+                errType = ZXNetworkErrorRevokedKey;
+            } else if ([errCode isEqualToString:@"INVALID_KEY"]) {
                 errType = ZXNetworkErrorInvalidKey;
+            } else if ([errCode isEqualToString:@"DEVICE_LIMIT"]) {
+                errType = ZXNetworkErrorDeviceLimit;
+            } else if ([errCode isEqualToString:@"INVALID_SESSION"]) {
+                errType = ZXNetworkErrorInvalidSession;
+            } else {
+                errType = ZXNetworkErrorServer;
             }
         }
         
@@ -190,9 +185,10 @@
     }];
 }
 
+// Step 1: Request payload along with server-generated operation_id (Does NOT save state yet)
 - (void)toggleModule:(NSString *)moduleName state:(BOOL)isOn completion:(void(^)(BOOL success, NSDictionary * _Nullable modulePayload, NSString * _Nullable errorMsg))completion {
     NSDictionary *payload = @{
-        @"action": @"toggle_module",
+        @"action": @"get_payload",
         @"module": moduleName,
         @"state": isOn ? @"ON" : @"OFF",
         @"hwid": [self getHardwareID]
@@ -205,25 +201,49 @@
         }
         
         NSDictionary *payloadData = responseData[@"payload"];
-        if (payloadData && payloadData[@"file_data"]) {
-            completion(YES, payloadData, nil);
+        NSString *operationId = responseData[@"operation_id"];
+        
+        if (payloadData && payloadData[@"file_data"] && operationId) {
+            NSMutableDictionary *combined = [payloadData mutableCopy];
+            combined[@"operation_id"] = operationId;
+            completion(YES, combined, nil);
         } else {
-            completion(NO, nil, @"Payload data empty or corrupted.");
+            completion(NO, nil, @"Payload data or operation token missing.");
         }
     }];
 }
 
-- (void)verifySessionWithCompletion:(void(^)(BOOL isValid, NSDictionary * _Nullable responseData))completion {
+// Step 2: Confirm successful local file write to the server using the strict operation_id
+- (void)syncModuleState:(NSString *)moduleName state:(BOOL)isOn operationId:(NSString *)operationId completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion {
+    if (!operationId) {
+        completion(NO, @"Missing operation identifier for synchronization.");
+        return;
+    }
+    
+    NSDictionary *payload = @{
+        @"action": @"sync_state",
+        @"module": moduleName,
+        @"state": isOn ? @"ON" : @"OFF",
+        @"operation_id": operationId,
+        @"hwid": [self getHardwareID]
+    };
+    
+    [self sendRequestToEndpoint:@"module.php" payload:payload requiresAuth:YES completion:^(BOOL success, NSDictionary *responseData, ZXNetworkErrorType errorType, NSString *errorMsg) {
+        completion(success, errorMsg);
+    }];
+}
+
+- (void)verifySessionWithCompletion:(void(^)(BOOL isValid, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg))completion {
     NSDictionary *payload = @{
         @"action": @"heartbeat",
         @"hwid": [self getHardwareID]
     };
     
     [self sendRequestToEndpoint:@"heartbeat.php" payload:payload requiresAuth:YES completion:^(BOOL success, NSDictionary *responseData, ZXNetworkErrorType errorType, NSString *errorMsg) {
-        if (!success) {
+        if (!success && (errorType == ZXNetworkErrorInvalidSession || errorType == ZXNetworkErrorRevokedKey || errorType == ZXNetworkErrorExpiredKey || errorType == ZXNetworkErrorInvalidKey)) {
             [self logout];
         }
-        completion(success, responseData);
+        completion(success, responseData, errorType, errorMsg);
     }];
 }
 
