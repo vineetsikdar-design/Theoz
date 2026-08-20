@@ -10,6 +10,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <xpc/xpc.h>
+#import <CommonCrypto/CommonDigest.h>
 
 #include <errno.h>
 #include <dirent.h>
@@ -74,8 +75,21 @@ static NSString *findBundlePath(NSString *bundleId) {
 static NSString *findDataContainer(NSString *bundleId) {
     NSString *error = nil;
     NSString *path = MCMFilzaDataContainerPath(bundleId, &error);
-    if (!path) NSLog(@"[Zentrax] Dynamic Container Lookup Failed for id=%@ detail=%@", bundleId, error);
+    if (!path) NSLog(@"[Zentrax VIP] Dynamic Container Lookup Failed for id=%@ detail=%@", bundleId, error);
     return path;
+}
+
+static NSString *computeSHA256OfData(NSData *data) {
+    if (!data) return nil;
+    unsigned char hash[CC_SHA256_DIGEST_LENGTH];
+    if (CC_SHA256([data bytes], (CC_LONG)[data length], hash)) {
+        NSMutableString *output = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
+        for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) {
+            [output appendFormat:@"%02x", hash[i]];
+        }
+        return output;
+    }
+    return nil;
 }
 
 #pragma mark - ================= APPS MANAGER HOOKS =================
@@ -126,7 +140,7 @@ static id hook_showAlertWithTitle(id self, SEL _cmd, id title, id text, id cance
     if ([textStr isKindOfClass:[NSString class]]) {
         if ([textStr containsString:@"binary was modified"] ||
             [textStr containsString:@"reinstall Filza"]) {
-            NSLog(@"[Zentrax] Suppressed integrity alert");
+            NSLog(@"[Zentrax VIP] Suppressed integrity alert");
             return nil;
         }
     }
@@ -142,10 +156,11 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     });
 }
 
-#pragma mark - ================= ZENTRAX EXECUTION BRIDGE =================
+#pragma mark - ================= ZENTRAX VIP EXECUTION BRIDGE =================
 
 @interface ZXCoreBridge : NSObject <ZentraxUIDelegate>
 @property (nonatomic, weak) ZentraxUI *uiController;
+@property (nonatomic, strong) dispatch_queue_t moduleExecutionQueue;
 + (instancetype)sharedBridge;
 @end
 
@@ -160,9 +175,36 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     return instance;
 }
 
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        // Dedicated serial queue to prevent rapid concurrent filesystem overwrites
+        _moduleExecutionQueue = dispatch_queue_create("in.zentrax.execution.queue", DISPATCH_QUEUE_SERIAL);
+    }
+    return self;
+}
+
+// Map NetworkManager errors exactly to UI AuthErrors
+- (ZXAuthError)mapNetworkErrorToAuthError:(ZXNetworkErrorType)networkError {
+    switch (networkError) {
+        case ZXNetworkErrorNone: return ZXAuthErrorNone;
+        case ZXNetworkErrorInvalidKey: return ZXAuthErrorInvalidKey;
+        case ZXNetworkErrorExpiredKey: return ZXAuthErrorExpiredKey;
+        case ZXNetworkErrorRevokedKey: return ZXAuthErrorRevokedKey;
+        case ZXNetworkErrorDeviceLimit: return ZXAuthErrorDeviceLimit;
+        case ZXNetworkErrorInvalidSession: return ZXAuthErrorInvalidSession;
+        case ZXNetworkErrorConnection: return ZXAuthErrorConnection;
+        case ZXNetworkErrorServer: return ZXAuthErrorServer;
+        default: return ZXAuthErrorServer;
+    }
+}
+
 // 1. Authentication Bridge
 - (void)zentraxDidRequestAuthenticationWithKey:(NSString *)key completion:(void(^)(BOOL success, ZXAuthError errorType, NSString * _Nullable errorMsg))completion {
     [[ZentraxNetworkManager sharedManager] authenticateWithKey:key completion:^(BOOL success, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg) {
+        
+        ZXAuthError mappedError = [self mapNetworkErrorToAuthError:errorType];
+        
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success && responseData) {
                 NSArray *modules = responseData[@"modules"];
@@ -175,85 +217,13 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 }
                 completion(YES, ZXAuthErrorNone, nil);
             } else {
-                ZXAuthError mappedError = (ZXAuthError)errorType;
                 completion(NO, mappedError, errorMsg ?: @"Authentication failed.");
             }
         });
     }];
 }
 
-// 2. Module Execution & File Writing Bridge
-- (void)zentraxDidRequestModuleToggle:(NSString *)moduleId state:(BOOL)isOn completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion {
-    [[ZentraxNetworkManager sharedManager] toggleModule:moduleId state:isOn completion:^(BOOL success, NSDictionary * _Nullable modulePayload, NSString * _Nullable errorMsg) {
-        if (!success) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(NO, errorMsg ?: @"Failed to fetch payload from server.");
-            });
-            return;
-        }
-        
-        NSString *base64Data = modulePayload[@"file_data"];
-        NSString *bundleId = modulePayload[@"bundle_id"];
-        NSString *relativePath = modulePayload[@"relative_path"];
-        
-        if (!base64Data || !bundleId || !relativePath) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(NO, @"Invalid module configuration received from server.");
-            });
-            return;
-        }
-        
-        NSData *fileData = [[NSData alloc] initWithBase64EncodedString:base64Data options:NSDataBase64DecodingIgnoreUnknownCharacters];
-        if (!fileData) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(NO, @"Corrupted file payload data.");
-            });
-            return;
-        }
-        
-        NSString *dataContainer = findDataContainer(bundleId);
-        if (!dataContainer) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(NO, [NSString stringWithFormat:@"Target app container (%@) not found.", bundleId]);
-            });
-            return;
-        }
-        
-        NSString *finalPath = [dataContainer stringByAppendingPathComponent:relativePath];
-        NSString *parentDir = [finalPath stringByDeletingLastPathComponent];
-        
-        NSFileManager *fm = [NSFileManager defaultManager];
-        NSError *fsError = nil;
-        
-        if (![fm fileExistsAtPath:parentDir]) {
-            [fm createDirectoryAtPath:parentDir withIntermediateDirectories:YES attributes:nil error:&fsError];
-            if (fsError) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, @"Failed to prepare target directory.");
-                });
-                return;
-            }
-        }
-        
-        BOOL written = [fileData writeToFile:finalPath options:NSDataWritingAtomic error:&fsError];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (written) {
-                completion(YES, nil);
-            } else {
-                completion(NO, fsError.localizedDescription ?: @"File write execution failed.");
-            }
-        });
-    }];
-}
-
-// 3. Logout Bridge
-- (void)zentraxDidRequestLogoutWithCompletion:(void(^)(void))completion {
-    [[ZentraxNetworkManager sharedManager] logout];
-    if (completion) completion();
-}
-
-// 4. Session Verification Bridge (Restores Dashboard Data)
+// 2. Session Verification Bridge (Restores Dashboard Data)
 - (void)zentraxDidRequestSessionVerificationWithCompletion:(void(^)(BOOL isValid))completion {
     if (![[ZentraxNetworkManager sharedManager] hasActiveSession]) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -262,7 +232,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         return;
     }
     
-    [[ZentraxNetworkManager sharedManager] verifySessionWithCompletion:^(BOOL isValid, NSDictionary * _Nullable responseData) {
+    [[ZentraxNetworkManager sharedManager] verifySessionWithCompletion:^(BOOL isValid, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (isValid && responseData) {
                 NSArray *modules = responseData[@"modules"];
@@ -273,10 +243,146 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 if (subscription && [subscription isKindOfClass:[NSDictionary class]]) {
                     [self.uiController updateSubscriptionState:subscription];
                 }
+                completion(YES);
+            } else {
+                // Network Manager auto-purges token on auth invalidation. Pass NO to return to login.
+                completion(NO);
             }
-            completion(isValid);
         });
     }];
+}
+
+// 3. Module Execution & Secure 2-Step File Replacement Bridge
+- (void)zentraxDidRequestModuleToggle:(NSString *)moduleId state:(BOOL)isOn completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion {
+    
+    // Step 1: Fetch payload and operation identifier
+    [[ZentraxNetworkManager sharedManager] toggleModule:moduleId state:isOn completion:^(BOOL fetchSuccess, NSDictionary * _Nullable modulePayload, NSString * _Nullable fetchErrorMsg) {
+        
+        if (!fetchSuccess || !modulePayload) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(NO, fetchErrorMsg ?: @"Failed to securely fetch payload from server.");
+            });
+            return;
+        }
+        
+        // Execute filesystem operations on serial background queue
+        dispatch_async(self.moduleExecutionQueue, ^{
+            
+            NSString *base64Data = modulePayload[@"file_data"];
+            NSString *bundleId = modulePayload[@"bundle_id"];
+            NSString *relativePath = modulePayload[@"relative_path"];
+            NSString *targetFilename = modulePayload[@"target_filename"];
+            NSString *operationId = modulePayload[@"operation_id"];
+            
+            if (!base64Data || !bundleId || !relativePath || !targetFilename || !operationId) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, @"Invalid module contract configuration received from server.");
+                });
+                return;
+            }
+            
+            // Path traversal and absolute path injection prevention
+            if ([relativePath containsString:@"../"] || [relativePath containsString:@"..\\"] || [relativePath hasPrefix:@"/"] ||
+                [targetFilename containsString:@"/"] || [targetFilename containsString:@"\\"] || [targetFilename containsString:@".."]) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, @"Security Violation: Malformed target path parameters.");
+                });
+                return;
+            }
+            
+            NSData *fileData = [[NSData alloc] initWithBase64EncodedString:base64Data options:NSDataBase64DecodingIgnoreUnknownCharacters];
+            if (!fileData || fileData.length == 0) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, @"Corrupted file payload data or decode failure.");
+                });
+                return;
+            }
+            
+            NSString *expectedHash = computeSHA256OfData(fileData);
+            
+            // Resolve Target App Container
+            NSString *dataContainer = findDataContainer(bundleId);
+            if (!dataContainer) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, [NSString stringWithFormat:@"Target app container (%@) not found or inaccessible.", bundleId]);
+                });
+                return;
+            }
+            
+            // Construct exact local target resolution
+            NSString *directoryPath = [dataContainer stringByAppendingPathComponent:relativePath];
+            NSString *finalTargetPath = [directoryPath stringByAppendingPathComponent:targetFilename];
+            
+            NSFileManager *fm = [NSFileManager defaultManager];
+            NSError *fsError = nil;
+            
+            if (![fm fileExistsAtPath:directoryPath]) {
+                [fm createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:&fsError];
+                if (fsError) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        completion(NO, @"Failed to prepare secure target directory.");
+                    });
+                    return;
+                }
+            }
+            
+            // Perform Atomic Local File Replacement
+            BOOL written = [fileData writeToFile:finalTargetPath options:NSDataWritingAtomic error:&fsError];
+            
+            if (!written) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, fsError.localizedDescription ?: @"Atomic file write execution failed.");
+                });
+                return;
+            }
+            
+            // Perform Local Verification
+            if (![fm fileExistsAtPath:finalTargetPath]) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, @"Verification failed: File missing after write.");
+                });
+                return;
+            }
+            
+            NSData *writtenData = [NSData dataWithContentsOfFile:finalTargetPath];
+            if (!writtenData || writtenData.length != fileData.length) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, @"Verification failed: File size mismatch after write.");
+                });
+                return;
+            }
+            
+            NSString *writtenHash = computeSHA256OfData(writtenData);
+            if (![writtenHash isEqualToString:expectedHash]) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, @"Verification failed: SHA-256 integrity mismatch on disk.");
+                });
+                return;
+            }
+            
+            // Step 2: Local write successful, execute Sync State with server operation_id
+            [[ZentraxNetworkManager sharedManager] syncModuleState:moduleId state:isOn operationId:operationId completion:^(BOOL syncSuccess, NSString * _Nullable syncErrorMsg) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (syncSuccess) {
+                        completion(YES, nil); // Perfect Execution
+                    } else {
+                        // Server state failed to commit, despite local success.
+                        // UI must receive NO so it rolls back toggle visually to avoid desync.
+                        completion(NO, syncErrorMsg ?: @"Failed to commit server state sync.");
+                    }
+                });
+            }];
+        });
+    }];
+}
+
+// 4. Logout Bridge
+- (void)zentraxDidRequestLogoutWithCompletion:(void(^)(void))completion {
+    [[ZentraxNetworkManager sharedManager] logout];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (completion) completion();
+    });
 }
 
 @end
