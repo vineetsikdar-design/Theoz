@@ -127,7 +127,7 @@
         
         // Subtle outer glow
         self.layer.shadowColor = [ZXTheme accentPurple].CGColor;
-        self.layer.shadowOpacity = 0.5;
+        self.layer.shadowOpacity = 0.4;
         self.layer.shadowRadius = 12;
         self.layer.shadowOffset = CGSizeMake(0, 4);
         
@@ -185,7 +185,7 @@
 - (void)touchUp {
     [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.6 initialSpringVelocity:0.5 options:UIViewAnimationOptionAllowUserInteraction animations:^{
         self.transform = CGAffineTransformIdentity;
-        self.layer.shadowOpacity = 0.5;
+        self.layer.shadowOpacity = 0.4;
         self.layer.shadowRadius = 12;
     } completion:nil];
 }
@@ -256,7 +256,7 @@
         _textField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:@"ZTX-XXXX-XXXX-XXXX" attributes:@{NSForegroundColorAttributeName: [ZXTheme textMuted]}];
         [_inputContainer addSubview:_textField];
         
-        // Paste Button
+        // PASTE BUTTON (Fixed identifier mismatch)
         _pasteButton = [UIButton buttonWithType:UIButtonTypeSystem];
         [_pasteButton setTitle:@"PASTE" forState:UIControlStateNormal];
         _pasteButton.titleLabel.font = [ZXTheme fontHeading:12];
@@ -269,7 +269,7 @@
         [_pasteButton addTarget:self action:@selector(pasteKeyTapped) forControlEvents:UIControlEventTouchUpInside];
         [_inputContainer addSubview:_pasteButton];
         
-        // Eye (Show/Hide) Button
+        // EYE BUTTON
         _eyeButton = [UIButton buttonWithType:UIButtonTypeSystem];
         [_eyeButton setImage:[UIImage systemImageNamed:@"eye.slash.fill"] forState:UIControlStateNormal];
         _eyeButton.tintColor = [ZXTheme textMuted];
@@ -548,7 +548,7 @@
     // Fix Red Button Style for Errors
     if ([tint isEqual:[ZXTheme statusError]]) {
         CAGradientLayer *redGrad = [CAGradientLayer layer];
-        redGrad.colors = @[(id)[UIColor colorWithRed:1.0 green:0.1 blue:0.3 alpha:1.0].CGColor, (id)[UIColor colorWithRed:0.8 green:0.0 blue:0.1 alpha:1.0].CGColor];
+        redGrad.colors = @[(id)[UIColor colorWithRed:1.0 green:0.2 blue:0.4 alpha:1.0].CGColor, (id)[UIColor colorWithRed:0.8 green:0.1 blue:0.2 alpha:1.0].CGColor];
         redGrad.startPoint = CGPointMake(0, 0); redGrad.endPoint = CGPointMake(1, 1);
         [btn.bgView.layer replaceSublayer:btn.gradientLayer with:redGrad];
         btn.gradientLayer = redGrad;
@@ -844,7 +844,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 if (!strongSelf) return;
                 
                 if (!isValid) {
-                    // Safety check to ensure true revocation vs temporary offline
+                    // Check if token was purged natively (indicating explicit revocation/expiration)
                     BOOL sessionRemainsActive = YES;
                     Class networkManagerClass = NSClassFromString(@"ZentraxNetworkManager");
                     if (networkManagerClass) {
@@ -872,7 +872,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     
     // Kill visually active modules instantly
     for (UIView *card in self.modulesStackView.arrangedSubviews) {
-        ZXToggle *toggle = [self findToggleInCard:card];
+        ZXVaultToggle *toggle = [self findToggleInCard:card];
         if (toggle) {
             toggle.userInteractionEnabled = NO;
             [toggle setOn:NO animated:YES];
@@ -1501,7 +1501,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             card.translatesAutoresizingMaskIntoConstraints = NO;
             
             UILabel *t = [[UILabel alloc] init];
-            t.text = moduleName;
+            t.text = moduleName; // Normal casing, not forced uppercase for SaaS look
             t.textColor = [UIColor whiteColor];
             t.font = [ZXTheme fontHeading:16];
             t.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1515,7 +1515,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             s.translatesAutoresizingMaskIntoConstraints = NO;
             [card addSubview:s];
             
-            ZXToggle *toggle = [[ZXToggle alloc] init];
+            ZXVaultToggle *toggle = [[ZXVaultToggle alloc] init];
             toggle.moduleId = moduleName; 
             [toggle setOn:isModOn animated:NO]; 
             [toggle addTarget:self action:@selector(moduleToggled:) forControlEvents:UIControlEventValueChanged];
@@ -1570,14 +1570,14 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     });
 }
 
-- (ZXToggle *)findToggleInCard:(UIView *)card {
+- (ZXVaultToggle *)findToggleInCard:(UIView *)card {
     for (UIView *sub in card.subviews) {
-        if ([sub isKindOfClass:[ZXToggle class]]) return (ZXToggle *)sub;
+        if ([sub isKindOfClass:[ZXVaultToggle class]]) return (ZXVaultToggle *)sub;
     }
     return nil;
 }
 
-- (void)moduleToggled:(ZXToggle *)sender {
+- (void)moduleToggled:(ZXVaultToggle *)sender {
     NSString *networkModuleId = sender.moduleId;
     if (!networkModuleId) return;
     
@@ -1617,9 +1617,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     CGFloat toastWidth = 260;
     CGFloat toastHeight = 44;
     
-    CGFloat screenWidth = self.view.bounds.size.width;
     CGFloat topInset = 45; 
-    
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]]) {
@@ -1639,7 +1637,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     }
     if (topInset == 0) topInset = 45;
     
-    UIView *toast = [[UIView alloc] initWithFrame:CGRectMake((screenWidth - toastWidth)/2, -60, toastWidth, toastHeight)];
+    UIView *toast = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - toastWidth)/2, -60, toastWidth, toastHeight)];
     toast.tag = 887766;
     toast.backgroundColor = [ZXTheme bgCardOuter];
     toast.layer.cornerRadius = 22;
@@ -1669,10 +1667,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [[[UIImpactFeedbackGenerator alloc] initWithStyle:isError ? UIImpactFeedbackStyleHeavy : UIImpactFeedbackStyleLight] impactOccurred];
     
     [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.7 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        toast.frame = CGRectMake((screenWidth - toastWidth)/2, topInset + 10, toastWidth, toastHeight);
+        toast.frame = CGRectMake((self.view.bounds.size.width - toastWidth)/2, topInset + 10, toastWidth, toastHeight);
     } completion:^(BOOL finished) {
         [UIView animateWithDuration:0.3 delay:1.8 options:UIViewAnimationOptionCurveEaseIn animations:^{
-            toast.frame = CGRectMake((screenWidth - toastWidth)/2, -60, toastWidth, toastHeight);
+            toast.frame = CGRectMake((self.view.bounds.size.width - toastWidth)/2, -60, toastWidth, toastHeight);
             toast.alpha = 0;
         } completion:^(BOOL finished) {
             [toast removeFromSuperview];
@@ -1694,7 +1692,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                     __strong typeof(weakSelf) strongSelf = weakSelf;
                     if (strongSelf) {
                         strongSelf.keyInput.textField.text = @"";
-                        // Clear saved key
                         [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"Zentrax_LastKey"];
                         [[NSUserDefaults standardUserDefaults] synchronize];
                         [strongSelf transitionToState:ZXAppStateAuth];
