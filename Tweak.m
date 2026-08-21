@@ -322,8 +322,8 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             
             if (!written) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    // Generic production-safe error. Do NOT expose `fsError.localizedDescription` to users.
-                    completion(NO, @"Failed to execute atomic file replacement in target directory.");
+                    // CLEAN PRODUCTION ERROR LOG: Explicitly removed fsError.localizedDescription for premium feel.
+                    completion(NO, @"Failed to safely apply the requested modification to the target file.");
                 });
                 return;
             }
