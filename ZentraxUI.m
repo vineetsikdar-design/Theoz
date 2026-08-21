@@ -1,5 +1,3 @@
-Exact isi ke jaisa ui banao bhai matlab ek html do mujhe check karna hai iska ui kaisa hai ek demo html banao exact same ui ok full thoda bhi kam ui nahi
-
 
 //
 //  ZentraxUI.m
