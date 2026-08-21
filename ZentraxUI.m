@@ -3,7 +3,7 @@
 //  Zentrax VIP - Ultra Premium Panel UI
 //
 //  Created by Zentrax Team.
-//  Status: FINAL PRODUCTION READY (Grid UI + Typewriter Splash)
+//  Status: FINAL PRODUCTION READY (Grid UI + Typewriter Splash + Fixed Compile)
 //
 
 #import "ZentraxUI.h"
@@ -30,6 +30,7 @@
 + (UIFont *)fontBody:(CGFloat)size weight:(UIFontWeight)weight;
 + (UIFont *)fontMono:(CGFloat)size weight:(UIFontWeight)weight;
 + (CAGradientLayer *)primaryGradient;
++ (void)applyTextTracking:(UILabel *)label spacing:(CGFloat)spacing;
 @end
 
 @implementation ZXTheme
@@ -57,6 +58,13 @@
     layer.startPoint = CGPointMake(0.0, 0.5);
     layer.endPoint = CGPointMake(1.0, 0.5);
     return layer;
+}
+
+// Fixed: Missing implementation added here
++ (void)applyTextTracking:(UILabel *)label spacing:(CGFloat)spacing {
+    if (!label || !label.text) return;
+    NSDictionary *attrs = @{NSKernAttributeName: @(spacing)};
+    label.attributedText = [[NSAttributedString alloc] initWithString:label.text attributes:attrs];
 }
 @end
 
@@ -125,7 +133,7 @@
 @implementation ZXButton
 - (instancetype)init {
     if (self = [super init]) {
-        self.layer.cornerRadius = 10; // Less rounded, more premium
+        self.layer.cornerRadius = 10;
         self.clipsToBounds = YES;
         self.titleLabel.font = [ZXTheme fontHeading:16];
         [self setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
@@ -629,14 +637,12 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     NSString *fullText = @"Welcome To ZentraxPanel";
     __block int index = 0;
     
-    // Typewriter effect interval
     _typewriterTimer = [NSTimer scheduledTimerWithTimeInterval:0.08 repeats:YES block:^(NSTimer * _Nonnull timer) {
         if (index < fullText.length) {
             self.typewriterLabel.text = [fullText substringToIndex:index + 1];
             index++;
         } else {
             [timer invalidate];
-            // Hold for 1 second, then transition to Auth screen smoothly
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                 [self transitionToState:ZXAppStateAuth];
             });
@@ -712,7 +718,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         return;
     }
     
-    // 2-Second Fake Verification Animation requested by User
     [self.loginBtn setLoading:YES];
     
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
@@ -722,7 +727,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                     [self.loginBtn setLoading:NO];
                     if (success) {
                         [self showToast:@"Key Valid! Logging in..." success:YES];
-                        // Small delay to let user read the success toast before dashboard slides in
                         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                             [self transitionToState:ZXAppStateDashboard];
                         });
@@ -769,7 +773,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     statusCard.layer.borderColor = [ZXTheme borderSubtle].CGColor;
     statusCard.translatesAutoresizingMaskIntoConstraints = NO;
     
-    // Add Blur to card
     UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
     UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blur];
     blurView.layer.cornerRadius = 12;
@@ -879,7 +882,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     ]];
 }
 
-// Fixed UI overlapping and Collapsing constraint issues completely here
 - (void)updateDashboardWithModules:(NSArray<NSDictionary *> *)modules {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!modules || modules.count == 0) {
@@ -931,7 +933,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 [toggle addTarget:self action:@selector(moduleToggled:) forControlEvents:UIControlEventValueChanged];
                 [card addSubview:toggle];
                 
-                // Description Box (Fixed collapse issue)
                 UIView *descBox = [[UIView alloc] init];
                 descBox.backgroundColor = [ZXTheme bgInputDark];
                 descBox.layer.cornerRadius = 6;
@@ -942,11 +943,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 desc.text = [moduleDesc uppercaseString];
                 desc.textColor = [ZXTheme textSecondary];
                 desc.font = [ZXTheme fontMono:10 weight:UIFontWeightMedium];
-                desc.numberOfLines = 0; // Wrap text properly
+                desc.numberOfLines = 0;
                 desc.translatesAutoresizingMaskIntoConstraints = NO;
                 [descBox addSubview:desc];
                 
-                // Absolute structural constraints to prevent collapsing
                 [NSLayoutConstraint activateConstraints:@[
                     [blurView.topAnchor constraintEqualToAnchor:card.topAnchor],
                     [blurView.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
@@ -958,13 +958,11 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                     
                     [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:16],
                     [title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
-                    // Very important: prevent title from pushing into the toggle
                     [title.trailingAnchor constraintLessThanOrEqualToAnchor:toggle.leadingAnchor constant:-12],
                     
                     [descBox.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:10],
                     [descBox.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
                     [descBox.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-16],
-                    // Very important: prevent descbox from pushing into the toggle
                     [descBox.trailingAnchor constraintLessThanOrEqualToAnchor:toggle.leadingAnchor constant:-12],
                     
                     [desc.topAnchor constraintEqualToAnchor:descBox.topAnchor constant:6],
@@ -975,7 +973,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 
                 [self.modulesStackView addArrangedSubview:card];
                 
-                // Card entry animation
                 card.alpha = 0;
                 card.transform = CGAffineTransformMakeTranslation(0, 15);
                 [UIView animateWithDuration:0.4 delay:([modules indexOfObject:mod] * 0.05) options:UIViewAnimationOptionCurveEaseOut animations:^{
@@ -984,7 +981,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 } completion:nil];
             }
         } else {
-            // SILENT UPDATE (fixes blinking glitch)
             int index = 0;
             for (UIView *card in self.modulesStackView.arrangedSubviews) {
                 if (card == self.emptyStateView) continue;
