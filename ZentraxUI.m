@@ -9,6 +9,7 @@
 
 #import "ZentraxUI.h"
 #import <QuartzCore/QuartzCore.h>
+#import <objc/message.h>
 
 #pragma mark - ================= GLOBAL DESIGN SYSTEM =================
 
@@ -73,7 +74,7 @@
 }
 
 + (void)applyPremiumGlassmorphismToView:(UIView *)view cornerRadius:(CGFloat)radius {
-    // Prevent stacking blurs on repeated calls
+    // Safely prevent stacking duplicate blur layers
     for (UIView *sub in view.subviews) {
         if (sub.tag == 998877) {
             [sub removeFromSuperview];
@@ -164,11 +165,11 @@
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    // Rule 3: Gradient bounds must match bgView perfectly to preserve corners and avoid clipping artifacts
     self.gradientLayer.frame = self.bgView.bounds;
 }
 
 - (void)touchDown {
+    if (!self.userInteractionEnabled) return;
     UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleRigid];
     [haptic impactOccurred];
     [UIView animateWithDuration:0.15 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
@@ -329,7 +330,8 @@
     if (pb.length > 0) {
         self.textField.text = pb;
         [self updateFloatingLabelStateAnimated:YES];
-        // Rule 4: Trigger proper event flow natively so delegate catches it
+        
+        // Ensure accurate delegate flow propagation
         [self.textField sendActionsForControlEvents:UIControlEventEditingChanged];
         
         UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
@@ -363,6 +365,7 @@
     [textField resignFirstResponder];
     return YES;
 }
+
 @end
 
 @interface ZXToggle : UIControl
@@ -380,7 +383,6 @@
     if (self = [super init]) {
         self.translatesAutoresizingMaskIntoConstraints = NO;
         
-        // Rule 2: Pure Auto Layout, deterministic constraints. Size exactly 54x30.
         [NSLayoutConstraint activateConstraints:@[
             [self.widthAnchor constraintEqualToConstant:54],
             [self.heightAnchor constraintEqualToConstant:30]
@@ -409,6 +411,7 @@
         _spinner.translatesAutoresizingMaskIntoConstraints = NO;
         [_thumbView addSubview:_spinner];
         
+        // Strict deterministic Auto Layout for thumb
         _thumbLeadingConstraint = [_thumbView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4];
         
         [NSLayoutConstraint activateConstraints:@[
@@ -435,7 +438,6 @@
 }
 
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
-    // Retain wide touch area
     CGRect hitFrame = CGRectInset(self.bounds, -20, -20);
     return CGRectContainsPoint(hitFrame, point);
 }
@@ -446,7 +448,6 @@
     UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
     [haptic impactOccurred];
     
-    // User requested toggle. Immediately jump into processing locally before calling delegate.
     [self setOn:!self.isOn animated:YES];
     [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
@@ -457,7 +458,6 @@
 }
 
 - (void)updateStateAnimated:(BOOL)animated {
-    // OFF -> X = 4. ON -> X = 54 - 4 - 22 = 28. Deterministic. No manual frames.
     self.thumbLeadingConstraint.constant = self.isOn ? 28 : 4;
     
     void (^stateUpdates)(void) = ^{
@@ -496,6 +496,7 @@
         [self updateStateAnimated:YES];
     }
 }
+
 @end
 
 #pragma mark - ================= MODAL MANAGER =================
@@ -509,7 +510,7 @@
 + (void)showModalWithIcon:(NSString *)iconName iconTint:(UIColor *)tint title:(NSString *)title message:(NSString *)msg actionTitle:(NSString *)actTitle inView:(UIView *)parentView {
     
     UIView *overlay = [[UIView alloc] initWithFrame:parentView.bounds];
-    overlay.tag = 100100; // Tag for safe identification
+    overlay.tag = 100100;
     overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     overlay.alpha = 0;
     [parentView addSubview:overlay];
@@ -587,7 +588,6 @@
         [btn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-24]
     ]];
     
-    // Rule 11: Safety in dismissal
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissOverlay:)];
     [btn addTarget:self action:@selector(dismissBtnTapped:) forControlEvents:UIControlEventTouchUpInside];
     [overlay addGestureRecognizer:tap];
@@ -623,6 +623,7 @@
         [overlay removeFromSuperview];
     }];
 }
+
 @end
 
 #pragma mark - ================= MAIN VIEW CONTROLLER =================
@@ -639,31 +640,35 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 @property (nonatomic, assign) BOOL hasCompletedInitialPresentation;
 @property (nonatomic, assign) ZXAppState currentState;
 
-// Flow Containers
 @property (nonatomic, strong) UIView *splashContainer;
 @property (nonatomic, strong) UIView *authContainer;
 @property (nonatomic, strong) UIView *verificationContainer;
 @property (nonatomic, strong) UIView *dashboardContainer;
 
-// Advanced Splash
 @property (nonatomic, strong) UIImageView *splashShield;
 @property (nonatomic, strong) UIView *scannerLine;
 
-// Auth elements
 @property (nonatomic, strong) ZXTextField *keyInput;
 @property (nonatomic, strong) ZXButton *loginBtn;
 @property (nonatomic, strong) UITapGestureRecognizer *dismissTap;
 
-// Dashboard elements
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UILabel *expiryLabel;
 @property (nonatomic, strong) UIScrollView *modulesScrollView;
 @property (nonatomic, strong) UIStackView *modulesStackView; 
 @property (nonatomic, strong) UIView *emptyStateView;
 
+@property (nonatomic, strong) NSTimer *heartbeatTimer;
+
 @end
 
 @implementation ZentraxUI
+
+- (void)dealloc {
+    [_heartbeatTimer invalidate];
+    _heartbeatTimer = nil;
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -701,6 +706,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self stopHeartbeatMonitor];
 }
 
 - (void)dismissKeyboard {
@@ -777,8 +783,15 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
 #pragma mark - State Machine
 - (void)transitionToState:(ZXAppState)newState {
+    if (self.currentState == newState) return;
     self.currentState = newState;
     self.dismissTap.enabled = (newState != ZXAppStateDashboard);
+    
+    if (newState == ZXAppStateDashboard) {
+        [self startHeartbeatMonitor];
+    } else {
+        [self stopHeartbeatMonitor];
+    }
     
     __weak typeof(self) weakSelf = self;
     [UIView animateWithDuration:0.5 delay:0.0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
@@ -787,6 +800,86 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         weakSelf.verificationContainer.alpha = (newState == ZXAppStateVerifying) ? 1.0 : 0.0;
         weakSelf.dashboardContainer.alpha = (newState == ZXAppStateDashboard) ? 1.0 : 0.0;
     } completion:nil];
+}
+
+#pragma mark - Session Heartbeat / Revocation Safety
+- (void)startHeartbeatMonitor {
+    [self stopHeartbeatMonitor];
+    self.heartbeatTimer = [NSTimer scheduledTimerWithTimeInterval:15.0 target:self selector:@selector(heartbeatTick) userInfo:nil repeats:YES];
+}
+
+- (void)stopHeartbeatMonitor {
+    if (self.heartbeatTimer) {
+        [self.heartbeatTimer invalidate];
+        self.heartbeatTimer = nil;
+    }
+}
+
+- (void)heartbeatTick {
+    if (self.currentState != ZXAppStateDashboard) return;
+    
+    if ([self.delegate respondsToSelector:@selector(zentraxDidRequestSessionVerificationWithCompletion:)]) {
+        __weak typeof(self) weakSelf = self;
+        [self.delegate zentraxDidRequestSessionVerificationWithCompletion:^(BOOL isValid) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                
+                if (!isValid) {
+                    // Safe introspection via runtime to verify if session was genuinely wiped (Revoked/Expired)
+                    // vs just a temporary network drop where token is preserved.
+                    BOOL sessionRemainsActive = YES;
+                    Class networkManagerClass = NSClassFromString(@"ZentraxNetworkManager");
+                    if (networkManagerClass) {
+                        id sharedInst = [networkManagerClass performSelector:NSSelectorFromString(@"sharedManager")];
+                        if (sharedInst) {
+                            SEL checkSel = NSSelectorFromString(@"hasActiveSession");
+                            if ([sharedInst respondsToSelector:checkSel]) {
+                                sessionRemainsActive = ((BOOL (*)(id, SEL))[(id)sharedInst methodForSelector:checkSel])(sharedInst, checkSel);
+                            }
+                        }
+                    }
+                    
+                    if (!sessionRemainsActive) {
+                        [strongSelf handleRevokedSessionEnvironment];
+                    }
+                }
+            });
+        }];
+    }
+}
+
+- (void)handleRevokedSessionEnvironment {
+    [self stopHeartbeatMonitor];
+    
+    // Visually disable active UI interactions safely
+    for (UIView *card in self.modulesStackView.arrangedSubviews) {
+        ZXToggle *toggle = [self findToggleInCard:card];
+        if (toggle) {
+            toggle.userInteractionEnabled = NO;
+            [toggle setOn:NO animated:YES];
+        }
+    }
+    
+    [self showGlobalErrorWithTitle:@"SESSION REVOKED" message:@"Your secure access has been revoked or expired. Returning to authentication."];
+    
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        
+        if ([strongSelf.delegate respondsToSelector:@selector(zentraxDidRequestLogoutWithCompletion:)]) {
+            [strongSelf.delegate zentraxDidRequestLogoutWithCompletion:^{
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    strongSelf.keyInput.textField.text = @"";
+                    [strongSelf.keyInput updateFloatingLabelStateAnimated:NO];
+                    [strongSelf transitionToState:ZXAppStateAuth];
+                });
+            }];
+        } else {
+            [strongSelf transitionToState:ZXAppStateAuth];
+        }
+    });
 }
 
 #pragma mark - Premium Splash Sequence
@@ -880,7 +973,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     }
 }
 
-#pragma mark - Auth Flow (UI Redesign)
+#pragma mark - Auth Flow
 - (void)setupAuth {
     _authContainer = [[UIView alloc] initWithFrame:self.view.bounds];
     [self.view addSubview:_authContainer];
@@ -936,6 +1029,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [self showPremiumToast:@"Invalid or empty protocol key." success:NO];
         return;
     }
+    if (!self.loginBtn.userInteractionEnabled) return;
     
     [self.loginBtn setLoading:YES];
     __weak typeof(self) weakSelf = self;
@@ -962,7 +1056,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     }
 }
 
-#pragma mark - Verification Screen (Minimalist)
+#pragma mark - Verification Screen
 - (void)setupVerification {
     _verificationContainer = [[UIView alloc] initWithFrame:self.view.bounds];
     [self.view addSubview:_verificationContainer];
@@ -987,7 +1081,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     
     UIButton *logoutBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [logoutBtn setImage:[UIImage systemImageNamed:@"power"] forState:UIControlStateNormal];
-    logoutBtn.tintColor = [ZXTheme statusError]; // Rule 1: Fixed danger to statusError
+    logoutBtn.tintColor = [ZXTheme statusError];
     logoutBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [logoutBtn addTarget:self action:@selector(handleLogout) forControlEvents:UIControlEventTouchUpInside];
     [navBar addSubview:logoutBtn];
@@ -1144,9 +1238,11 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             
             ZXToggle *toggle = [[ZXToggle alloc] init];
             toggle.moduleId = moduleName; 
-            [toggle setOn:isModOn animated:NO]; 
+            [toggle setOn:isModOn animated:NO];
             [toggle addTarget:self action:@selector(moduleToggled:) forControlEvents:UIControlEventValueChanged];
             [card addSubview:toggle];
+            
+            [toggle setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
             
             [NSLayoutConstraint activateConstraints:@[
                 [toggle.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
@@ -1197,24 +1293,14 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     return nil;
 }
 
-// Rule 5: Mutual Exclusivity Safely Handled
 - (void)moduleToggled:(ZXToggle *)sender {
     NSString *networkModuleId = sender.moduleId;
     if (!networkModuleId) return;
     
     BOOL requestedState = sender.isOn;
-    ZXToggle *previousActiveToggle = nil;
     
-    if (requestedState) {
-        for (UIView *card in self.modulesStackView.arrangedSubviews) {
-            ZXToggle *otherToggle = [self findToggleInCard:card];
-            if (otherToggle && otherToggle != sender && otherToggle.isOn) {
-                previousActiveToggle = otherToggle;
-                // Visually toggle OFF instantly, do not trigger ValueChanged event
-                [otherToggle setOn:NO animated:YES];
-            }
-        }
-    }
+    // Removed Mutual Exclusivity code. 
+    // Modules operate independently in accordance with standard behavior.
     
     [sender setLoading:YES];
     __weak typeof(self) weakSelf = self;
@@ -1228,35 +1314,67 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 [sender setLoading:NO];
                 
                 if (success) {
-                    NSString *toastMsg = requestedState ? @"Module Activated" : @"Module Deactivated";
+                    NSString *toastMsg = requestedState ? @"MODULE ACTIVATED" : @"MODULE DEACTIVATED";
                     [strongSelf showPremiumToast:toastMsg success:YES];
                 } else {
-                    // Revert sender
                     [sender setOn:!requestedState animated:YES];
-                    
-                    // If we turned A OFF to turn B ON, and B failed, restore A to ON.
-                    if (requestedState && previousActiveToggle) {
-                        [previousActiveToggle setOn:YES animated:YES];
-                    }
-                    
                     [strongSelf showGlobalErrorWithTitle:@"EXECUTION FAILED" message:errorMsg ?: @"Failed to inject execution payload safely."];
                 }
             });
         }];
     } else {
-        // Rule 6: Handle missing delegate correctly
         [sender setLoading:NO];
         [sender setOn:!requestedState animated:YES];
-        if (requestedState && previousActiveToggle) {
-            [previousActiveToggle setOn:YES animated:YES];
-        }
         [self showGlobalErrorWithTitle:@"Bridge Disconnected" message:@"Execution delegate is unavailable. Cannot process action."];
     }
 }
 
-#pragma mark - Premium Toast Engine (Dynamic Island Style)
+#pragma mark - Premium Public Overlays & Toasts
+
+- (void)showGlobalLoadingState:(NSString *)message {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if ([self.view viewWithTag:999999]) return;
+        
+        UIView *overlay = [[UIView alloc] initWithFrame:self.view.bounds];
+        overlay.tag = 999999;
+        overlay.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.7];
+        overlay.alpha = 0;
+        
+        UIActivityIndicatorView *spin = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+        spin.color = [ZXTheme accentCyan];
+        spin.center = CGPointMake(overlay.center.x, overlay.center.y - 20);
+        [spin startAnimating];
+        [overlay addSubview:spin];
+        
+        UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(20, spin.center.y + 30, overlay.bounds.size.width - 40, 20)];
+        lbl.text = [message uppercaseString];
+        lbl.textColor = [ZXTheme accentCyan];
+        lbl.font = [ZXTheme fontMono:12 weight:UIFontWeightBold];
+        lbl.textAlignment = NSTextAlignmentCenter;
+        [ZXTheme applyTextTracking:lbl spacing:2.0];
+        [overlay addSubview:lbl];
+        
+        [self.view addSubview:overlay];
+        [UIView animateWithDuration:0.3 animations:^{
+            overlay.alpha = 1.0;
+        }];
+    });
+}
+
+- (void)hideGlobalLoadingState {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *overlay = [self.view viewWithTag:999999];
+        if (overlay) {
+            [UIView animateWithDuration:0.3 animations:^{
+                overlay.alpha = 0.0;
+            } completion:^(BOOL finished) {
+                [overlay removeFromSuperview];
+            }];
+        }
+    });
+}
+
 - (void)showPremiumToast:(NSString *)msg success:(BOOL)success {
-    // Prevent overlapping multiple toasts
     for (UIView *v in self.view.subviews) {
         if (v.tag == 887766) {
             [v removeFromSuperview];
@@ -1265,8 +1383,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     
     CGFloat toastWidth = 280;
     CGFloat toastHeight = 50;
-    CGFloat topInset = self.view.safeAreaInsets.top;
-    if (topInset == 0) topInset = 45; // Safe default
+    
+    UIWindow *window = UIApplication.sharedApplication.windows.firstObject;
+    CGFloat topInset = window.safeAreaInsets.top;
+    if (topInset == 0) topInset = 45; 
     
     UIView *toast = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - toastWidth)/2, -60, toastWidth, toastHeight)];
     toast.tag = 887766;
@@ -1334,11 +1454,26 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [ZXModalManager showModalWithIcon:@"xmark.octagon.fill" iconTint:[ZXTheme statusError] title:title message:msg actionTitle:@"DISMISS" inView:self.view];
     });
 }
-- (void)showSuccessMessage:(NSString *)title message:(NSString *)msg {}
-- (void)showNetworkError {}
-- (void)showServerError {}
-- (void)showRateLimitErrorWithSecondsRemaining:(NSInteger)seconds {}
-- (void)showGlobalLoadingState:(NSString *)message {}
-- (void)hideGlobalLoadingState {}
+
+- (void)showSuccessMessage:(NSString *)title message:(NSString *)msg {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [ZXModalManager showModalWithIcon:@"checkmark.shield.fill" iconTint:[ZXTheme statusSuccess] title:title message:msg actionTitle:@"CONTINUE" inView:self.view];
+    });
+}
+
+- (void)showNetworkError {
+    [self showPremiumToast:@"Network Connection Lost" success:NO];
+}
+
+- (void)showServerError {
+    [self showPremiumToast:@"Server Unavailable" success:NO];
+}
+
+- (void)showRateLimitErrorWithSecondsRemaining:(NSInteger)seconds {
+    NSString *msg = [NSString stringWithFormat:@"Request limits reached. Cooldown active for %ld seconds.", (long)seconds];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [ZXModalManager showModalWithIcon:@"timer" iconTint:[ZXTheme statusWarning] title:@"RATE LIMITED" message:msg actionTitle:@"UNDERSTOOD" inView:self.view];
+    });
+}
 
 @end
