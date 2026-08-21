@@ -1418,9 +1418,24 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     CGFloat toastWidth = 260;
     CGFloat toastHeight = 44;
     
-    UIWindow *window = UIApplication.sharedApplication.windows.firstObject;
-    CGFloat topInset = window.safeAreaInsets.top;
-    if (topInset == 0) topInset = 45; 
+    CGFloat topInset = 45; // Safe default
+    if (@available(iOS 13.0, *)) {
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                if (windowScene.activationState == UISceneActivationStateForegroundActive && windowScene.windows.count > 0) {
+                    topInset = windowScene.windows.firstObject.safeAreaInsets.top;
+                    break;
+                }
+            }
+        }
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        topInset = UIApplication.sharedApplication.windows.firstObject.safeAreaInsets.top;
+#pragma clang diagnostic pop
+    }
+    if (topInset == 0) topInset = 45;
     
     UIView *toast = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - toastWidth)/2, -60, toastWidth, toastHeight)];
     toast.tag = 887766;
@@ -1477,7 +1492,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                     __strong typeof(weakSelf) strongSelf = weakSelf;
                     if (strongSelf) {
                         strongSelf.keyInput.textField.text = @"";
-                        [strongSelf.keyInput updateFloatingLabelStateAnimated:NO];
                         [strongSelf transitionToState:ZXAppStateAuth];
                     }
                 });
