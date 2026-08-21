@@ -3,7 +3,7 @@
 //  Zentrax VIP - Premium Execution Node UI
 //
 //  Created by Zentrax Team.
-//  Architecture: Ultra-Premium SaaS Vault Layer
+//  Architecture: Ultra-Premium VIP Gaming Layer (V5 Final)
 //  Status: PRODUCTION READY
 //
 
@@ -11,24 +11,18 @@
 #import <QuartzCore/QuartzCore.h>
 #import <objc/message.h>
 
-#pragma mark - ================= VAULT DESIGN SYSTEM =================
+#pragma mark - ================= PREMIUM DESIGN SYSTEM =================
 
 @interface ZXTheme : NSObject
-
 + (UIColor *)bgDeepSpace;
 + (UIColor *)bgCardOuter;
 + (UIColor *)bgCardInner;
 + (UIColor *)borderSubtle;
-+ (UIColor *)borderActive;
-
 + (UIColor *)accentPurple;
-+ (UIColor *)accentBlue;
 + (UIColor *)accentCyan;
-
 + (UIColor *)textPrimary;
 + (UIColor *)textSecondary;
 + (UIColor *)textMuted;
-
 + (UIColor *)statusSuccess;
 + (UIColor *)statusWarning;
 + (UIColor *)statusError;
@@ -38,33 +32,29 @@
 + (UIFont *)fontBody:(CGFloat)size weight:(UIFontWeight)weight;
 + (UIFont *)fontMono:(CGFloat)size weight:(UIFontWeight)weight;
 
-+ (CAGradientLayer *)vaultGradient;
 + (void)applyTextTracking:(UILabel *)label spacing:(CGFloat)spacing;
-
++ (CAGradientLayer *)primaryGradient;
 @end
 
 @implementation ZXTheme
 
-// Deep dark navy/purple background matching the web UI
-+ (UIColor *)bgDeepSpace { return [UIColor colorWithRed:0.04 green:0.03 blue:0.08 alpha:1.0]; }
-// Elevated cards
-+ (UIColor *)bgCardOuter { return [UIColor colorWithRed:0.08 green:0.08 blue:0.12 alpha:0.95]; }
-// Inner fields
-+ (UIColor *)bgCardInner { return [UIColor colorWithRed:0.05 green:0.05 blue:0.08 alpha:1.0]; }
+// True deep aesthetic
++ (UIColor *)bgDeepSpace { return [UIColor colorWithRed:0.03 green:0.03 blue:0.05 alpha:1.0]; }
++ (UIColor *)bgCardOuter { return [UIColor colorWithRed:0.08 green:0.09 blue:0.12 alpha:0.85]; }
++ (UIColor *)bgCardInner { return [UIColor colorWithRed:0.05 green:0.06 blue:0.08 alpha:0.90]; }
++ (UIColor *)borderSubtle { return [UIColor colorWithRed:0.15 green:0.18 blue:0.25 alpha:0.8]; }
 
-+ (UIColor *)borderSubtle { return [UIColor colorWithRed:0.20 green:0.18 blue:0.30 alpha:0.6]; }
-+ (UIColor *)borderActive { return [self accentPurple]; }
+// Neon Accents
++ (UIColor *)accentPurple { return [UIColor colorWithRed:0.55 green:0.20 blue:1.0 alpha:1.0]; }
++ (UIColor *)accentCyan { return [UIColor colorWithRed:0.0 green:0.90 blue:1.0 alpha:1.0]; }
 
-// Exact Premium Zentrax Branding Colors
-+ (UIColor *)accentPurple { return [UIColor colorWithRed:0.55 green:0.15 blue:1.0 alpha:1.0]; } // #8C26FF
-+ (UIColor *)accentBlue { return [UIColor colorWithRed:0.23 green:0.51 blue:0.96 alpha:1.0]; }   // #3B82F6
-+ (UIColor *)accentCyan { return [UIColor colorWithRed:0.0 green:0.85 blue:1.0 alpha:1.0]; }     // #00D8FF
-
-+ (UIColor *)textPrimary { return [UIColor colorWithWhite:0.98 alpha:1.0]; }
+// Text Hierarchy
++ (UIColor *)textPrimary { return [UIColor colorWithWhite:1.0 alpha:1.0]; }
 + (UIColor *)textSecondary { return [UIColor colorWithWhite:0.75 alpha:1.0]; }
-+ (UIColor *)textMuted { return [UIColor colorWithRed:0.45 green:0.45 blue:0.55 alpha:1.0]; }
++ (UIColor *)textMuted { return [UIColor colorWithWhite:0.50 alpha:1.0]; }
 
-+ (UIColor *)statusSuccess { return [UIColor colorWithRed:0.10 green:0.80 blue:0.55 alpha:1.0]; }
+// Status
++ (UIColor *)statusSuccess { return [UIColor colorWithRed:0.15 green:0.85 blue:0.55 alpha:1.0]; }
 + (UIColor *)statusWarning { return [UIColor colorWithRed:0.96 green:0.65 blue:0.14 alpha:1.0]; }
 + (UIColor *)statusError { return [UIColor colorWithRed:1.0 green:0.25 blue:0.35 alpha:1.0]; }
 
@@ -73,35 +63,113 @@
 + (UIFont *)fontBody:(CGFloat)size weight:(UIFontWeight)weight { return [UIFont systemFontOfSize:size weight:weight]; }
 + (UIFont *)fontMono:(CGFloat)size weight:(UIFontWeight)weight { return [UIFont monospacedSystemFontOfSize:size weight:weight]; }
 
-+ (CAGradientLayer *)vaultGradient {
-    CAGradientLayer *gradient = [CAGradientLayer layer];
-    gradient.colors = @[(id)[self accentPurple].CGColor, (id)[self accentBlue].CGColor];
-    gradient.startPoint = CGPointMake(0.0, 0.5);
-    gradient.endPoint = CGPointMake(1.0, 0.5);
-    return gradient;
-}
-
 + (void)applyTextTracking:(UILabel *)label spacing:(CGFloat)spacing {
     if (!label.text) return;
     NSDictionary *attrs = @{NSKernAttributeName: @(spacing)};
     label.attributedText = [[NSAttributedString alloc] initWithString:label.text attributes:attrs];
 }
 
++ (CAGradientLayer *)primaryGradient {
+    CAGradientLayer *gradient = [CAGradientLayer layer];
+    gradient.colors = @[(id)[self accentPurple].CGColor, (id)[self accentCyan].CGColor];
+    gradient.startPoint = CGPointMake(0.0, 0.5);
+    gradient.endPoint = CGPointMake(1.0, 0.5);
+    return gradient;
+}
+
 @end
 
-#pragma mark - ================= PREMIUM COMPONENTS =================
+#pragma mark - ================= LIVE ANIMATED BACKGROUND =================
 
-@interface ZXVaultButton : UIButton
+@interface ZXAnimatedBackground : UIView
+@property (nonatomic, strong) UIView *orb1;
+@property (nonatomic, strong) UIView *orb2;
+- (void)startAnimations;
+- (void)stopAnimations;
+@end
+
+@implementation ZXAnimatedBackground
+- (instancetype)initWithFrame:(CGRect)frame {
+    if (self = [super initWithFrame:frame]) {
+        self.backgroundColor = [ZXTheme bgDeepSpace];
+        self.clipsToBounds = YES;
+        
+        // Purple Orb
+        _orb1 = [[UIView alloc] initWithFrame:CGRectMake(-100, -100, 400, 400)];
+        _orb1.backgroundColor = [[ZXTheme accentPurple] colorWithAlphaComponent:0.15];
+        _orb1.layer.cornerRadius = 200;
+        _orb1.layer.shadowColor = [ZXTheme accentPurple].CGColor;
+        _orb1.layer.shadowRadius = 80;
+        _orb1.layer.shadowOpacity = 1.0;
+        [self addSubview:_orb1];
+        
+        // Cyan Orb
+        _orb2 = [[UIView alloc] initWithFrame:CGRectMake(frame.size.width - 200, frame.size.height - 200, 500, 500)];
+        _orb2.backgroundColor = [[ZXTheme accentCyan] colorWithAlphaComponent:0.12];
+        _orb2.layer.cornerRadius = 250;
+        _orb2.layer.shadowColor = [ZXTheme accentCyan].CGColor;
+        _orb2.layer.shadowRadius = 100;
+        _orb2.layer.shadowOpacity = 1.0;
+        [self addSubview:_orb2];
+        
+        // Subtle Grid Overlay
+        UIView *gridOverlay = [[UIView alloc] initWithFrame:self.bounds];
+        gridOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        gridOverlay.backgroundColor = [UIColor colorWithPatternImage:[self createGridImage]];
+        gridOverlay.alpha = 0.3;
+        [self addSubview:gridOverlay];
+    }
+    return self;
+}
+
+- (UIImage *)createGridImage {
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(40, 40), NO, 0.0);
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    CGContextSetStrokeColorWithColor(ctx, [UIColor colorWithWhite:1.0 alpha:0.04].CGColor);
+    CGContextSetLineWidth(ctx, 1.0);
+    CGContextMoveToPoint(ctx, 0, 0); CGContextAddLineToPoint(ctx, 40, 0);
+    CGContextMoveToPoint(ctx, 0, 0); CGContextAddLineToPoint(ctx, 0, 40);
+    CGContextStrokePath(ctx);
+    UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return img;
+}
+
+- (void)startAnimations {
+    CABasicAnimation *move1 = [CABasicAnimation animationWithKeyPath:@"transform.translation"];
+    move1.toValue = [NSValue valueWithCGPoint:CGPointMake(80, 150)];
+    move1.duration = 12.0;
+    move1.autoreverses = YES;
+    move1.repeatCount = HUGE_VALF;
+    move1.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [self.orb1.layer addAnimation:move1 forKey:@"float1"];
+    
+    CABasicAnimation *move2 = [CABasicAnimation animationWithKeyPath:@"transform.translation"];
+    move2.toValue = [NSValue valueWithCGPoint:CGPointMake(-100, -120)];
+    move2.duration = 15.0;
+    move2.autoreverses = YES;
+    move2.repeatCount = HUGE_VALF;
+    move2.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [self.orb2.layer addAnimation:move2 forKey:@"float2"];
+}
+
+- (void)stopAnimations {
+    [self.orb1.layer removeAllAnimations];
+    [self.orb2.layer removeAllAnimations];
+}
+@end
+
+#pragma mark - ================= UI COMPONENTS =================
+
+@interface ZXButton : UIButton
 @property (nonatomic, strong) CAGradientLayer *gradientLayer;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
 @property (nonatomic, strong) NSString *originalTitle;
 @property (nonatomic, strong) UIView *bgView;
-@property (nonatomic, strong) UIImageView *arrowIcon;
 - (void)setLoading:(BOOL)loading;
 @end
 
-@implementation ZXVaultButton
-
+@implementation ZXButton
 - (instancetype)init {
     if (self = [super init]) {
         self.layer.cornerRadius = 14;
@@ -115,11 +183,10 @@
         _bgView.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_bgView];
         
-        _gradientLayer = [ZXTheme vaultGradient];
+        _gradientLayer = [ZXTheme primaryGradient];
         [_bgView.layer insertSublayer:_gradientLayer atIndex:0];
         
-        // Subtle outer glow
-        self.layer.shadowColor = [ZXTheme accentPurple].CGColor;
+        self.layer.shadowColor = [ZXTheme accentCyan].CGColor;
         self.layer.shadowOpacity = 0.4;
         self.layer.shadowRadius = 12;
         self.layer.shadowOffset = CGSizeMake(0, 4);
@@ -130,29 +197,16 @@
         _spinner.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_spinner];
         
-        _arrowIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"arrow.right"]];
-        _arrowIcon.tintColor = [UIColor whiteColor];
-        _arrowIcon.contentMode = UIViewContentModeScaleAspectFit;
-        _arrowIcon.translatesAutoresizingMaskIntoConstraints = NO;
-        [self addSubview:_arrowIcon];
-        
         [NSLayoutConstraint activateConstraints:@[
             [_bgView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
             [_bgView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
             [_bgView.topAnchor constraintEqualToAnchor:self.topAnchor],
             [_bgView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
-            
             [_spinner.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
-            [_spinner.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
-            
-            [_arrowIcon.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-20],
-            [_arrowIcon.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
-            [_arrowIcon.widthAnchor constraintEqualToConstant:16],
-            [_arrowIcon.heightAnchor constraintEqualToConstant:16]
+            [_spinner.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
         ]];
         
         [self bringSubviewToFront:self.titleLabel];
-        
         [self addTarget:self action:@selector(touchDown) forControlEvents:UIControlEventTouchDown];
         [self addTarget:self action:@selector(touchUp) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
     }
@@ -176,7 +230,7 @@
 }
 
 - (void)touchUp {
-    [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.6 initialSpringVelocity:0.5 options:UIViewAnimationOptionAllowUserInteraction animations:^{
+    [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.6 initialSpringVelocity:0.5 options:0 animations:^{
         self.transform = CGAffineTransformIdentity;
         self.layer.shadowOpacity = 0.4;
         self.layer.shadowRadius = 12;
@@ -188,48 +242,46 @@
     if (loading) {
         self.originalTitle = [self titleForState:UIControlStateNormal];
         [self setTitle:@"" forState:UIControlStateNormal];
-        self.arrowIcon.alpha = 0;
         [self.spinner startAnimating];
         self.bgView.alpha = 0.8;
     } else {
         [self setTitle:self.originalTitle forState:UIControlStateNormal];
-        self.arrowIcon.alpha = 1;
         [self.spinner stopAnimating];
         self.bgView.alpha = 1.0;
     }
 }
 @end
 
-@interface ZXVaultField : UIView <UITextFieldDelegate>
+@interface ZXTextField : UIView <UITextFieldDelegate>
 @property (nonatomic, strong) UITextField *textField;
-@property (nonatomic, strong) UILabel *topLabel;
-@property (nonatomic, strong) UIButton *pasteButton;
+@property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIView *inputContainer;
 @property (nonatomic, strong) UIImageView *iconView;
 @end
 
-@implementation ZXVaultField
+@implementation ZXTextField
 
 - (instancetype)init {
     if (self = [super init]) {
         self.backgroundColor = [UIColor clearColor];
         
-        _topLabel = [[UILabel alloc] init];
-        _topLabel.text = @"Master License Key";
-        _topLabel.textColor = [ZXTheme textPrimary];
-        _topLabel.font = [ZXTheme fontHeading:13];
-        _topLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [self addSubview:_topLabel];
+        _titleLabel = [[UILabel alloc] init];
+        _titleLabel.text = @"LICENSE KEY";
+        _titleLabel.textColor = [ZXTheme textMuted];
+        _titleLabel.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
+        [ZXTheme applyTextTracking:_titleLabel spacing:1.5];
+        _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [self addSubview:_titleLabel];
         
         _inputContainer = [[UIView alloc] init];
-        _inputContainer.backgroundColor = [ZXTheme bgCardInner];
-        _inputContainer.layer.cornerRadius = 12;
+        _inputContainer.backgroundColor = [ZXTheme bgCardOuter];
+        _inputContainer.layer.cornerRadius = 14;
         _inputContainer.layer.borderWidth = 1.0;
         _inputContainer.layer.borderColor = [ZXTheme borderSubtle].CGColor;
         _inputContainer.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_inputContainer];
         
-        _iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"shield.keyhole.fill"]];
+        _iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"key.fill"]];
         _iconView.tintColor = [ZXTheme textMuted];
         _iconView.contentMode = UIViewContentModeScaleAspectFit;
         _iconView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -237,35 +289,37 @@
         
         _textField = [[UITextField alloc] init];
         _textField.textColor = [ZXTheme textPrimary];
-        _textField.font = [ZXTheme fontMono:15 weight:UIFontWeightSemibold];
+        _textField.font = [ZXTheme fontMono:15 weight:UIFontWeightBold];
         _textField.secureTextEntry = YES;
         _textField.delegate = self;
         _textField.translatesAutoresizingMaskIntoConstraints = NO;
         _textField.autocorrectionType = UITextAutocorrectionTypeNo;
         _textField.autocapitalizationType = UITextAutocapitalizationTypeNone;
         _textField.returnKeyType = UIReturnKeyDone;
-        _textField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:@"ZTX-XXXX-XXXX-XXXX" attributes:@{NSForegroundColorAttributeName: [ZXTheme textMuted]}];
+        _textField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:@"Enter your key..." attributes:@{NSForegroundColorAttributeName: [ZXTheme textMuted]}];
         [_inputContainer addSubview:_textField];
         
-        _pasteButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        [_pasteButton setTitle:@"Paste" forState:UIControlStateNormal];
-        _pasteButton.titleLabel.font = [ZXTheme fontHeading:13];
-        _pasteButton.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.1];
-        _pasteButton.layer.cornerRadius = 8;
-        [_pasteButton setTitleColor:[ZXTheme textPrimary] forState:UIControlStateNormal];
-        _pasteButton.translatesAutoresizingMaskIntoConstraints = NO;
-        [_pasteButton addTarget:self action:@selector(pasteKeyTapped) forControlEvents:UIControlEventTouchUpInside];
-        [_inputContainer addSubview:_pasteButton];
+        UIButton *pasteBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        [pasteBtn setTitle:@"PASTE" forState:UIControlStateNormal];
+        pasteBtn.titleLabel.font = [ZXTheme fontHeading:12];
+        pasteBtn.backgroundColor = [ZXTheme bgCardInner];
+        pasteBtn.layer.cornerRadius = 8;
+        pasteBtn.layer.borderWidth = 1.0;
+        pasteBtn.layer.borderColor = [ZXTheme borderSubtle].CGColor;
+        [pasteBtn setTitleColor:[ZXTheme accentCyan] forState:UIControlStateNormal];
+        pasteBtn.translatesAutoresizingMaskIntoConstraints = NO;
+        [pasteBtn addTarget:self action:@selector(pasteKeyTapped) forControlEvents:UIControlEventTouchUpInside];
+        [_inputContainer addSubview:pasteBtn];
         
         [NSLayoutConstraint activateConstraints:@[
-            [_topLabel.topAnchor constraintEqualToAnchor:self.topAnchor],
-            [_topLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4],
+            [_titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor],
+            [_titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4],
             
-            [_inputContainer.topAnchor constraintEqualToAnchor:_topLabel.bottomAnchor constant:8],
+            [_inputContainer.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:8],
             [_inputContainer.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
             [_inputContainer.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
             [_inputContainer.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
-            [_inputContainer.heightAnchor constraintEqualToConstant:56],
+            [_inputContainer.heightAnchor constraintEqualToConstant:60],
             
             [_iconView.leadingAnchor constraintEqualToAnchor:_inputContainer.leadingAnchor constant:16],
             [_iconView.centerYAnchor constraintEqualToAnchor:_inputContainer.centerYAnchor],
@@ -275,7 +329,7 @@
             [_pasteButton.trailingAnchor constraintEqualToAnchor:_inputContainer.trailingAnchor constant:-12],
             [_pasteButton.centerYAnchor constraintEqualToAnchor:_inputContainer.centerYAnchor],
             [_pasteButton.heightAnchor constraintEqualToConstant:32],
-            [_pasteButton.widthAnchor constraintEqualToConstant:64],
+            [_pasteButton.widthAnchor constraintEqualToConstant:65],
             
             [_textField.leadingAnchor constraintEqualToAnchor:_iconView.trailingAnchor constant:12],
             [_textField.trailingAnchor constraintEqualToAnchor:_pasteButton.leadingAnchor constant:-12],
@@ -291,22 +345,27 @@
     if (pb.length > 0) {
         self.textField.text = pb;
         [self.textField sendActionsForControlEvents:UIControlEventEditingChanged];
-        UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-        [haptic impactOccurred];
+        [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
     }
 }
 
 - (void)textFieldDidBeginEditing:(UITextField *)textField {
     [UIView animateWithDuration:0.3 animations:^{
-        self.inputContainer.layer.borderColor = [ZXTheme accentPurple].CGColor;
-        self.iconView.tintColor = [ZXTheme accentPurple];
+        self.inputContainer.layer.borderColor = [ZXTheme accentCyan].CGColor;
+        self.inputContainer.layer.shadowColor = [ZXTheme accentCyan].CGColor;
+        self.inputContainer.layer.shadowOpacity = 0.3;
+        self.inputContainer.layer.shadowRadius = 10;
+        self.iconView.tintColor = [ZXTheme accentCyan];
+        self.titleLabel.textColor = [ZXTheme accentCyan];
     }];
 }
 
 - (void)textFieldDidEndEditing:(UITextField *)textField {
     [UIView animateWithDuration:0.3 animations:^{
         self.inputContainer.layer.borderColor = [ZXTheme borderSubtle].CGColor;
+        self.inputContainer.layer.shadowOpacity = 0.0;
         self.iconView.tintColor = [ZXTheme textMuted];
+        self.titleLabel.textColor = [ZXTheme textMuted];
     }];
 }
 
@@ -316,7 +375,7 @@
 }
 @end
 
-@interface ZXVaultToggle : UIControl
+@interface ZXToggle : UIControl
 @property (nonatomic, assign) BOOL isOn;
 @property (nonatomic, strong) NSString *moduleId; 
 @property (nonatomic, strong) UIView *trackView;
@@ -325,8 +384,7 @@
 @property (nonatomic, strong) NSLayoutConstraint *thumbLeadingConstraint;
 @end
 
-@implementation ZXVaultToggle
-
+@implementation ZXToggle
 - (instancetype)init {
     if (self = [super init]) {
         self.translatesAutoresizingMaskIntoConstraints = NO;
@@ -392,7 +450,6 @@
     if (!self.userInteractionEnabled) return;
     UIImpactFeedbackGenerator *haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
     [haptic impactOccurred];
-    
     [self setOn:!self.isOn animated:YES];
     [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
@@ -403,7 +460,7 @@
 }
 
 - (void)updateStateAnimated:(BOOL)animated {
-    self.thumbLeadingConstraint.constant = self.isOn ? 26 : 4;
+    self.thumbLeadingConstraint.constant = self.isOn ? 26 : 4; // 50 - 20 - 4 = 26
     
     void (^stateUpdates)(void) = ^{
         [self layoutIfNeeded];
@@ -441,48 +498,49 @@
         [self updateStateAnimated:YES];
     }
 }
-
 @end
 
 #pragma mark - ================= MODAL MANAGER =================
 
 @interface ZXModalManager : NSObject
-+ (void)showModalWithIcon:(NSString *)iconName iconTint:(UIColor *)tint title:(NSString *)title message:(NSString *)msg actionTitle:(NSString *)actTitle inView:(UIView *)parentView;
++ (void)showModalWithIcon:(NSString *)iconName isError:(BOOL)isError title:(NSString *)title message:(NSString *)msg actionTitle:(NSString *)actTitle inView:(UIView *)parentView;
 @end
 
 @implementation ZXModalManager
 
-+ (void)showModalWithIcon:(NSString *)iconName iconTint:(UIColor *)tint title:(NSString *)title message:(NSString *)msg actionTitle:(NSString *)actTitle inView:(UIView *)parentView {
++ (void)showModalWithIcon:(NSString *)iconName isError:(BOOL)isError title:(NSString *)title message:(NSString *)msg actionTitle:(NSString *)actTitle inView:(UIView *)parentView {
     
     UIView *overlay = [[UIView alloc] initWithFrame:parentView.bounds];
     overlay.tag = 100100;
     overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    overlay.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.7];
+    overlay.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.8];
     overlay.alpha = 0;
     [parentView addSubview:overlay];
+    
+    UIColor *tintColor = isError ? [ZXTheme statusError] : [ZXTheme accentCyan];
     
     UIView *card = [[UIView alloc] init];
     card.backgroundColor = [ZXTheme bgCardOuter];
     card.layer.cornerRadius = 24;
-    card.layer.borderWidth = 1.0;
-    card.layer.borderColor = [ZXTheme borderSubtle].CGColor;
+    card.layer.borderWidth = 1.5;
+    card.layer.borderColor = tintColor.CGColor;
     card.translatesAutoresizingMaskIntoConstraints = NO;
     card.transform = CGAffineTransformMakeScale(0.9, 0.9);
     [overlay addSubview:card];
     
-    card.layer.shadowColor = tint.CGColor;
-    card.layer.shadowOpacity = 0.15;
+    card.layer.shadowColor = tintColor.CGColor;
+    card.layer.shadowOpacity = 0.2;
     card.layer.shadowRadius = 40;
     card.layer.shadowOffset = CGSizeMake(0, 15);
     
     UIView *iconContainer = [[UIView alloc] init];
-    iconContainer.backgroundColor = [tint colorWithAlphaComponent:0.1];
-    iconContainer.layer.cornerRadius = 30;
+    iconContainer.backgroundColor = [tintColor colorWithAlphaComponent:0.1];
+    iconContainer.layer.cornerRadius = 28;
     iconContainer.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:iconContainer];
     
     UIImageView *iconView = [[UIImageView alloc] initWithImage:[[UIImage systemImageNamed:iconName] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
-    iconView.tintColor = tint;
+    iconView.tintColor = tintColor;
     iconView.contentMode = UIViewContentModeScaleAspectFit;
     iconView.translatesAutoresizingMaskIntoConstraints = NO;
     [iconContainer addSubview:iconView];
@@ -490,7 +548,7 @@
     UILabel *titleLbl = [[UILabel alloc] init];
     titleLbl.text = [title uppercaseString];
     titleLbl.textColor = [ZXTheme textPrimary];
-    titleLbl.font = [ZXTheme fontDisplay:16];
+    titleLbl.font = [ZXTheme fontDisplay:17];
     [ZXTheme applyTextTracking:titleLbl spacing:1.0];
     titleLbl.textAlignment = NSTextAlignmentCenter;
     titleLbl.translatesAutoresizingMaskIntoConstraints = NO;
@@ -505,8 +563,19 @@
     msgLbl.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:msgLbl];
     
-    ZXVaultButton *btn = [[ZXVaultButton alloc] init];
+    ZXButton *btn = [[ZXButton alloc] init];
     [btn setTitle:actTitle forState:UIControlStateNormal];
+    
+    if (isError) {
+        // Red button for errors
+        CAGradientLayer *redGrad = [CAGradientLayer layer];
+        redGrad.colors = @[(id)[UIColor colorWithRed:1.0 green:0.2 blue:0.4 alpha:1.0].CGColor, (id)[UIColor colorWithRed:0.8 green:0.1 blue:0.2 alpha:1.0].CGColor];
+        redGrad.startPoint = CGPointMake(0, 0); redGrad.endPoint = CGPointMake(1, 1);
+        [btn.bgView.layer replaceSublayer:btn.gradientLayer with:redGrad];
+        btn.gradientLayer = redGrad;
+        btn.layer.shadowColor = [ZXTheme statusError].CGColor;
+    }
+    
     btn.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:btn];
     
@@ -517,13 +586,13 @@
         
         [iconContainer.topAnchor constraintEqualToAnchor:card.topAnchor constant:32],
         [iconContainer.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
-        [iconContainer.widthAnchor constraintEqualToConstant:60],
-        [iconContainer.heightAnchor constraintEqualToConstant:60],
+        [iconContainer.widthAnchor constraintEqualToConstant:56],
+        [iconContainer.heightAnchor constraintEqualToConstant:56],
         
         [iconView.centerXAnchor constraintEqualToAnchor:iconContainer.centerXAnchor],
         [iconView.centerYAnchor constraintEqualToAnchor:iconContainer.centerYAnchor],
-        [iconView.widthAnchor constraintEqualToConstant:28],
-        [iconView.heightAnchor constraintEqualToConstant:28],
+        [iconView.widthAnchor constraintEqualToConstant:26],
+        [iconView.heightAnchor constraintEqualToConstant:26],
         
         [titleLbl.topAnchor constraintEqualToAnchor:iconContainer.bottomAnchor constant:20],
         [titleLbl.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:24],
@@ -554,17 +623,11 @@
 }
 
 + (void)dismissOverlay:(UITapGestureRecognizer *)sender {
-    if (sender.view.tag == 100100) {
-        [self animateDismiss:sender.view];
-    }
+    if (sender.view.tag == 100100) [self animateDismiss:sender.view];
 }
 
 + (void)dismissBtnTapped:(UIButton *)btn {
-    UIView *card = btn.superview;
-    UIView *overlay = card.superview;
-    if (overlay.tag == 100100) {
-        [self animateDismiss:overlay];
-    }
+    [self animateDismiss:btn.superview.superview];
 }
 
 + (void)animateDismiss:(UIView *)overlay {
@@ -575,7 +638,6 @@
         [overlay removeFromSuperview];
     }];
 }
-
 @end
 
 #pragma mark - ================= MAIN VIEW CONTROLLER =================
@@ -593,6 +655,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 @property (nonatomic, assign) ZXAppState currentState;
 
 // Flow Containers
+@property (nonatomic, strong) ZXAnimatedBackground *backgroundView;
 @property (nonatomic, strong) UIView *splashContainer;
 @property (nonatomic, strong) UIView *authContainer;
 @property (nonatomic, strong) UIView *verificationContainer;
@@ -600,11 +663,12 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
 // Splash elements
 @property (nonatomic, strong) UIImageView *splashShield;
-@property (nonatomic, strong) UIView *scannerLine;
+@property (nonatomic, strong) UIView *progressTrack;
+@property (nonatomic, strong) UIView *progressFill;
 
 // Auth elements
-@property (nonatomic, strong) ZXVaultField *keyInput;
-@property (nonatomic, strong) ZXVaultButton *loginBtn;
+@property (nonatomic, strong) ZXTextField *keyInput;
+@property (nonatomic, strong) ZXButton *loginBtn;
 @property (nonatomic, strong) UITapGestureRecognizer *dismissTap;
 
 // Dashboard elements
@@ -614,8 +678,9 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 @property (nonatomic, strong) UIStackView *modulesStackView; 
 @property (nonatomic, strong) UIView *emptyStateView;
 
-// Heartbeat
+// State Management
 @property (nonatomic, strong) NSTimer *heartbeatTimer;
+@property (nonatomic, strong) NSArray *cachedModulesState; // Prevents UI Blinking on Heartbeat
 
 @end
 
@@ -636,7 +701,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     self.dismissTap.cancelsTouchesInView = NO;
     [self.view addGestureRecognizer:self.dismissTap];
     
-    [self setupVaultAmbientBackground];
+    // 1. Setup Animated Background
+    _backgroundView = [[ZXAnimatedBackground alloc] initWithFrame:self.view.bounds];
+    _backgroundView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:_backgroundView];
     
     [self setupSplash];
     [self setupAuth];
@@ -654,6 +722,8 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
     
+    [self.backgroundView startAnimations];
+    
     if (!self.hasCompletedInitialPresentation) {
         self.hasCompletedInitialPresentation = YES;
         [self runDeterministicLaunchSequence];
@@ -663,6 +733,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self.backgroundView stopAnimations];
     [self stopHeartbeatMonitor];
 }
 
@@ -694,53 +765,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     } completion:nil];
 }
 
-- (void)setupVaultAmbientBackground {
-    // Elegant Web-like Grid
-    UIImageView *grid = [[UIImageView alloc] initWithFrame:self.view.bounds];
-    grid.image = [self createGridImage];
-    grid.alpha = 0.25;
-    grid.contentMode = UIViewContentModeScaleAspectFill;
-    [self.view addSubview:grid];
-    
-    // Soft Purple Glow Top Right
-    UIView *topGlow = [[UIView alloc] initWithFrame:CGRectMake(self.view.bounds.size.width - 200, -100, 400, 400)];
-    topGlow.backgroundColor = [[ZXTheme accentPurple] colorWithAlphaComponent:0.15];
-    topGlow.layer.cornerRadius = 200;
-    topGlow.layer.shadowColor = [ZXTheme accentPurple].CGColor;
-    topGlow.layer.shadowRadius = 100;
-    topGlow.layer.shadowOpacity = 1.0;
-    [self.view addSubview:topGlow];
-    
-    // Soft Blue Glow Bottom Left
-    UIView *bottomGlow = [[UIView alloc] initWithFrame:CGRectMake(-150, self.view.bounds.size.height - 200, 400, 400)];
-    bottomGlow.backgroundColor = [[ZXTheme accentBlue] colorWithAlphaComponent:0.1];
-    bottomGlow.layer.cornerRadius = 200;
-    bottomGlow.layer.shadowColor = [ZXTheme accentBlue].CGColor;
-    bottomGlow.layer.shadowRadius = 120;
-    bottomGlow.layer.shadowOpacity = 1.0;
-    [self.view addSubview:bottomGlow];
-    
-    [UIView animateWithDuration:15.0 delay:0 options:UIViewAnimationOptionAutoreverse | UIViewAnimationOptionRepeat | UIViewAnimationOptionCurveEaseInOut animations:^{
-        topGlow.transform = CGAffineTransformMakeTranslation(-50, 50);
-        bottomGlow.transform = CGAffineTransformMakeTranslation(50, -50);
-    } completion:nil];
-}
-
-- (UIImage *)createGridImage {
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(40, 40), NO, 0.0);
-    CGContextRef context = UIGraphicsGetCurrentContext();
-    CGContextSetStrokeColorWithColor(context, [UIColor colorWithRed:0.5 green:0.3 blue:0.8 alpha:0.1].CGColor);
-    CGContextSetLineWidth(context, 1.0);
-    CGContextMoveToPoint(context, 0, 0);
-    CGContextAddLineToPoint(context, 40, 0);
-    CGContextMoveToPoint(context, 0, 0);
-    CGContextAddLineToPoint(context, 0, 40);
-    CGContextStrokePath(context);
-    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    return [image resizableImageWithCapInsets:UIEdgeInsetsZero resizingMode:UIImageResizingModeTile];
-}
-
 #pragma mark - State Machine & Heartbeat Protection
 - (void)transitionToState:(ZXAppState)newState {
     if (self.currentState == newState) return;
@@ -751,6 +775,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [self startHeartbeatMonitor];
     } else {
         [self stopHeartbeatMonitor];
+        self.cachedModulesState = nil; // Clear cache on logout
     }
     
     __weak typeof(self) weakSelf = self;
@@ -786,7 +811,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 if (!strongSelf) return;
                 
                 if (!isValid) {
-                    // Check if token was purged natively (indicating explicit revocation/expiration)
+                    // Safety check to ensure true revocation vs temporary offline
                     BOOL sessionRemainsActive = YES;
                     Class networkManagerClass = NSClassFromString(@"ZentraxNetworkManager");
                     if (networkManagerClass) {
@@ -812,9 +837,9 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 - (void)handleRevokedSessionEnvironment {
     [self stopHeartbeatMonitor];
     
-    // Kill visually active modules
+    // Kill visually active modules instantly
     for (UIView *card in self.modulesStackView.arrangedSubviews) {
-        ZXVaultToggle *toggle = [self findToggleInCard:card];
+        ZXToggle *toggle = [self findToggleInCard:card];
         if (toggle) {
             toggle.userInteractionEnabled = NO;
             [toggle setOn:NO animated:YES];
@@ -832,6 +857,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             [strongSelf.delegate zentraxDidRequestLogoutWithCompletion:^{
                 dispatch_async(dispatch_get_main_queue(), ^{
                     strongSelf.keyInput.textField.text = @"";
+                    [strongSelf.keyInput updateFloatingLabelStateAnimated:NO];
                     [strongSelf transitionToState:ZXAppStateAuth];
                 });
             }];
@@ -862,31 +888,34 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [iconBg addSubview:_splashShield];
     
     UILabel *title = [[UILabel alloc] init];
-    title.text = @"ZENTRAX";
+    title.text = @"ZENTRAX VIP";
     title.textColor = [UIColor whiteColor];
-    title.font = [ZXTheme fontDisplay:26];
+    title.font = [ZXTheme fontDisplay:28];
     [ZXTheme applyTextTracking:title spacing:4.0];
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [_splashContainer addSubview:title];
     
-    UIView *badge = [[UIView alloc] init];
-    badge.backgroundColor = [[ZXTheme accentBlue] colorWithAlphaComponent:0.15];
-    badge.layer.cornerRadius = 12;
-    badge.layer.borderWidth = 1.0;
-    badge.layer.borderColor = [ZXTheme accentBlue].CGColor;
-    badge.translatesAutoresizingMaskIntoConstraints = NO;
-    [_splashContainer addSubview:badge];
+    UILabel *sub = [[UILabel alloc] init];
+    sub.text = @"INITIALIZING SECURE ENVIRONMENT";
+    sub.textColor = [ZXTheme textMuted];
+    sub.font = [ZXTheme fontMono:10 weight:UIFontWeightBold];
+    [ZXTheme applyTextTracking:sub spacing:2.0];
+    sub.translatesAutoresizingMaskIntoConstraints = NO;
+    [_splashContainer addSubview:sub];
     
-    UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(10, 9, 6, 6)];
-    dot.backgroundColor = [ZXTheme accentBlue];
-    dot.layer.cornerRadius = 3;
-    [badge addSubview:dot];
+    _progressTrack = [[UIView alloc] init];
+    _progressTrack.backgroundColor = [ZXTheme borderSubtle];
+    _progressTrack.layer.cornerRadius = 2;
+    _progressTrack.translatesAutoresizingMaskIntoConstraints = NO;
+    [_splashContainer addSubview:_progressTrack];
     
-    UILabel *sub = [[UILabel alloc] initWithFrame:CGRectMake(22, 0, 150, 24)];
-    sub.text = @"Zentrax License Center";
-    sub.textColor = [ZXTheme accentBlue];
-    sub.font = [ZXTheme fontHeading:11];
-    [badge addSubview:sub];
+    _progressFill = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 0, 4)];
+    _progressFill.backgroundColor = [ZXTheme accentCyan];
+    _progressFill.layer.cornerRadius = 2;
+    _progressFill.layer.shadowColor = [ZXTheme accentCyan].CGColor;
+    _progressFill.layer.shadowRadius = 8;
+    _progressFill.layer.shadowOpacity = 0.8;
+    [_progressTrack addSubview:_progressFill];
     
     [NSLayoutConstraint activateConstraints:@[
         [iconBg.centerXAnchor constraintEqualToAnchor:_splashContainer.centerXAnchor],
@@ -899,13 +928,16 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [_splashShield.widthAnchor constraintEqualToConstant:40],
         [_splashShield.heightAnchor constraintEqualToConstant:45],
         
-        [title.topAnchor constraintEqualToAnchor:iconBg.bottomAnchor constant:24],
+        [title.topAnchor constraintEqualToAnchor:iconBg.bottomAnchor constant:30],
         [title.centerXAnchor constraintEqualToAnchor:_splashContainer.centerXAnchor],
         
-        [badge.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:12],
-        [badge.centerXAnchor constraintEqualToAnchor:_splashContainer.centerXAnchor],
-        [badge.widthAnchor constraintEqualToConstant:180],
-        [badge.heightAnchor constraintEqualToConstant:24]
+        [sub.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:10],
+        [sub.centerXAnchor constraintEqualToAnchor:_splashContainer.centerXAnchor],
+        
+        [_progressTrack.bottomAnchor constraintEqualToAnchor:_splashContainer.safeAreaLayoutGuide.bottomAnchor constant:-80],
+        [_progressTrack.leadingAnchor constraintEqualToAnchor:_splashContainer.leadingAnchor constant:80],
+        [_progressTrack.trailingAnchor constraintEqualToAnchor:_splashContainer.trailingAnchor constant:-80],
+        [_progressTrack.heightAnchor constraintEqualToConstant:4]
     ]];
 }
 
@@ -914,126 +946,104 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     self.splashContainer.alpha = 1.0;
     
     CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
-    pulse.toValue = @1.05;
+    pulse.toValue = @1.08;
     pulse.duration = 1.0;
     pulse.autoreverses = YES;
     pulse.repeatCount = HUGE_VALF;
     [self.splashShield.layer addAnimation:pulse forKey:@"pulse"];
+    
+    // Progress Bar Animation
+    [UIView animateWithDuration:1.5 delay:0.2 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+        self.progressFill.frame = CGRectMake(0, 0, (self.view.bounds.size.width - 160) * 0.8, 4);
+    } completion:nil];
     
     NSTimeInterval sequenceStartTime = CACurrentMediaTime();
     
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestSessionVerificationWithCompletion:)]) {
         [self.delegate zentraxDidRequestSessionVerificationWithCompletion:^(BOOL isValid) {
             NSTimeInterval elapsed = CACurrentMediaTime() - sequenceStartTime;
-            NSTimeInterval remainingDelay = MAX(0.0, 2.0 - elapsed);
+            NSTimeInterval remainingDelay = MAX(0.0, 1.8 - elapsed);
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, remainingDelay * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                [self.splashShield.layer removeAllAnimations];
-                if (isValid) {
-                    [self transitionToState:ZXAppStateDashboard];
-                    [self showVaultToast:@"Session Synced" isError:NO];
-                } else {
-                    [self transitionToState:ZXAppStateAuth];
-                }
+                
+                [UIView animateWithDuration:0.4 animations:^{
+                    self.progressFill.frame = CGRectMake(0, 0, self.view.bounds.size.width - 160, 4);
+                } completion:^(BOOL finished) {
+                    [self.splashShield.layer removeAllAnimations];
+                    if (isValid) {
+                        [self transitionToState:ZXAppStateDashboard];
+                        [self showPremiumToast:@"Session Restored" success:YES];
+                    } else {
+                        [self transitionToState:ZXAppStateAuth];
+                    }
+                }];
             });
         }];
     } else {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
             [self.splashShield.layer removeAllAnimations];
             [self transitionToState:ZXAppStateAuth];
         });
     }
 }
 
-#pragma mark - Vault Auth Flow
+#pragma mark - Premium Auth Flow
 - (void)setupAuth {
     _authContainer = [[UIView alloc] initWithFrame:self.view.bounds];
     [self.view addSubview:_authContainer];
     
-    UIView *badge = [[UIView alloc] init];
-    badge.backgroundColor = [[ZXTheme accentPurple] colorWithAlphaComponent:0.15];
-    badge.layer.cornerRadius = 14;
-    badge.layer.borderWidth = 1.0;
-    badge.layer.borderColor = [ZXTheme accentPurple].CGColor;
-    badge.translatesAutoresizingMaskIntoConstraints = NO;
-    [_authContainer addSubview:badge];
-    
-    UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(12, 10, 8, 8)];
-    dot.backgroundColor = [ZXTheme accentPurple];
-    dot.layer.cornerRadius = 4;
-    dot.layer.shadowColor = [ZXTheme accentPurple].CGColor;
-    dot.layer.shadowRadius = 5;
-    dot.layer.shadowOpacity = 1.0;
-    [badge addSubview:dot];
-    
-    UILabel *headerSub = [[UILabel alloc] initWithFrame:CGRectMake(28, 0, 160, 28)];
-    headerSub.text = @"Zentrax License Center";
-    headerSub.textColor = [ZXTheme accentPurple];
-    headerSub.font = [ZXTheme fontHeading:12];
-    [badge addSubview:headerSub];
+    UILabel *headerSub = [[UILabel alloc] init];
+    headerSub.text = @"WELCOME TO ZENTRAX";
+    headerSub.textColor = [ZXTheme accentCyan];
+    headerSub.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
+    [ZXTheme applyTextTracking:headerSub spacing:3.0];
+    headerSub.textAlignment = NSTextAlignmentCenter;
+    headerSub.translatesAutoresizingMaskIntoConstraints = NO;
+    [_authContainer addSubview:headerSub];
     
     UILabel *title = [[UILabel alloc] init];
-    title.text = @"Secure Node\nActivation";
+    title.text = @"VIP Authentication";
     title.textColor = [UIColor whiteColor];
-    title.font = [ZXTheme fontDisplay:34];
+    title.font = [ZXTheme fontDisplay:32];
     title.textAlignment = NSTextAlignmentCenter;
-    title.numberOfLines = 2;
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [_authContainer addSubview:title];
     
-    UILabel *desc = [[UILabel alloc] init];
-    desc.text = @"Securely activate your license and manage your devices with Zentrax protection.";
-    desc.textColor = [ZXTheme textSecondary];
-    desc.font = [ZXTheme fontBody:14 weight:UIFontWeightRegular];
-    desc.textAlignment = NSTextAlignmentCenter;
-    desc.numberOfLines = 0;
-    desc.translatesAutoresizingMaskIntoConstraints = NO;
-    [_authContainer addSubview:desc];
-    
     UIView *card = [[UIView alloc] init];
-    card.backgroundColor = [ZXTheme bgCardOuter];
-    card.layer.cornerRadius = 20;
-    card.layer.borderWidth = 1.0;
-    card.layer.borderColor = [ZXTheme borderSubtle].CGColor;
+    card.backgroundColor = [UIColor clearColor];
     card.translatesAutoresizingMaskIntoConstraints = NO;
     [_authContainer addSubview:card];
     
-    _keyInput = [[ZXVaultField alloc] init];
+    _keyInput = [[ZXTextField alloc] init];
     _keyInput.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:_keyInput];
     
-    _loginBtn = [[ZXVaultButton alloc] init];
-    [_loginBtn setTitle:@"Authenticate License" forState:UIControlStateNormal];
+    _loginBtn = [[ZXButton alloc] init];
+    [_loginBtn setTitle:@"AUTHENTICATE" forState:UIControlStateNormal];
     [_loginBtn addTarget:self action:@selector(handleLogin) forControlEvents:UIControlEventTouchUpInside];
     _loginBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:_loginBtn];
     
     [NSLayoutConstraint activateConstraints:@[
-        [badge.topAnchor constraintEqualToAnchor:_authContainer.safeAreaLayoutGuide.topAnchor constant:40],
-        [badge.centerXAnchor constraintEqualToAnchor:_authContainer.centerXAnchor],
-        [badge.widthAnchor constraintEqualToConstant:190],
-        [badge.heightAnchor constraintEqualToConstant:28],
+        [headerSub.bottomAnchor constraintEqualToAnchor:title.topAnchor constant:-12],
+        [headerSub.centerXAnchor constraintEqualToAnchor:_authContainer.centerXAnchor],
         
-        [title.topAnchor constraintEqualToAnchor:badge.bottomAnchor constant:24],
+        [title.bottomAnchor constraintEqualToAnchor:card.topAnchor constant:-50],
         [title.centerXAnchor constraintEqualToAnchor:_authContainer.centerXAnchor],
         
-        [desc.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:16],
-        [desc.leadingAnchor constraintEqualToAnchor:_authContainer.leadingAnchor constant:40],
-        [desc.trailingAnchor constraintEqualToAnchor:_authContainer.trailingAnchor constant:-40],
+        [card.centerYAnchor constraintEqualToAnchor:_authContainer.centerYAnchor constant:20],
+        [card.leadingAnchor constraintEqualToAnchor:_authContainer.leadingAnchor constant:32],
+        [card.trailingAnchor constraintEqualToAnchor:_authContainer.trailingAnchor constant:-32],
+        [card.heightAnchor constraintEqualToConstant:160],
         
-        [card.topAnchor constraintEqualToAnchor:desc.bottomAnchor constant:40],
-        [card.leadingAnchor constraintEqualToAnchor:_authContainer.leadingAnchor constant:24],
-        [card.trailingAnchor constraintEqualToAnchor:_authContainer.trailingAnchor constant:-24],
-        [card.heightAnchor constraintEqualToConstant:200],
+        [_keyInput.topAnchor constraintEqualToAnchor:card.topAnchor],
+        [_keyInput.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
+        [_keyInput.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
+        [_keyInput.heightAnchor constraintEqualToConstant:70],
         
-        [_keyInput.topAnchor constraintEqualToAnchor:card.topAnchor constant:24],
-        [_keyInput.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
-        [_keyInput.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
-        [_keyInput.heightAnchor constraintEqualToConstant:80],
-        
-        [_loginBtn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-24],
-        [_loginBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
-        [_loginBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
-        [_loginBtn.heightAnchor constraintEqualToConstant:54],
+        [_loginBtn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
+        [_loginBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
+        [_loginBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
+        [_loginBtn.heightAnchor constraintEqualToConstant:60],
     ]];
 }
 
@@ -1041,7 +1051,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [self dismissKeyboard];
     NSString *key = [self.keyInput.textField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (key.length == 0) {
-        [self showVaultToast:@"License key cannot be empty" isError:YES];
+        [self showPremiumToast:@"License key cannot be empty" success:NO];
         return;
     }
     if (!self.loginBtn.userInteractionEnabled) return;
@@ -1058,10 +1068,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 [strongSelf.loginBtn setLoading:NO];
                 if (success) {
                     [strongSelf transitionToState:ZXAppStateDashboard];
-                    [strongSelf showVaultToast:@"Node Activated" isError:NO];
+                    [strongSelf showPremiumToast:@"Login Successful" success:YES];
                     [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy] impactOccurred];
                 } else {
-                    [strongSelf showGlobalErrorWithTitle:@"ACTIVATION FAILED" message:errorMsg ?: @"Key rejected by server node."];
+                    [strongSelf showGlobalErrorWithTitle:@"ACCESS DENIED" message:errorMsg ?: @"Key rejected by server node."];
                 }
             });
         }];
@@ -1070,55 +1080,30 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
 - (void)setupVerification {}
 
-#pragma mark - Premium Vault Dashboard
+#pragma mark - Premium Dashboard
 - (void)setupDashboard {
     _dashboardContainer = [[UIView alloc] initWithFrame:self.view.bounds];
     [self.view addSubview:_dashboardContainer];
     
+    // Clean Header
     UIView *navBar = [[UIView alloc] init];
     navBar.translatesAutoresizingMaskIntoConstraints = NO;
     [_dashboardContainer addSubview:navBar];
     
-    UIImageView *navIcon = [[UIImageView alloc] initWithImage:[[UIImage systemImageNamed:@"shield.lefthalf.filled"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
-    navIcon.tintColor = [ZXTheme accentPurple];
-    navIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    [navBar addSubview:navIcon];
-    
     UILabel *navTitle = [[UILabel alloc] init];
-    navTitle.text = @"Zentrax";
+    navTitle.text = @"VIP DASHBOARD";
     navTitle.textColor = [UIColor whiteColor];
-    navTitle.font = [ZXTheme fontHeading:20];
+    navTitle.font = [ZXTheme fontHeading:18];
+    [ZXTheme applyTextTracking:navTitle spacing:2.0];
     navTitle.translatesAutoresizingMaskIntoConstraints = NO;
     [navBar addSubview:navTitle];
     
     UIButton *logoutBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [logoutBtn setImage:[[UIImage systemImageNamed:@"power"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
-    logoutBtn.tintColor = [ZXTheme textMuted];
+    logoutBtn.tintColor = [ZXTheme statusError];
     logoutBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [logoutBtn addTarget:self action:@selector(handleLogout) forControlEvents:UIControlEventTouchUpInside];
     [navBar addSubview:logoutBtn];
-    
-    // Segmented Vault Area (Visual matching the image)
-    UIView *segmentedBg = [[UIView alloc] init];
-    segmentedBg.backgroundColor = [ZXTheme bgCardOuter];
-    segmentedBg.layer.cornerRadius = 14;
-    segmentedBg.layer.borderWidth = 1.0;
-    segmentedBg.layer.borderColor = [ZXTheme borderSubtle].CGColor;
-    segmentedBg.translatesAutoresizingMaskIntoConstraints = NO;
-    [_dashboardContainer addSubview:segmentedBg];
-    
-    UIView *activeSeg = [[UIView alloc] init];
-    activeSeg.backgroundColor = [ZXTheme bgCardInner];
-    activeSeg.layer.cornerRadius = 10;
-    activeSeg.translatesAutoresizingMaskIntoConstraints = NO;
-    [segmentedBg addSubview:activeSeg];
-    
-    UILabel *segLbl = [[UILabel alloc] init];
-    segLbl.text = @"My Vault";
-    segLbl.textColor = [UIColor whiteColor];
-    segLbl.font = [ZXTheme fontHeading:14];
-    segLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    [activeSeg addSubview:segLbl];
     
     // Status Card
     UIView *statusCard = [[UIView alloc] init];
@@ -1132,15 +1117,15 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     UILabel *subTitle = [[UILabel alloc] init];
     subTitle.text = @"LICENSE STATUS";
     subTitle.textColor = [ZXTheme textMuted];
-    subTitle.font = [ZXTheme fontHeading:12];
-    [ZXTheme applyTextTracking:subTitle spacing:1.0];
+    subTitle.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
+    [ZXTheme applyTextTracking:subTitle spacing:1.5];
     subTitle.translatesAutoresizingMaskIntoConstraints = NO;
     [statusCard addSubview:subTitle];
     
     _statusLabel = [[UILabel alloc] init];
-    _statusLabel.text = @"Active Node";
-    _statusLabel.textColor = [UIColor whiteColor];
-    _statusLabel.font = [ZXTheme fontDisplay:22];
+    _statusLabel.text = @"ACTIVE";
+    _statusLabel.textColor = [ZXTheme statusSuccess];
+    _statusLabel.font = [ZXTheme fontDisplay:24];
     _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [statusCard addSubview:_statusLabel];
     
@@ -1151,6 +1136,12 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     _expiryLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [statusCard addSubview:_expiryLabel];
     
+    UIImageView *cardIcon = [[UIImageView alloc] initWithImage:[[UIImage systemImageNamed:@"checkmark.seal.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
+    cardIcon.tintColor = [ZXTheme statusSuccess];
+    cardIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    [statusCard addSubview:cardIcon];
+    
+    // Scroll Area
     _modulesScrollView = [[UIScrollView alloc] init];
     _modulesScrollView.showsVerticalScrollIndicator = NO;
     _modulesScrollView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1172,12 +1163,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [navBar.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
         [navBar.heightAnchor constraintEqualToConstant:44],
         
-        [navIcon.leadingAnchor constraintEqualToAnchor:navBar.leadingAnchor],
-        [navIcon.centerYAnchor constraintEqualToAnchor:navBar.centerYAnchor],
-        [navIcon.widthAnchor constraintEqualToConstant:24],
-        [navIcon.heightAnchor constraintEqualToConstant:28],
-        
-        [navTitle.leadingAnchor constraintEqualToAnchor:navIcon.trailingAnchor constant:12],
+        [navTitle.leadingAnchor constraintEqualToAnchor:navBar.leadingAnchor],
         [navTitle.centerYAnchor constraintEqualToAnchor:navBar.centerYAnchor],
         
         [logoutBtn.trailingAnchor constraintEqualToAnchor:navBar.trailingAnchor],
@@ -1185,23 +1171,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [logoutBtn.widthAnchor constraintEqualToConstant:32],
         [logoutBtn.heightAnchor constraintEqualToConstant:32],
         
-        [segmentedBg.topAnchor constraintEqualToAnchor:navBar.bottomAnchor constant:24],
-        [segmentedBg.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
-        [segmentedBg.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
-        [segmentedBg.heightAnchor constraintEqualToConstant:48],
-        
-        [activeSeg.topAnchor constraintEqualToAnchor:segmentedBg.topAnchor constant:4],
-        [activeSeg.leadingAnchor constraintEqualToAnchor:segmentedBg.leadingAnchor constant:4],
-        [activeSeg.bottomAnchor constraintEqualToAnchor:segmentedBg.bottomAnchor constant:-4],
-        [activeSeg.widthAnchor constraintEqualToAnchor:segmentedBg.widthAnchor multiplier:0.5 constant:-6],
-        
-        [segLbl.centerXAnchor constraintEqualToAnchor:activeSeg.centerXAnchor],
-        [segLbl.centerYAnchor constraintEqualToAnchor:activeSeg.centerYAnchor],
-        
-        [statusCard.topAnchor constraintEqualToAnchor:segmentedBg.bottomAnchor constant:24],
+        [statusCard.topAnchor constraintEqualToAnchor:navBar.bottomAnchor constant:24],
         [statusCard.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
         [statusCard.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
-        [statusCard.heightAnchor constraintEqualToConstant:100],
+        [statusCard.heightAnchor constraintEqualToConstant:110],
         
         [subTitle.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:20],
         [subTitle.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:20],
@@ -1209,8 +1182,13 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [_statusLabel.topAnchor constraintEqualToAnchor:subTitle.bottomAnchor constant:8],
         [_statusLabel.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:20],
         
-        [_expiryLabel.centerYAnchor constraintEqualToAnchor:_statusLabel.centerYAnchor],
-        [_expiryLabel.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-20],
+        [_expiryLabel.topAnchor constraintEqualToAnchor:_statusLabel.bottomAnchor constant:6],
+        [_expiryLabel.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:20],
+        
+        [cardIcon.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-20],
+        [cardIcon.centerYAnchor constraintEqualToAnchor:statusCard.centerYAnchor],
+        [cardIcon.widthAnchor constraintEqualToConstant:40],
+        [cardIcon.heightAnchor constraintEqualToConstant:40],
         
         [_modulesScrollView.topAnchor constraintEqualToAnchor:statusCard.bottomAnchor constant:24],
         [_modulesScrollView.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor],
@@ -1235,7 +1213,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [_emptyStateView addSubview:icon];
     
     UILabel *title = [[UILabel alloc] init];
-    title.text = @"Vault is Empty";
+    title.text = @"NO ACTIVE FEATURES";
     title.textColor = [UIColor whiteColor];
     title.font = [ZXTheme fontHeading:18];
     title.textAlignment = NSTextAlignmentCenter;
@@ -1243,7 +1221,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [_emptyStateView addSubview:title];
     
     UILabel *sub = [[UILabel alloc] init];
-    sub.text = @"No active modules found for this license.";
+    sub.text = @"There are currently no functions available.";
     sub.textColor = [ZXTheme textSecondary];
     sub.font = [ZXTheme fontBody:14 weight:UIFontWeightRegular];
     sub.textAlignment = NSTextAlignmentCenter;
@@ -1269,8 +1247,29 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     ]];
 }
 
+// Critical Bug Fix: Prevent UI blinking/re-rendering on Heartbeat if data is identical
+- (BOOL)isModuleDataIdentical:(NSArray *)newModules {
+    if (!self.cachedModulesState) return NO;
+    if (newModules.count != self.cachedModulesState.count) return NO;
+    
+    for (int i=0; i<newModules.count; i++) {
+        NSDictionary *newMod = newModules[i];
+        NSDictionary *oldMod = self.cachedModulesState[i];
+        if (![newMod isEqualToDictionary:oldMod]) {
+            return NO;
+        }
+    }
+    return YES;
+}
+
 - (void)updateDashboardWithModules:(NSArray<NSDictionary *> *)modules {
     dispatch_async(dispatch_get_main_queue(), ^{
+        
+        // Prevent blinking on background refresh
+        if ([self isModuleDataIdentical:modules]) {
+            return;
+        }
+        self.cachedModulesState = modules;
         
         for (UIView *view in self.modulesStackView.arrangedSubviews) {
             [self.modulesStackView removeArrangedSubview:view];
@@ -1286,8 +1285,9 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         
         UILabel *sectionHeader = [[UILabel alloc] init];
         sectionHeader.text = @"ACTIVE FEATURES";
-        sectionHeader.textColor = [ZXTheme textPrimary];
-        sectionHeader.font = [ZXTheme fontHeading:14];
+        sectionHeader.textColor = [ZXTheme accentCyan];
+        sectionHeader.font = [ZXTheme fontMono:11 weight:UIFontWeightBold];
+        [ZXTheme applyTextTracking:sectionHeader spacing:2.0];
         [self.modulesStackView addArrangedSubview:sectionHeader];
         [self.modulesStackView setCustomSpacing:12 afterView:sectionHeader];
         
@@ -1304,12 +1304,36 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             card.layer.borderColor = [ZXTheme borderSubtle].CGColor;
             card.translatesAutoresizingMaskIntoConstraints = NO;
             
+            UIView *indicator = [[UIView alloc] init];
+            indicator.backgroundColor = isModOn ? [ZXTheme accentCyan] : [ZXTheme textMuted];
+            indicator.layer.cornerRadius = 3;
+            if (isModOn) {
+                indicator.layer.shadowColor = [ZXTheme accentCyan].CGColor;
+                indicator.layer.shadowOpacity = 1.0;
+                indicator.layer.shadowRadius = 5;
+            }
+            indicator.translatesAutoresizingMaskIntoConstraints = NO;
+            [card addSubview:indicator];
+            
             UILabel *t = [[UILabel alloc] init];
-            t.text = moduleName; // Normal casing, not forced uppercase for SaaS look
+            t.text = [moduleName uppercaseString];
             t.textColor = [UIColor whiteColor];
             t.font = [ZXTheme fontHeading:16];
             t.translatesAutoresizingMaskIntoConstraints = NO;
             [card addSubview:t];
+            
+            ZXToggle *toggle = [[ZXToggle alloc] init];
+            toggle.moduleId = moduleName; 
+            [toggle setOn:isModOn animated:NO]; 
+            [toggle addTarget:self action:@selector(moduleToggled:) forControlEvents:UIControlEventValueChanged];
+            [card addSubview:toggle];
+            
+            // Premium Inset Box for Description
+            UIView *descBox = [[UIView alloc] init];
+            descBox.backgroundColor = [ZXTheme bgCardInner];
+            descBox.layer.cornerRadius = 10;
+            descBox.translatesAutoresizingMaskIntoConstraints = NO;
+            [card addSubview:descBox];
             
             UILabel *s = [[UILabel alloc] init];
             s.text = moduleDesc;
@@ -1317,26 +1341,30 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             s.font = [ZXTheme fontBody:13 weight:UIFontWeightRegular];
             s.numberOfLines = 0;
             s.translatesAutoresizingMaskIntoConstraints = NO;
-            [card addSubview:s];
-            
-            ZXVaultToggle *toggle = [[ZXVaultToggle alloc] init];
-            toggle.moduleId = moduleName; 
-            [toggle setOn:isModOn animated:NO]; 
-            [toggle addTarget:self action:@selector(moduleToggled:) forControlEvents:UIControlEventValueChanged];
-            [card addSubview:toggle];
+            [descBox addSubview:s];
             
             [NSLayoutConstraint activateConstraints:@[
-                [toggle.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
-                [toggle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
+                [indicator.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
+                [indicator.centerYAnchor constraintEqualToAnchor:t.centerYAnchor],
+                [indicator.widthAnchor constraintEqualToConstant:6],
+                [indicator.heightAnchor constraintEqualToConstant:6],
                 
                 [t.topAnchor constraintEqualToAnchor:card.topAnchor constant:20],
-                [t.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
+                [t.leadingAnchor constraintEqualToAnchor:indicator.trailingAnchor constant:12],
                 [t.trailingAnchor constraintLessThanOrEqualToAnchor:toggle.leadingAnchor constant:-16],
                 
-                [s.topAnchor constraintEqualToAnchor:t.bottomAnchor constant:6],
-                [s.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
-                [s.trailingAnchor constraintLessThanOrEqualToAnchor:toggle.leadingAnchor constant:-16],
-                [s.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20]
+                [toggle.centerYAnchor constraintEqualToAnchor:t.centerYAnchor],
+                [toggle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
+                
+                [descBox.topAnchor constraintEqualToAnchor:t.bottomAnchor constant:16],
+                [descBox.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
+                [descBox.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
+                [descBox.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20],
+                
+                [s.topAnchor constraintEqualToAnchor:descBox.topAnchor constant:12],
+                [s.leadingAnchor constraintEqualToAnchor:descBox.leadingAnchor constant:16],
+                [s.trailingAnchor constraintEqualToAnchor:descBox.trailingAnchor constant:-16],
+                [s.bottomAnchor constraintEqualToAnchor:descBox.bottomAnchor constant:-12]
             ]];
             
             [self.modulesStackView addArrangedSubview:card];
@@ -1355,15 +1383,17 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSString *expiryStr = subData[@"expiry"];
         if ([expiryStr isEqualToString:@"Lifetime"]) {
-            self.expiryLabel.text = @"LIFETIME";
+            self.expiryLabel.text = @"EXPIRES: LIFETIME ACCESS";
+            self.expiryLabel.textColor = [ZXTheme accentCyan];
         } else if (expiryStr) {
-            self.expiryLabel.text = expiryStr;
+            self.expiryLabel.text = [[NSString stringWithFormat:@"EXPIRES: %@", expiryStr] uppercaseString];
+            self.expiryLabel.textColor = [ZXTheme textSecondary];
         } else {
-            self.expiryLabel.text = @"--";
+            self.expiryLabel.text = @"NO EXPIRY DATA";
         }
-        NSString *s = subData[@"status"] ?: @"Active";
-        self.statusLabel.text = [s capitalizedString];
         
+        NSString *s = subData[@"status"] ?: @"Active";
+        self.statusLabel.text = [s uppercaseString];
         if ([s.lowercaseString isEqualToString:@"active"]) {
             self.statusLabel.textColor = [ZXTheme statusSuccess];
         } else {
@@ -1372,14 +1402,14 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     });
 }
 
-- (ZXVaultToggle *)findToggleInCard:(UIView *)card {
+- (ZXToggle *)findToggleInCard:(UIView *)card {
     for (UIView *sub in card.subviews) {
-        if ([sub isKindOfClass:[ZXVaultToggle class]]) return (ZXVaultToggle *)sub;
+        if ([sub isKindOfClass:[ZXToggle class]]) return (ZXToggle *)sub;
     }
     return nil;
 }
 
-- (void)moduleToggled:(ZXVaultToggle *)sender {
+- (void)moduleToggled:(ZXToggle *)sender {
     NSString *networkModuleId = sender.moduleId;
     if (!networkModuleId) return;
     
@@ -1397,8 +1427,11 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 [sender setLoading:NO];
                 
                 if (success) {
-                    NSString *toastMsg = requestedState ? @"Module Activated" : @"Module Deactivated";
-                    [strongSelf showVaultToast:toastMsg isError:NO];
+                    NSString *toastMsg = requestedState ? @"Function Enabled" : @"Function Disabled";
+                    [strongSelf showPremiumToast:toastMsg success:YES];
+                    
+                    // Force refresh cache to match local state
+                    strongSelf.cachedModulesState = nil;
                 } else {
                     [sender setOn:!requestedState animated:YES];
                     [strongSelf showGlobalErrorWithTitle:@"Injection Failed" message:errorMsg ?: @"Failed to inject execution payload safely."];
@@ -1408,17 +1441,20 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     }
 }
 
-#pragma mark - Premium Vault Toast
-- (void)showVaultToast:(NSString *)msg isError:(BOOL)isError {
+#pragma mark - Centered Top-Down Toast
+- (void)showPremiumToast:(NSString *)msg success:(BOOL)success {
     for (UIView *v in self.view.subviews) {
         if (v.tag == 887766) [v removeFromSuperview];
     }
     
-    UIColor *tint = isError ? [ZXTheme statusError] : [ZXTheme statusSuccess];
+    UIColor *tint = success ? [ZXTheme statusSuccess] : [ZXTheme statusError];
     CGFloat toastWidth = 260;
     CGFloat toastHeight = 44;
     
-    CGFloat topInset = 45; // Safe default
+    // AutoLayout safe centering without rotation bugs
+    CGFloat screenWidth = self.view.bounds.size.width;
+    CGFloat topInset = 45; 
+    
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]]) {
@@ -1437,7 +1473,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     }
     if (topInset == 0) topInset = 45;
     
-    UIView *toast = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - toastWidth)/2, -60, toastWidth, toastHeight)];
+    UIView *toast = [[UIView alloc] initWithFrame:CGRectMake((screenWidth - toastWidth)/2, -60, toastWidth, toastHeight)];
     toast.tag = 887766;
     toast.backgroundColor = [ZXTheme bgCardOuter];
     toast.layer.cornerRadius = 22;
@@ -1464,13 +1500,13 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     
     [self.view addSubview:toast];
     
-    [[[UIImpactFeedbackGenerator alloc] initWithStyle:isError ? UIImpactFeedbackStyleHeavy : UIImpactFeedbackStyleLight] impactOccurred];
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:success ? UIImpactFeedbackStyleLight : UIImpactFeedbackStyleHeavy] impactOccurred];
     
     [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.7 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        toast.frame = CGRectMake((self.view.bounds.size.width - toastWidth)/2, topInset + 10, toastWidth, toastHeight);
+        toast.frame = CGRectMake((screenWidth - toastWidth)/2, topInset + 10, toastWidth, toastHeight);
     } completion:^(BOOL finished) {
         [UIView animateWithDuration:0.3 delay:1.8 options:UIViewAnimationOptionCurveEaseIn animations:^{
-            toast.frame = CGRectMake((self.view.bounds.size.width - toastWidth)/2, -60, toastWidth, toastHeight);
+            toast.frame = CGRectMake((screenWidth - toastWidth)/2, -60, toastWidth, toastHeight);
             toast.alpha = 0;
         } completion:^(BOOL finished) {
             [toast removeFromSuperview];
@@ -1492,6 +1528,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                     __strong typeof(weakSelf) strongSelf = weakSelf;
                     if (strongSelf) {
                         strongSelf.keyInput.textField.text = @"";
+                        [strongSelf.keyInput updateFloatingLabelStateAnimated:NO];
                         [strongSelf transitionToState:ZXAppStateAuth];
                     }
                 });
@@ -1503,20 +1540,20 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
 - (void)showGlobalErrorWithTitle:(NSString *)title message:(NSString *)msg {
     dispatch_async(dispatch_get_main_queue(), ^{
-        [ZXModalManager showModalWithIcon:@"exclamationmark.triangle.fill" iconTint:[ZXTheme statusError] title:title message:msg actionTitle:@"Dismiss" inView:self.view];
+        [ZXModalManager showModalWithIcon:@"exclamationmark.triangle.fill" isError:YES title:title message:msg actionTitle:@"Dismiss" inView:self.view];
     });
 }
 - (void)showSuccessMessage:(NSString *)title message:(NSString *)msg {
     dispatch_async(dispatch_get_main_queue(), ^{
-        [ZXModalManager showModalWithIcon:@"checkmark.shield.fill" iconTint:[ZXTheme statusSuccess] title:title message:msg actionTitle:@"Continue" inView:self.view];
+        [ZXModalManager showModalWithIcon:@"checkmark.shield.fill" isError:NO title:title message:msg actionTitle:@"Continue" inView:self.view];
     });
 }
-- (void)showNetworkError { [self showVaultToast:@"Network Connection Lost" isError:YES]; }
-- (void)showServerError { [self showVaultToast:@"Server Unavailable" isError:YES]; }
+- (void)showNetworkError { [self showPremiumToast:@"Network Connection Lost" success:NO]; }
+- (void)showServerError { [self showPremiumToast:@"Server Unavailable" success:NO]; }
 - (void)showRateLimitErrorWithSecondsRemaining:(NSInteger)seconds {
     NSString *msg = [NSString stringWithFormat:@"Request limits reached. Cooldown active for %ld seconds.", (long)seconds];
     dispatch_async(dispatch_get_main_queue(), ^{
-        [ZXModalManager showModalWithIcon:@"timer" iconTint:[ZXTheme statusWarning] title:@"Rate Limited" message:msg actionTitle:@"Understood" inView:self.view];
+        [ZXModalManager showModalWithIcon:@"timer" isError:YES title:@"Rate Limited" message:msg actionTitle:@"Understood" inView:self.view];
     });
 }
 - (void)showGlobalLoadingState:(NSString *)message {}
