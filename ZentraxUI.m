@@ -153,7 +153,7 @@
     _gridSweep = [CAGradientLayer layer];
     _gridSweep.colors = @[
         (id)[UIColor clearColor].CGColor,
-        (id)[[ZXTheme lavender] colorWithAlphaComponent:0.11].CGColor,
+        (id)[[ZXTheme lavender] colorWithAlphaComponent:0.035].CGColor,
         (id)[UIColor clearColor].CGColor
     ];
     _gridSweep.startPoint = CGPointMake(0, 0);
@@ -323,6 +323,9 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
         [_spinner.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
     ]];
 
+    [self bringSubviewToFront:self.titleLabel];
+    [self bringSubviewToFront:self.spinner];
+
     [self addTarget:self action:@selector(zxTouchDown) forControlEvents:UIControlEventTouchDown];
     [self addTarget:self action:@selector(zxTouchUp) forControlEvents:UIControlEventTouchUpInside |
      UIControlEventTouchUpOutside | UIControlEventTouchCancel];
@@ -333,6 +336,8 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     self.gradientLayer.frame = self.buttonSurface.bounds;
+    [self bringSubviewToFront:self.titleLabel];
+    [self bringSubviewToFront:self.spinner];
 }
 
 - (void)zxTouchDown {
@@ -385,8 +390,8 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
     self = [super initWithFrame:CGRectZero];
     if (!self) return nil;
 
-    _caption = ZXLabel(@"AUTHENTICATION KEY", [ZXTheme mono:10 weight:UIFontWeightBold], [ZXTheme secondaryText]);
-    [ZXTheme track:_caption spacing:1.5];
+    _caption = ZXLabel(@"AUTHENTICATION KEY", [ZXTheme mono:9 weight:UIFontWeightBold], [ZXTheme lavender]);
+    [ZXTheme track:_caption spacing:1.2];
     _caption.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:_caption];
 
@@ -1239,6 +1244,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     _keyInput = [[ZXPremiumField alloc] init];
     _keyInput.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:_keyInput];
+    [_keyInput setContentCompressionResistancePriority:UILayoutPriorityRequired
+                                             forAxis:UILayoutConstraintAxisVertical];
+    [_keyInput setContentHuggingPriority:UILayoutPriorityRequired
+                                forAxis:UILayoutConstraintAxisVertical];
 
     _loginBtn = [[ZXPremiumButton alloc] init];
     [_loginBtn setTitle:@"AUTHENTICATE NODE" forState:UIControlStateNormal];
@@ -1270,9 +1279,9 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [_keyInput.topAnchor constraintEqualToAnchor:card.topAnchor constant:20],
         [_keyInput.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
         [_keyInput.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
-        [_keyInput.heightAnchor constraintEqualToConstant:70],
+        [_keyInput.heightAnchor constraintEqualToConstant:78],
 
-        [_loginBtn.topAnchor constraintEqualToAnchor:_keyInput.bottomAnchor constant:18],
+        [_loginBtn.topAnchor constraintEqualToAnchor:_keyInput.bottomAnchor constant:16],
         [_loginBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
         [_loginBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
         [_loginBtn.heightAnchor constraintEqualToConstant:54],
@@ -1386,6 +1395,15 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     statusCard.translatesAutoresizingMaskIntoConstraints = NO;
     [_dashboardContainer addSubview:statusCard];
 
+    UIView *statusRail = [[UIView alloc] init];
+    statusRail.backgroundColor = [ZXTheme violet];
+    statusRail.layer.cornerRadius = 1.5;
+    statusRail.layer.shadowColor = [ZXTheme violet].CGColor;
+    statusRail.layer.shadowOpacity = 0.55;
+    statusRail.layer.shadowRadius = 7;
+    statusRail.translatesAutoresizingMaskIntoConstraints = NO;
+    [statusCard addSubview:statusRail];
+
     UILabel *statusCaption = ZXLabel(@"NODE STATUS", [ZXTheme mono:9 weight:UIFontWeightBold], [ZXTheme mutedText]);
     [ZXTheme track:statusCaption spacing:1.5];
     statusCaption.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1436,6 +1454,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     _keyRevealLabel = ZXLabel(@"••••••••••••", [ZXTheme mono:11 weight:UIFontWeightBold], [ZXTheme primaryText]);
     _keyRevealLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [keyBox addSubview:_keyRevealLabel];
+    [_keyRevealLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow
+                                                    forAxis:UILayoutConstraintAxisHorizontal];
+    [_keyRevealLabel setContentHuggingPriority:UILayoutPriorityDefaultLow
+                                       forAxis:UILayoutConstraintAxisHorizontal];
 
     _keyEyeButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [_keyEyeButton setImage:[UIImage systemImageNamed:@"eye.slash.fill"] forState:UIControlStateNormal];
@@ -1491,10 +1513,15 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [statusCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:13],
         [statusCard.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:20],
         [statusCard.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-20],
-        [statusCard.heightAnchor constraintEqualToConstant:151],
+        [statusCard.heightAnchor constraintEqualToConstant:158],
+
+        [statusRail.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:17],
+        [statusRail.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:15],
+        [statusRail.widthAnchor constraintEqualToConstant:3],
+        [statusRail.heightAnchor constraintEqualToConstant:34],
 
         [statusCaption.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:17],
-        [statusCaption.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:17],
+        [statusCaption.leadingAnchor constraintEqualToAnchor:statusRail.trailingAnchor constant:9],
 
         [statusDot.leadingAnchor constraintEqualToAnchor:statusCaption.trailingAnchor constant:8],
         [statusDot.centerYAnchor constraintEqualToAnchor:statusCaption.centerYAnchor],
@@ -1517,8 +1544,8 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
         [keyBox.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:13],
         [keyBox.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-13],
-        [keyBox.bottomAnchor constraintEqualToAnchor:statusCard.bottomAnchor constant:-13],
-        [keyBox.heightAnchor constraintEqualToConstant:43],
+        [keyBox.bottomAnchor constraintEqualToAnchor:statusCard.bottomAnchor constant:-14],
+        [keyBox.heightAnchor constraintEqualToConstant:45],
 
         [keyIcon.leadingAnchor constraintEqualToAnchor:keyBox.leadingAnchor constant:12],
         [keyIcon.centerYAnchor constraintEqualToAnchor:keyBox.centerYAnchor],
@@ -1654,7 +1681,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         UILabel *header = ZXLabel(@"PROTECTED MODULES", [ZXTheme mono:10 weight:UIFontWeightBold], [ZXTheme mutedText]);
         [ZXTheme track:header spacing:1.5];
         [self.modulesStack addArrangedSubview:header];
-        [self.modulesStack setCustomSpacing:3 afterView:header];
+        [self.modulesStack setCustomSpacing:8 afterView:header];
 
         for (NSUInteger index = 0; index < modules.count; index++) {
             NSDictionary *mod = modules[index];
@@ -1664,7 +1691,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             BOOL on = [state.uppercaseString isEqualToString:@"ON"];
 
             UIView *card = [[UIView alloc] init];
-            [ZXTheme styleCard:card radius:16];
+            [ZXTheme styleCard:card radius:17];
             card.layer.borderColor = [[ZXTheme violet] colorWithAlphaComponent:0.24].CGColor;
             card.translatesAutoresizingMaskIntoConstraints = NO;
 
