@@ -1395,15 +1395,6 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     statusCard.translatesAutoresizingMaskIntoConstraints = NO;
     [_dashboardContainer addSubview:statusCard];
 
-    UIView *statusRail = [[UIView alloc] init];
-    statusRail.backgroundColor = [ZXTheme violet];
-    statusRail.layer.cornerRadius = 1.5;
-    statusRail.layer.shadowColor = [ZXTheme violet].CGColor;
-    statusRail.layer.shadowOpacity = 0.55;
-    statusRail.layer.shadowRadius = 7;
-    statusRail.translatesAutoresizingMaskIntoConstraints = NO;
-    [statusCard addSubview:statusRail];
-
     UILabel *statusCaption = ZXLabel(@"NODE STATUS", [ZXTheme mono:9 weight:UIFontWeightBold], [ZXTheme mutedText]);
     [ZXTheme track:statusCaption spacing:1.5];
     statusCaption.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1440,14 +1431,17 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
     UIView *keyBox = [[UIView alloc] init];
     keyBox.backgroundColor = [ZXTheme surfaceInset];
-    keyBox.layer.cornerRadius = 11;
+    keyBox.layer.cornerRadius = 12;
     keyBox.layer.borderWidth = 1;
     keyBox.layer.borderColor = [[ZXTheme violet] colorWithAlphaComponent:0.16].CGColor;
     keyBox.translatesAutoresizingMaskIntoConstraints = NO;
     [statusCard addSubview:keyBox];
 
-    UIImageView *keyIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"key.fill"]];
+    UIImageView *keyIcon = [[UIImageView alloc] initWithImage:
+        [[UIImage systemImageNamed:@"key.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
     keyIcon.tintColor = [ZXTheme lavender];
+    keyIcon.contentMode = UIViewContentModeScaleAspectFit;
+    keyIcon.clipsToBounds = NO;
     keyIcon.translatesAutoresizingMaskIntoConstraints = NO;
     [keyBox addSubview:keyIcon];
 
@@ -1513,23 +1507,18 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         [statusCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:13],
         [statusCard.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:20],
         [statusCard.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-20],
-        [statusCard.heightAnchor constraintEqualToConstant:158],
-
-        [statusRail.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:17],
-        [statusRail.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:15],
-        [statusRail.widthAnchor constraintEqualToConstant:3],
-        [statusRail.heightAnchor constraintEqualToConstant:34],
+        [statusCard.heightAnchor constraintEqualToConstant:164],
 
         [statusCaption.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:17],
-        [statusCaption.leadingAnchor constraintEqualToAnchor:statusRail.trailingAnchor constant:9],
+        [statusCaption.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:20],
 
         [statusDot.leadingAnchor constraintEqualToAnchor:statusCaption.trailingAnchor constant:8],
         [statusDot.centerYAnchor constraintEqualToAnchor:statusCaption.centerYAnchor],
         [statusDot.widthAnchor constraintEqualToConstant:8],
         [statusDot.heightAnchor constraintEqualToConstant:8],
 
-        [_statusLabel.topAnchor constraintEqualToAnchor:statusCaption.bottomAnchor constant:3],
-        [_statusLabel.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:17],
+        [_statusLabel.topAnchor constraintEqualToAnchor:statusCaption.bottomAnchor constant:4],
+        [_statusLabel.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:20],
 
         [validityCaption.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:17],
         [validityCaption.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-17],
@@ -1544,15 +1533,15 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
         [keyBox.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:13],
         [keyBox.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-13],
-        [keyBox.bottomAnchor constraintEqualToAnchor:statusCard.bottomAnchor constant:-14],
-        [keyBox.heightAnchor constraintEqualToConstant:45],
+        [keyBox.bottomAnchor constraintEqualToAnchor:statusCard.bottomAnchor constant:-16],
+        [keyBox.heightAnchor constraintEqualToConstant:48],
 
-        [keyIcon.leadingAnchor constraintEqualToAnchor:keyBox.leadingAnchor constant:12],
+        [keyIcon.leadingAnchor constraintEqualToAnchor:keyBox.leadingAnchor constant:14],
         [keyIcon.centerYAnchor constraintEqualToAnchor:keyBox.centerYAnchor],
-        [keyIcon.widthAnchor constraintEqualToConstant:16],
-        [keyIcon.heightAnchor constraintEqualToConstant:16],
+        [keyIcon.widthAnchor constraintEqualToConstant:22],
+        [keyIcon.heightAnchor constraintEqualToConstant:22],
 
-        [_keyRevealLabel.leadingAnchor constraintEqualToAnchor:keyIcon.trailingAnchor constant:9],
+        [_keyRevealLabel.leadingAnchor constraintEqualToAnchor:keyIcon.trailingAnchor constant:10],
         [_keyRevealLabel.centerYAnchor constraintEqualToAnchor:keyBox.centerYAnchor],
         [_keyRevealLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_keyEyeButton.leadingAnchor constant:-5],
 
@@ -1692,14 +1681,17 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
             UIView *card = [[UIView alloc] init];
             [ZXTheme styleCard:card radius:17];
-            card.layer.borderColor = [[ZXTheme violet] colorWithAlphaComponent:0.24].CGColor;
+            card.layer.borderColor = [[ZXTheme violet] colorWithAlphaComponent:0.20].CGColor;
             card.translatesAutoresizingMaskIntoConstraints = NO;
 
-            UIView *accent = [[UIView alloc] init];
-            accent.backgroundColor = on ? [ZXTheme success] : [[ZXTheme violet] colorWithAlphaComponent:0.35];
-            accent.layer.cornerRadius = 2;
-            accent.translatesAutoresizingMaskIntoConstraints = NO;
-            [card addSubview:accent];
+            UIView *stateDot = [[UIView alloc] init];
+            stateDot.backgroundColor = on ? [ZXTheme success] : [[ZXTheme violet] colorWithAlphaComponent:0.75];
+            stateDot.layer.cornerRadius = 3;
+            stateDot.layer.shadowColor = stateDot.backgroundColor.CGColor;
+            stateDot.layer.shadowOpacity = on ? 0.55 : 0.25;
+            stateDot.layer.shadowRadius = 5;
+            stateDot.translatesAutoresizingMaskIntoConstraints = NO;
+            [card addSubview:stateDot];
 
             UILabel *title = ZXLabel(name, [ZXTheme heading:14], [ZXTheme primaryText]);
             title.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1720,7 +1712,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
             UIView *descBox = [[UIView alloc] init];
             descBox.backgroundColor = [ZXTheme surfaceInset];
-            descBox.layer.cornerRadius = 9;
+            descBox.layer.cornerRadius = 10;
             descBox.layer.borderWidth = 1;
             descBox.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.035].CGColor;
             descBox.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1734,24 +1726,24 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             [NSLayoutConstraint activateConstraints:@[
                 [card.heightAnchor constraintGreaterThanOrEqualToConstant:105],
 
-                [accent.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
-                [accent.topAnchor constraintEqualToAnchor:card.topAnchor],
-                [accent.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
-                [accent.widthAnchor constraintEqualToConstant:3],
-
-                [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:15],
-                [title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:15],
+                [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:16],
+                [title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
                 [title.trailingAnchor constraintLessThanOrEqualToAnchor:toggle.leadingAnchor constant:-8],
 
-                [stateLabel.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:3],
-                [stateLabel.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+                [stateLabel.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:5],
+                [stateLabel.leadingAnchor constraintEqualToAnchor:title.leadingAnchor constant:12],
 
-                [toggle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-15],
-                [toggle.topAnchor constraintEqualToAnchor:card.topAnchor constant:15],
+                [stateDot.centerYAnchor constraintEqualToAnchor:stateLabel.centerYAnchor],
+                [stateDot.trailingAnchor constraintEqualToAnchor:stateLabel.leadingAnchor constant:-6],
+                [stateDot.widthAnchor constraintEqualToConstant:6],
+                [stateDot.heightAnchor constraintEqualToConstant:6],
 
-                [descBox.topAnchor constraintEqualToAnchor:stateLabel.bottomAnchor constant:11],
-                [descBox.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:15],
-                [descBox.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-15],
+                [toggle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16],
+                [toggle.topAnchor constraintEqualToAnchor:card.topAnchor constant:16],
+
+                [descBox.topAnchor constraintEqualToAnchor:stateLabel.bottomAnchor constant:12],
+                [descBox.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
+                [descBox.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16],
                 [descBox.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-14],
 
                 [descLabel.topAnchor constraintEqualToAnchor:descBox.topAnchor constant:9],
