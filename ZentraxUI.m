@@ -909,6 +909,16 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
 @property(nonatomic,strong) NSTimer *heartbeatTimer;
 @property(nonatomic,strong) NSArray *cachedModulesState;
+
+// Authentication verification presentation state.
+@property(nonatomic,strong) UIView *authVerificationOverlay;
+@property(nonatomic,strong) UILabel *authVerificationStatusLabel;
+@property(nonatomic,strong) UILabel *authVerificationPercentLabel;
+@property(nonatomic,strong) UIView *authVerificationProgressFill;
+@property(nonatomic,assign) BOOL authVerificationAnimating;
+@property(nonatomic,assign) BOOL authVerificationResultReady;
+@property(nonatomic,assign) BOOL authVerificationSuccess;
+@property(nonatomic,copy) NSString *authVerificationErrorMessage;
 @end
 
 @implementation ZentraxUI
@@ -1083,21 +1093,32 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 
 - (void)transitionToState:(ZXAppState)newState completion:(void (^)(void))completion {
     if (self.currentState == newState) {
+        if (newState == ZXAppStateAuth) {
+            self.authContainer.userInteractionEnabled = YES;
+            self.dashboardContainer.userInteractionEnabled = NO;
+        } else if (newState == ZXAppStateDashboard) {
+            self.authContainer.userInteractionEnabled = NO;
+            self.dashboardContainer.userInteractionEnabled = YES;
+        }
         if (completion) completion();
         return;
     }
 
     self.currentState = newState;
 
+    // Always restore the correct interaction owner. This fixes the
+    // dashboard -> logout -> login freeze caused by auth remaining disabled.
+    self.splashContainer.userInteractionEnabled = (newState == ZXAppStateSplash);
+    self.authContainer.userInteractionEnabled = (newState == ZXAppStateAuth);
+    self.dashboardContainer.userInteractionEnabled = (newState == ZXAppStateDashboard);
+
     if (newState == ZXAppStateDashboard) {
-        self.authContainer.userInteractionEnabled = NO;
-        self.dashboardContainer.userInteractionEnabled = YES;
         [self startHeartbeatMonitor];
     } else {
         [self stopHeartbeatMonitor];
     }
 
-    self.splashContainer.hidden = (newState != ZXAppStateSplash);
+    self.splashContainer.hidden = NO;
 
     [UIView animateWithDuration:0.42 delay:0
          options:UIViewAnimationOptionCurveEaseInOut
@@ -1106,10 +1127,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         self.authContainer.alpha = (newState == ZXAppStateAuth) ? 1 : 0;
         self.dashboardContainer.alpha = (newState == ZXAppStateDashboard) ? 1 : 0;
     } completion:^(BOOL finished) {
+        self.splashContainer.hidden = (newState != ZXAppStateSplash);
         if (completion) completion();
     }];
 }
-
 #pragma mark - Splash
 
 - (void)setupSplash {
@@ -1309,9 +1330,9 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         return;
     }
 
-    if (!self.loginBtn.userInteractionEnabled) return;
+    if (!self.loginBtn.userInteractionEnabled || self.authVerificationAnimating) return;
 
-    [self.loginBtn setLoading:YES];
+    [self beginAuthenticationVerification];
 
     __weak typeof(self) weakSelf = self;
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestAuthenticationWithKey:completion:)]) {
@@ -1320,32 +1341,285 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
                 __strong typeof(weakSelf) self = weakSelf;
                 if (!self) return;
 
-                [self.loginBtn setLoading:NO];
-
-                if (success) {
-                    [[NSUserDefaults standardUserDefaults] setObject:key forKey:@"Zentrax_LastKey"];
-                    [[NSUserDefaults standardUserDefaults] synchronize];
-
-                    [self populateDashboardKey];
-                    [self transitionToState:ZXAppStateDashboard completion:^{
-                        if (!self.verificationPresented) {
-                            self.verificationPresented = YES;
-                            [ZXPremiumToast showSuccess:@"NODE ACTIVATED" inView:self.view];
-                        }
-                    }];
-                } else {
-                    [ZXModalManager showWithIcon:@"xmark.octagon.fill"
-                                         isError:YES
-                                           title:@"ACCESS DENIED"
-                                         message:errorMsg ?: @"Authentication was rejected by the secure node."
-                                     actionTitle:@"DISMISS"
-                                          inView:self.view];
-                }
+                self.authVerificationResultReady = YES;
+                self.authVerificationSuccess = success;
+                self.authVerificationErrorMessage = errorMsg;
+                [self finishAuthenticationVerificationIfReady];
             });
         }];
     } else {
-        [self.loginBtn setLoading:NO];
+        self.authVerificationResultReady = YES;
+        self.authVerificationSuccess = NO;
+        self.authVerificationErrorMessage = @"Authentication service is unavailable.";
+        [self finishAuthenticationVerificationIfReady];
     }
+}
+
+#pragma mark - Authentication Verification Presentation
+
+- (void)beginAuthenticationVerification {
+    self.authVerificationAnimating = YES;
+    self.authVerificationResultReady = NO;
+    self.authVerificationSuccess = NO;
+    self.authVerificationErrorMessage = nil;
+
+    [self.loginBtn setLoading:YES];
+    self.keyInput.userInteractionEnabled = NO;
+
+    UIView *overlay = [[UIView alloc] init];
+    overlay.translatesAutoresizingMaskIntoConstraints = NO;
+    overlay.backgroundColor = [[ZXTheme background] colorWithAlphaComponent:0.96];
+    overlay.alpha = 0;
+    overlay.layer.zPosition = 100;
+    self.authVerificationOverlay = overlay;
+    [self.authContainer addSubview:overlay];
+
+    UIView *card = [[UIView alloc] init];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    [ZXTheme styleCard:card radius:22];
+    card.backgroundColor = [[ZXTheme surface] colorWithAlphaComponent:0.97];
+    [overlay addSubview:card];
+
+    UIImageView *icon = [[UIImageView alloc]
+        initWithImage:[[UIImage systemImageNamed:@"lock.shield.fill"]
+                       imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
+    icon.translatesAutoresizingMaskIntoConstraints = NO;
+    icon.tintColor = [ZXTheme lavender];
+    icon.contentMode = UIViewContentModeScaleAspectFit;
+    icon.layer.shadowColor = [ZXTheme violet].CGColor;
+    icon.layer.shadowRadius = 12;
+    icon.layer.shadowOpacity = 0.65;
+    [card addSubview:icon];
+
+    UILabel *title = [[UILabel alloc] init];
+    title.translatesAutoresizingMaskIntoConstraints = NO;
+    title.text = @"VERIFYING ACCESS";
+    title.textColor = [ZXTheme primaryText];
+    title.font = [ZXTheme heading:16];
+    title.textAlignment = NSTextAlignmentCenter;
+    [ZXTheme track:title spacing:1.8];
+    [card addSubview:title];
+
+    UILabel *status = [[UILabel alloc] init];
+    status.translatesAutoresizingMaskIntoConstraints = NO;
+    status.text = @"CHECKING LICENSE SIGNATURE";
+    status.textColor = [ZXTheme secondaryText];
+    status.font = [ZXTheme mono:10 weight:UIFontWeightBold];
+    status.textAlignment = NSTextAlignmentCenter;
+    [ZXTheme track:status spacing:1.2];
+    self.authVerificationStatusLabel = status;
+    [card addSubview:status];
+
+    UILabel *percent = [[UILabel alloc] init];
+    percent.translatesAutoresizingMaskIntoConstraints = NO;
+    percent.text = @"0%";
+    percent.textColor = [ZXTheme lavender];
+    percent.font = [ZXTheme mono:11 weight:UIFontWeightBold];
+    percent.textAlignment = NSTextAlignmentCenter;
+    self.authVerificationPercentLabel = percent;
+    [card addSubview:percent];
+
+    UIView *track = [[UIView alloc] init];
+    track.translatesAutoresizingMaskIntoConstraints = NO;
+    track.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.07];
+    track.layer.cornerRadius = 2.5;
+    [card addSubview:track];
+
+    UIView *fill = [[UIView alloc] initWithFrame:CGRectZero];
+    fill.backgroundColor = [ZXTheme violet];
+    fill.layer.cornerRadius = 2.5;
+    self.authVerificationProgressFill = fill;
+    [track addSubview:fill];
+
+    UILabel *footer = [[UILabel alloc] init];
+    footer.translatesAutoresizingMaskIntoConstraints = NO;
+    footer.text = @"SECURE NODE • SESSION HANDSHAKE";
+    footer.textColor = [ZXTheme mutedText];
+    footer.font = [ZXTheme mono:9 weight:UIFontWeightBold];
+    footer.textAlignment = NSTextAlignmentCenter;
+    [ZXTheme track:footer spacing:1.0];
+    [card addSubview:footer];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [overlay.leadingAnchor constraintEqualToAnchor:self.authContainer.leadingAnchor],
+        [overlay.trailingAnchor constraintEqualToAnchor:self.authContainer.trailingAnchor],
+        [overlay.topAnchor constraintEqualToAnchor:self.authContainer.topAnchor],
+        [overlay.bottomAnchor constraintEqualToAnchor:self.authContainer.bottomAnchor],
+
+        [card.centerXAnchor constraintEqualToAnchor:overlay.centerXAnchor],
+        [card.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],
+        [card.leadingAnchor constraintGreaterThanOrEqualToAnchor:overlay.leadingAnchor constant:28],
+        [card.trailingAnchor constraintLessThanOrEqualToAnchor:overlay.trailingAnchor constant:-28],
+        [card.widthAnchor constraintEqualToConstant:330],
+
+        [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:28],
+        [icon.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
+        [icon.widthAnchor constraintEqualToConstant:30],
+        [icon.heightAnchor constraintEqualToConstant:30],
+
+        [title.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:15],
+        [title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:22],
+        [title.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-22],
+
+        [status.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:8],
+        [status.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:22],
+        [status.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-22],
+
+        [track.topAnchor constraintEqualToAnchor:status.bottomAnchor constant:22],
+        [track.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:28],
+        [track.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-28],
+        [track.heightAnchor constraintEqualToConstant:5],
+
+        [percent.topAnchor constraintEqualToAnchor:track.bottomAnchor constant:10],
+        [percent.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
+
+        [footer.topAnchor constraintEqualToAnchor:percent.bottomAnchor constant:18],
+        [footer.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
+        [footer.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        [footer.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-22]
+    ]];
+
+    [overlay layoutIfNeeded];
+    [track layoutIfNeeded];
+    self.authVerificationProgressFill.frame = CGRectMake(0, 0, 0, CGRectGetHeight(track.bounds));
+
+    [UIView animateWithDuration:0.22 animations:^{
+        overlay.alpha = 1.0;
+    }];
+
+    [self animateAuthenticationStep:0.18
+                               text:@"CHECKING LICENSE SIGNATURE"
+                             percent:@"18%"
+                           duration:0.34
+                          completion:^{
+        [self animateAuthenticationStep:0.42
+                                   text:@"VERIFYING NODE CREDENTIALS"
+                                 percent:@"42%"
+                               duration:0.38
+                              completion:^{
+            [self animateAuthenticationStep:0.68
+                                       text:@"VALIDATING SESSION"
+                                     percent:@"68%"
+                                   duration:0.38
+                                  completion:^{
+                [self animateAuthenticationStep:0.88
+                                           text:@"FINALIZING ACCESS"
+                                         percent:@"88%"
+                                       duration:0.36
+                                      completion:^{
+                    [self animateAuthenticationStep:1.0
+                                               text:@"VERIFICATION COMPLETE"
+                                             percent:@"100%"
+                                           duration:0.22
+                                          completion:^{
+                        [self finishAuthenticationVerificationIfReady];
+                    }];
+                }];
+            }];
+        }];
+    }];
+}
+
+- (void)animateAuthenticationStep:(CGFloat)progress
+                             text:(NSString *)text
+                           percent:(NSString *)percent
+                         duration:(NSTimeInterval)duration
+                        completion:(void (^)(void))completion {
+    if (!self.authVerificationOverlay) {
+        if (completion) completion();
+        return;
+    }
+
+    self.authVerificationStatusLabel.text = text;
+    self.authVerificationPercentLabel.text = percent;
+
+    UIView *track = self.authVerificationProgressFill.superview;
+    [track.superview layoutIfNeeded];
+
+    CGFloat width = CGRectGetWidth(track.bounds) * progress;
+    [UIView animateWithDuration:duration
+                          delay:0
+                        options:UIViewAnimationOptionCurveEaseInOut
+                     animations:^{
+        self.authVerificationProgressFill.frame =
+            CGRectMake(0, 0, width, CGRectGetHeight(track.bounds));
+        self.authVerificationProgressFill.layer.shadowColor = [ZXTheme lavender].CGColor;
+        self.authVerificationProgressFill.layer.shadowOpacity = 0.72;
+        self.authVerificationProgressFill.layer.shadowRadius = 7;
+    } completion:^(BOOL finished) {
+        if (completion) completion();
+    }];
+}
+
+- (void)finishAuthenticationVerificationIfReady {
+    if (!self.authVerificationAnimating ||
+        !self.authVerificationResultReady ||
+        !self.authVerificationOverlay ||
+        ![self.authVerificationPercentLabel.text isEqualToString:@"100%"]) {
+        return;
+    }
+
+    BOOL success = self.authVerificationSuccess;
+    NSString *errorMessage = self.authVerificationErrorMessage;
+    NSString *key = [self.keyInput.textField.text
+        stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+    self.authVerificationAnimating = NO;
+    [self.loginBtn setLoading:NO];
+    self.keyInput.userInteractionEnabled = YES;
+
+    if (success) {
+        [[NSUserDefaults standardUserDefaults] setObject:key forKey:@"Zentrax_LastKey"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+
+        [self removeAuthenticationVerificationOverlayAnimated:YES completion:^{
+            [self populateDashboardKey];
+            [self transitionToState:ZXAppStateDashboard completion:^{
+                if (!self.verificationPresented) {
+                    self.verificationPresented = YES;
+                    [ZXPremiumToast showSuccess:@"NODE ACTIVATED" inView:self.view];
+                }
+            }];
+        }];
+    } else {
+        [self removeAuthenticationVerificationOverlayAnimated:YES completion:^{
+            [ZXModalManager showWithIcon:@"xmark.octagon.fill"
+                                 isError:YES
+                                   title:@"ACCESS DENIED"
+                                 message:errorMessage ?: @"Authentication was rejected by the secure node."
+                             actionTitle:@"DISMISS"
+                                  inView:self.view];
+        }];
+    }
+}
+
+- (void)removeAuthenticationVerificationOverlayAnimated:(BOOL)animated
+                                               completion:(void (^)(void))completion {
+    UIView *overlay = self.authVerificationOverlay;
+    self.authVerificationOverlay = nil;
+    self.authVerificationStatusLabel = nil;
+    self.authVerificationPercentLabel = nil;
+    self.authVerificationProgressFill = nil;
+
+    if (!overlay) {
+        if (completion) completion();
+        return;
+    }
+
+    if (!animated) {
+        [overlay removeFromSuperview];
+        if (completion) completion();
+        return;
+    }
+
+    [UIView animateWithDuration:0.22
+                     animations:^{
+        overlay.alpha = 0;
+        overlay.transform = CGAffineTransformMakeScale(0.985, 0.985);
+    } completion:^(BOOL finished) {
+        [overlay removeFromSuperview];
+        if (completion) completion();
+    }];
 }
 
 #pragma mark - Dashboard
@@ -1932,7 +2206,10 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         if ([self.delegate respondsToSelector:@selector(zentraxDidRequestLogoutWithCompletion:)]) {
             [self.delegate zentraxDidRequestLogoutWithCompletion:^{
                 dispatch_async(dispatch_get_main_queue(), ^{
+                    [self removeAuthenticationVerificationOverlayAnimated:NO completion:nil];
                     self.keyInput.textField.text = @"";
+                    self.keyInput.userInteractionEnabled = YES;
+                    self.loginBtn.userInteractionEnabled = YES;
                     [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"Zentrax_LastKey"];
                     [[NSUserDefaults standardUserDefaults] synchronize];
                     [self transitionToState:ZXAppStateAuth completion:nil];
