@@ -2,7 +2,7 @@
 //  ZentraxNetworkManager.m
 //  Zentrax VIP - Premium Execution Node
 //
-//  Created by Zentrax Team.
+//  Created by Zentrax Team
 //  Status: PRODUCTION READY
 //
 
