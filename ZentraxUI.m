@@ -521,6 +521,7 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
 @property(nonatomic,strong) NSLayoutConstraint *thumbLeading;
 - (void)setOn:(BOOL)on animated:(BOOL)animated;
 - (void)setLoading:(BOOL)loading;
+- (void)updateStateAnimated:(BOOL)animated;
 @end
 
 @implementation ZXPremiumToggle
@@ -586,6 +587,10 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
     _isOn = on;
     self.thumbLeading.constant = on ? 26 : 4;
 
+    [self updateStateAnimated:animated];
+}
+
+- (void)updateStateAnimated:(BOOL)animated {
     void (^updates)(void) = ^{
         [self layoutIfNeeded];
         if (self.isOn) {
@@ -1241,7 +1246,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     [_loginBtn addTarget:self action:@selector(handleLogin) forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:_loginBtn];
 
-    UILabel *security = ZXLabel(@"SESSION ENCRYPTION  â¢  VERIFIED CHANNEL", [ZXTheme mono:8 weight:UIFontWeightBold], [ZXTheme mutedText]);
+    UILabel *security = ZXLabel(@"SESSION ENCRYPTION  •  VERIFIED CHANNEL", [ZXTheme mono:8 weight:UIFontWeightBold], [ZXTheme mutedText]);
     [ZXTheme track:security spacing:1.0];
     security.textAlignment = NSTextAlignmentCenter;
     security.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1428,7 +1433,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     keyIcon.translatesAutoresizingMaskIntoConstraints = NO;
     [keyBox addSubview:keyIcon];
 
-    _keyRevealLabel = ZXLabel(@"â¢â¢â¢â¢â¢â¢â¢â¢â¢â¢â¢â¢", [ZXTheme mono:11 weight:UIFontWeightBold], [ZXTheme primaryText]);
+    _keyRevealLabel = ZXLabel(@"••••••••••••", [ZXTheme mono:11 weight:UIFontWeightBold], [ZXTheme primaryText]);
     _keyRevealLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [keyBox addSubview:_keyRevealLabel];
 
@@ -1562,9 +1567,9 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
         self.keyEyeButton.tintColor = [ZXTheme cyan];
     } else {
         if (key.length > 4) {
-            self.keyRevealLabel.text = [NSString stringWithFormat:@"â¢â¢â¢â¢â¢â¢â¢â¢%@", [key substringFromIndex:key.length - 4]];
+            self.keyRevealLabel.text = [NSString stringWithFormat:@"••••••••%@", [key substringFromIndex:key.length - 4]];
         } else {
-            self.keyRevealLabel.text = @"â¢â¢â¢â¢â¢â¢â¢â¢â¢â¢â¢â¢";
+            self.keyRevealLabel.text = @"••••••••••••";
         }
         [self.keyEyeButton setImage:[UIImage systemImageNamed:@"eye.slash.fill"] forState:UIControlStateNormal];
         self.keyEyeButton.tintColor = [ZXTheme mutedText];
