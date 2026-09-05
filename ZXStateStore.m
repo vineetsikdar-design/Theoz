@@ -1,4 +1,4 @@
-//
+	//
 //  ZXStateStore.m
 //  ZENTRAX
 //
@@ -776,7 +776,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
 #pragma mark Save / Remove
 
-- (BOOL)saveRecord:(ZXTargetLedgerRecord *)record
+- (BOOL)saveTargetRecord:(ZXTargetLedgerRecord *)record
              error:(NSError **)error
 {
     @synchronized (self) {
@@ -821,10 +821,16 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
         record.updatedAt = [NSDate date];
 
+        ZXTargetLedgerRecord *previousRecord =
+            self.records[record.canonicalTarget];
         self.records[record.canonicalTarget] = record;
 
         if (![self persistLocked:error]) {
-            [self.records removeObjectForKey:record.canonicalTarget];
+            if (previousRecord) {
+                self.records[record.canonicalTarget] = previousRecord;
+            } else {
+                [self.records removeObjectForKey:record.canonicalTarget];
+            }
             return NO;
         }
 
@@ -832,7 +838,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
     }
 }
 
-- (BOOL)removeRecordForTarget:(NSString *)canonicalTarget
+- (BOOL)removeTargetRecordForTarget:(NSString *)canonicalTarget
                         error:(NSError **)error
 {
     @synchronized (self) {
@@ -865,7 +871,12 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
         [self.records removeObjectForKey:canonicalTarget];
 
-        return [self persistLocked:error];
+        if (![self persistLocked:error]) {
+            self.records[canonicalTarget] = record;
+            return NO;
+        }
+
+        return YES;
     }
 }
 
@@ -933,7 +944,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
     }
 }
 
-- (BOOL)markRequiresReconciliationForTarget:(NSString *)canonicalTarget
+- (BOOL)markTargetForReconciliation:(NSString *)canonicalTarget
                                       error:(NSError **)error
 {
     @synchronized (self) {
@@ -963,7 +974,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
     }
 }
 
-- (BOOL)markReconciledForTarget:(NSString *)canonicalTarget
+- (BOOL)markTargetReconciled:(NSString *)canonicalTarget
                           error:(NSError **)error
 {
     @synchronized (self) {
@@ -988,6 +999,42 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
             ZXLedgerOperationStateNone;
 
         record.lastReconciledAt = [NSDate date];
+        record.updatedAt = [NSDate date];
+
+        return [self persistLocked:error];
+    }
+}
+
+- (BOOL)markTarget:(NSString *)canonicalTarget
+requiresReconciliation:(BOOL)requiresReconciliation
+             error:(NSError **)error
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1205
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Target ledger record does not exist."
+                }];
+            }
+            return NO;
+        }
+
+        record.requiresReconciliation = requiresReconciliation;
+
+        if (requiresReconciliation) {
+            record.operationState =
+                ZXLedgerOperationStateNeedsReconciliation;
+        } else if (record.operationState ==
+                   ZXLedgerOperationStateNeedsReconciliation) {
+            record.operationState = ZXLedgerOperationStateNone;
+        }
+
         record.updatedAt = [NSDate date];
 
         return [self persistLocked:error];
@@ -1031,10 +1078,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
         record.activePayloadHash = payloadHash ?: @"";
         record.activePayloadSize = payloadSize;
 
-        record.state =
-            functionId.length
-            ? ZXTargetLedgerStateIdle
-            : ZXTargetLedgerStateIdle;
+        record.state = ZXTargetLedgerStateIdle;
 
         record.updatedAt = [NSDate date];
 
@@ -1475,6 +1519,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
         NSMutableSet<NSString *> *recordIds =
             [NSMutableSet set];
+        BOOL changed = NO;
 
         for (ZXTargetLedgerRecord *record
              in self.records.allValues) {
@@ -1581,6 +1626,16 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
                 record.state == ZXTargetLedgerStateIdle) {
 
                 record.requiresReconciliation = YES;
+                record.operationState =
+                    ZXLedgerOperationStateNeedsReconciliation;
+                record.updatedAt = [NSDate date];
+                changed = YES;
+            }
+        }
+
+        if (changed) {
+            if (![self persistLocked:error]) {
+                return NO;
             }
         }
 
@@ -1621,7 +1676,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
             return YES;
         }
 
-        return [self persistLocked:error];
+        return [self persistLocked:nil];
     }
 }
 
