@@ -1170,7 +1170,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
          isEqualToString:NSURLAuthenticationMethodServerTrust]) {
         completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
         return;
-    }
+    } 
 
     completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
 }
