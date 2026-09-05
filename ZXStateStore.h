@@ -200,6 +200,14 @@ typedef NS_ENUM(NSInteger, ZXLedgerOperationState) {
 - (BOOL)markTargetReconciled:(NSString *)canonicalTarget
                        error:(NSError * _Nullable * _Nullable)error;
 
+/**
+ * Sets the reconciliation flag directly.
+ * This is the convenience form used by the module transaction layer.
+ */
+- (BOOL)markTarget:(NSString *)canonicalTarget
+requiresReconciliation:(BOOL)requiresReconciliation
+            error:(NSError * _Nullable * _Nullable)error;
+
 #pragma mark - Backup Ownership
 
 /**
