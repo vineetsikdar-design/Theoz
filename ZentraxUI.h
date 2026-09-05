@@ -1,4 +1,4 @@
-//
+    //
 //  ZentraxUI.h
 //  Zentrax VIP - Flagship Premium UI Layer
 //
@@ -95,12 +95,6 @@ typedef NS_ENUM(NSInteger, ZXDeviceCompatibilityUIStatus) {
                                                                         NSDictionary * _Nullable compatibility,
                                                                         NSString * _Nullable errorMsg))completion;
 
-#pragma mark - Shortcuts
-
-- (void)zentraxDidRequestShortcutFunction:(NSString *)functionId
-                                  action:(BOOL)isOn
-                             completion:(void (^)(BOOL success,
-                                                  NSString * _Nullable errorMsg))completion;
 
 @end
 
@@ -196,10 +190,6 @@ typedef NS_ENUM(NSInteger, ZXDeviceCompatibilityUIStatus) {
 - (void)showSettings;
 - (void)showSettingsSection:(NSString *)sectionIdentifier;
 
-#pragma mark - Shortcuts / Automation
-
-- (void)showShortcutsAndAutomation;
-- (void)updateShortcutStatus:(NSDictionary *)status;
 
 #pragma mark - Navigation / State
 
