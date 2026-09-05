@@ -165,6 +165,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 @property (nonatomic, weak) ZentraxUI *uiController;
 @property (nonatomic, strong) dispatch_queue_t moduleExecutionQueue;
 @property (nonatomic, strong) ZXStateStore *stateStore;
+@property (nonatomic, strong) NSMutableSet<NSString *> *activeTargetOperations;
 + (instancetype)sharedBridge;
 @end
 
@@ -185,6 +186,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         _moduleExecutionQueue = dispatch_queue_create("in.zentrax.execution.queue",
                                                        DISPATCH_QUEUE_SERIAL);
         _stateStore = [ZXStateStore sharedStore];
+        _activeTargetOperations = [NSMutableSet set];
 
         /*
          * Open the persistent application-layer ledger before UI work.
@@ -194,8 +196,28 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         [_stateStore open];
         [_stateStore synchronize];
         [_stateStore markUnresolvedRecordsForReconciliation];
+
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(zentraxApplicationWillResignActive:)
+                                                     name:UIApplicationWillResignActiveNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(zentraxApplicationWillTerminate:)
+                                                     name:UIApplicationWillTerminateNotification
+                                                   object:nil];
     }
     return self;
+}
+
+- (void)zentraxApplicationWillResignActive:(NSNotification *)note {
+    (void)note;
+    [self.stateStore synchronize];
+}
+
+- (void)zentraxApplicationWillTerminate:(NSNotification *)note {
+    (void)note;
+    [self.stateStore markUnresolvedRecordsForReconciliation];
+    [self.stateStore synchronize];
 }
 
 #pragma mark - UI / Thread Helpers
@@ -348,28 +370,70 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     }];
 }
 
-#pragma mark - Module Helpers
+#pragma mark - Operation Guard / Path Safety
 
-- (BOOL)isSafeRelativePath:(NSString *)relativePath
-                  filename:(NSString *)filename {
+- (BOOL)claimTargetOperation:(NSString *)target operationId:(NSString *)operationId {
+    if (target.length == 0 || operationId.length == 0) return NO;
+    @synchronized (self) {
+        NSString *key = [NSString stringWithFormat:@"%@|%@", target, operationId];
+        if ([self.activeTargetOperations containsObject:target]) return NO;
+        [self.activeTargetOperations addObject:target];
+        return YES;
+    }
+}
+
+- (void)releaseTargetOperation:(NSString *)target {
+    if (target.length == 0) return;
+    @synchronized (self) {
+        [self.activeTargetOperations removeObject:target];
+    }
+}
+
+- (NSString *)normalizedRelativePath:(NSString *)relativePath {
+    if (relativePath.length == 0 || [relativePath hasPrefix:@"/"] || [relativePath hasPrefix:@"\\"]) return nil;
+    NSString *p = [relativePath stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
+    NSArray<NSString *> *parts = [p componentsSeparatedByString:@"/"];
+    NSMutableArray<NSString *> *clean = [NSMutableArray arrayWithCapacity:parts.count];
+    for (NSString *part in parts) {
+        if (part.length == 0 || [part isEqualToString:@"."]) continue;
+        if ([part isEqualToString:@".."] || [part containsString:@"\0"] || [part containsString:@":"]) return nil;
+        [clean addObject:part];
+    }
+    return clean.count ? [clean componentsJoinedByString:@"/"] : nil;
+}
+
+- (BOOL)isSafeRelativePath:(NSString *)relativePath filename:(NSString *)filename {
     if (relativePath.length == 0 || filename.length == 0) return NO;
-
-    if ([relativePath hasPrefix:@"/"] ||
-        [relativePath hasPrefix:@"\\"] ||
-        [relativePath containsString:@"../"] ||
-        [relativePath containsString:@"..\\"] ||
-        [relativePath containsString:@"\0"]) {
-        return NO;
-    }
-
-    if ([filename containsString:@"/"] ||
-        [filename containsString:@"\\"] ||
-        [filename containsString:@".."] ||
-        [filename containsString:@"\0"]) {
-        return NO;
-    }
-
+    NSString *normalized = [self normalizedRelativePath:relativePath];
+    if (!normalized) return NO;
+    if ([filename hasPrefix:@"/"] || [filename hasPrefix:@"\\"] ||
+        [filename containsString:@"/"] || [filename containsString:@"\\"] ||
+        [filename isEqualToString:@"."] || [filename isEqualToString:@".."] ||
+        [filename containsString:@"\0"] || [filename containsString:@":"]) return NO;
     return YES;
+}
+
+- (NSString *)targetPathForContainer:(NSString *)container
+                       relativePath:(NSString *)relativePath
+                            filename:(NSString *)filename {
+    if (container.length == 0 || ![self isSafeRelativePath:relativePath filename:filename]) return nil;
+    NSString *normalized = [self normalizedRelativePath:relativePath];
+    if (!normalized) return nil;
+    NSString *root = [container stringByStandardizingPath];
+    NSString *directory = [root stringByAppendingPathComponent:normalized];
+    NSString *target = [directory stringByAppendingPathComponent:filename];
+    NSString *standard = [target stringByStandardizingPath];
+    NSString *prefix = [root hasSuffix:@"/"] ? root : [root stringByAppendingString:@"/"];
+    if (![standard hasPrefix:prefix]) return nil;
+    return standard;
+}
+
+- (NSString *)sha256OfFileAtPath:(NSString *)path size:(NSUInteger *)size {
+    if (size) *size = 0;
+    NSData *data = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:nil];
+    if (!data) return nil;
+    if (size) *size = data.length;
+    return computeSHA256OfData(data);
 }
 
 - (void)finishModuleFailure:(NSString *)message
@@ -415,6 +479,12 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         return;
     }
 
+    if (![self claimTargetOperation:target operationId:operationId]) {
+        [self finishModuleFailure:@"This target already has an operation in progress. Please wait for it to finish."
+                       completion:completion];
+        return;
+    }
+
     NSString *licenseId = [modulePayload[@"license_id"] description];
     NSString *deviceId = [modulePayload[@"device_id"] description];
 
@@ -428,6 +498,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                     error:&ledgerError];
 
     if (ledgerError) {
+        [self releaseTargetOperation:target];
         [self finishModuleFailure:@"Unable to prepare the local transaction safely."
                        completion:completion];
         return;
@@ -443,6 +514,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
         if (![mode isEqualToString:@"CLIENT_ORIGINAL_BACKUP"]) {
             [self.stateStore failOperationWithId:operationId error:nil];
+            [self releaseTargetOperation:target];
             [self finishModuleFailure:@"Invalid restore contract received from server."
                            completion:completion];
             return;
@@ -475,11 +547,13 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                                      error:nil];
                     [self.stateStore clearCompletedOperationWithId:operationId
                                                                error:nil];
+                    [self releaseTargetOperation:target];
                     [self completeOnMain:^{
                         if (completion) completion(YES, nil);
                     }];
                 } else {
                     [self.stateStore failOperationWithId:operationId error:nil];
+                    [self releaseTargetOperation:target];
                     [self finishModuleFailure:syncErrorMsg ?: @"Failed to synchronize module state."
                                    completion:completion];
                 }
@@ -491,6 +565,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             ![self isSafeRelativePath:relativePath filename:targetFilename] ||
             bundleId.length == 0) {
             [self.stateStore failOperationWithId:operationId error:nil];
+            [self releaseTargetOperation:target];
             [self finishModuleFailure:@"Security validation failed for the restore target."
                            completion:completion];
             return;
@@ -505,12 +580,17 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 return;
             }
 
-            NSString *directoryPath =
-                [dataContainer stringByAppendingPathComponent:relativePath];
-            NSString *finalTargetPath =
-                [directoryPath stringByAppendingPathComponent:targetFilename];
-            NSString *backupPath =
-                [finalTargetPath stringByAppendingString:@".bak"];
+            NSString *finalTargetPath = [self targetPathForContainer:dataContainer
+                                                           relativePath:relativePath
+                                                                filename:targetFilename];
+            if (!finalTargetPath) {
+                [self.stateStore failOperationWithId:operationId error:nil];
+                [self releaseTargetOperation:target];
+                [self finishModuleFailure:@"Security validation failed for the resolved target path."
+                               completion:completion];
+                return;
+            }
+            NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
 
             NSFileManager *fm = NSFileManager.defaultManager;
             NSError *fsError = nil;
@@ -525,7 +605,14 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                     record.backupValidity != ZXBackupValidityValid) {
                     success = NO;
                 } else {
-                    if ([fm fileExistsAtPath:finalTargetPath]) {
+                    NSUInteger backupSize = 0;
+                    NSString *backupHash = [self sha256OfFileAtPath:backupPath size:&backupSize];
+                    if (backupHash.length == 0 ||
+                        (record.originalBackupHash.length && ![backupHash.lowercaseString isEqualToString:record.originalBackupHash.lowercaseString]) ||
+                        (record.originalBackupSize > 0 && backupSize != record.originalBackupSize)) {
+                        success = NO;
+                    }
+                    if (success && [fm fileExistsAtPath:finalTargetPath]) {
                         [fm removeItemAtPath:finalTargetPath error:&fsError];
                     }
 
@@ -553,6 +640,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                     error:nil];
                 [self.stateStore failOperationWithId:operationId
                                                error:fsError];
+                [self releaseTargetOperation:target];
                 [self finishModuleFailure:@"Failed to restore the original target safely."
                                completion:completion];
                 return;
@@ -580,6 +668,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                       requiresReconciliation:YES
                                         error:nil];
                     [self.stateStore failOperationWithId:operationId error:nil];
+                    [self releaseTargetOperation:target];
                     [self finishModuleFailure:
                         syncErrorMsg ?: @"Server synchronization failed; recovery is required."
                                completion:completion];
@@ -595,6 +684,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 [self.stateStore markTarget:target
                   requiresReconciliation:NO
                                     error:nil];
+                [self releaseTargetOperation:target];
 
                 [self completeOnMain:^{
                     if (completion) completion(YES, nil);
@@ -618,6 +708,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         bundleId.length == 0 ||
         ![self isSafeRelativePath:relativePath filename:targetFilename]) {
         [self.stateStore failOperationWithId:operationId error:nil];
+        [self releaseTargetOperation:target];
         [self finishModuleFailure:@"Invalid module payload or target configuration."
                        completion:completion];
         return;
@@ -629,17 +720,23 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
     if (!fileData.length) {
         [self.stateStore failOperationWithId:operationId error:nil];
+        [self releaseTargetOperation:target];
         [self finishModuleFailure:@"The module payload could not be decoded."
                        completion:completion];
         return;
     }
 
     NSString *declaredHash = [modulePayload[@"sha256"] description];
+    NSUInteger declaredSize = [modulePayload[@"size"] unsignedIntegerValue];
     NSString *computedHash = computeSHA256OfData(fileData);
 
-    if (declaredHash.length &&
+    if (declaredHash.length == 0 ||
+        computedHash.length == 0 ||
+        declaredSize == 0 ||
+        declaredSize != fileData.length ||
         ![declaredHash.lowercaseString isEqualToString:computedHash.lowercaseString]) {
         [self.stateStore failOperationWithId:operationId error:nil];
+        [self releaseTargetOperation:target];
         [self finishModuleFailure:@"Payload integrity verification failed."
                        completion:completion];
         return;
@@ -649,17 +746,23 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         NSString *dataContainer = findDataContainer(bundleId);
         if (!dataContainer) {
             [self.stateStore failOperationWithId:operationId error:nil];
+            [self releaseTargetOperation:target];
             [self finishModuleFailure:@"Target app container could not be resolved."
                            completion:completion];
             return;
         }
 
-        NSString *directoryPath =
-            [dataContainer stringByAppendingPathComponent:relativePath];
-        NSString *finalTargetPath =
-            [directoryPath stringByAppendingPathComponent:targetFilename];
-        NSString *backupPath =
-            [finalTargetPath stringByAppendingString:@".bak"];
+        NSString *finalTargetPath = [self targetPathForContainer:dataContainer
+                                                       relativePath:relativePath
+                                                            filename:targetFilename];
+        if (!finalTargetPath) {
+            [self.stateStore failOperationWithId:operationId error:nil];
+            [self releaseTargetOperation:target];
+            [self finishModuleFailure:@"Security validation failed for the resolved target path."
+                           completion:completion];
+            return;
+        }
+        NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
 
         NSFileManager *fm = NSFileManager.defaultManager;
         NSError *fsError = nil;
@@ -672,6 +775,17 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
          * an existing .bak is never overwritten.
          */
         if (!record || !record.hasOriginalBackup) {
+            if ([fm fileExistsAtPath:backupPath]) {
+                [self.stateStore markTarget:target
+                  requiresReconciliation:YES
+                                    error:nil];
+                [self.stateStore failOperationWithId:operationId error:nil];
+                [self releaseTargetOperation:target];
+                [self finishModuleFailure:@"An existing backup was found but is not registered in the recovery ledger."
+                               completion:completion];
+                return;
+            }
+
             if ([fm fileExistsAtPath:finalTargetPath] &&
                 ![fm fileExistsAtPath:backupPath]) {
 
@@ -680,6 +794,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                   error:&fsError]) {
                     [self.stateStore failOperationWithId:operationId
                                                    error:fsError];
+                    [self releaseTargetOperation:target];
                     [self finishModuleFailure:
                         @"Could not preserve the original target safely."
                                completion:completion];
@@ -690,6 +805,17 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                     [NSData dataWithContentsOfFile:backupPath];
                 NSString *originalHash =
                     computeSHA256OfData(originalData);
+
+                if (originalHash.length == 0 || originalData.length == 0) {
+                    [self.stateStore markTarget:target
+                      requiresReconciliation:YES
+                                        error:nil];
+                    [self.stateStore failOperationWithId:operationId error:nil];
+                    [self releaseTargetOperation:target];
+                    [self finishModuleFailure:@"The original backup could not be verified."
+                                   completion:completion];
+                    return;
+                }
 
                 [self.stateStore setOriginalBackupHash:originalHash
                                                   size:originalData.length
@@ -721,6 +847,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         if (!written) {
             [self.stateStore failOperationWithId:operationId
                                            error:fsError];
+            [self releaseTargetOperation:target];
             [self finishModuleFailure:
                 @"Failed to apply the requested module payload."
                        completion:completion];
@@ -741,6 +868,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
               requiresReconciliation:YES
                                 error:nil];
             [self.stateStore failOperationWithId:operationId error:nil];
+            [self releaseTargetOperation:target];
 
             [self finishModuleFailure:
                 @"Post-write integrity verification failed."
@@ -772,6 +900,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                     error:nil];
                 [self.stateStore failOperationWithId:operationId
                                                error:nil];
+                [self releaseTargetOperation:target];
 
                 [self finishModuleFailure:
                     syncErrorMsg ?: @"Server synchronization failed; recovery is required."
@@ -792,6 +921,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             [self.stateStore markTarget:target
               requiresReconciliation:NO
                                 error:nil];
+            [self releaseTargetOperation:target];
 
             [self completeOnMain:^{
                 if (completion) completion(YES, nil);
