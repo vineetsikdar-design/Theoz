@@ -1126,24 +1126,6 @@
     }];
 }
 
-#pragma mark - Shortcut / Automation
-
-- (void)performShortcutFunctionOperation:(NSString *)functionId
-                                  action:(ZXModuleOperationAction)action
-                             completion:(ZXModuleCompletion)completion {
-    /*
-     * Shortcuts intentionally use the same authenticated module endpoint as
-     * the main application. There is no unrestricted filesystem operation or
-     * authentication bypass here.
-     */
-    [self performModuleOperationWithFunctionId:functionId action:action completion:completion];
-}
-
-- (void)getShortcutFunctionStatus:(NSString *)functionId
-                      completion:(ZXNetworkCompletion)completion {
-    [self getFunctionStatus:functionId completion:completion];
-}
-
 #pragma mark - Request Cancellation
 
 - (void)cancelAllRequests {
