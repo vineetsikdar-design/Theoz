@@ -1,10 +1,9 @@
 Package: com.local.filzaescaped
 Name: Zentrax VIP
-Depends: mobilesubstrate
-Version: 1.0.0
+Version: 1.0.1
 Architecture: iphoneos-arm
-Description: Zentrax Vip  
+Depends: mobilesubstrate
+Description: Zentrax VIP
 Maintainer: Zentrax Team
 Author: Zentrax Team
 Section: Utilities
-
