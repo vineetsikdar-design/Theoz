@@ -1,1178 +1,1992 @@
 //
-//  ZentraxNetworkManager.m
-//  Zentrax VIP - Premium Execution Node
+//  ZXStateStore.m
+//  ZENTRAX
 //
-//  Production network/session/configuration layer.
-//  This file intentionally stays at the application/network layer and does
-//  not modify the project's low-level filesystem or sandbox components.
+//  Persistent target-operation ledger.
+//  Responsibilities:
+//  - Crash/relaunch-safe metadata persistence
+//  - Target ownership tracking
+//  - Original-backup metadata tracking
+//  - Operation transaction state
+//  - Recovery checkpoints
+//  - Session/license association
+//  - Ledger validation/reconciliation flags
+//
+//  IMPORTANT:
+//  This class intentionally does NOT perform filesystem modification.
+//  Actual target/file operations belong to the operation layer.
 //
 
-#import "ZentraxNetworkManager.h"
-#import <Security/Security.h>
-#import <CommonCrypto/CommonDigest.h>
-#import <UIKit/UIKit.h>
-#include <sys/utsname.h>
+#import "ZXStateStore.h"
 
-#define BASE_URL                    @"https://zentraxmod.in/api/"
-#define KEYCHAIN_SERVICE            @"in.zentrax.proxy"
-#define KEYCHAIN_SESSION_ACCOUNT    @"session_token"
-#define KEYCHAIN_LICENSE_ACCOUNT    @"license_key"
-#define KEYCHAIN_HWID_ACCOUNT       @"device_hwid"
-#define COMPATIBILITY_CACHE_KEY     @"Zentrax_Compatibility_Cache"
-#define CONFIGURATION_CACHE_KEY     @"Zentrax_Configuration_Cache"
-#define SERVER_OFFSET_KEY           @"Zentrax_Server_Time_Offset"
-#define SERVER_OFFSET_VALID_KEY     @"Zentrax_Server_Time_Offset_Valid"
-#define DEFAULT_TIMEOUT             15.0
+#import <Foundation/Foundation.h>
 
-@interface ZentraxNetworkManager () <NSURLSessionDelegate>
-@property (nonatomic, strong) NSURLSession *secureSession;
-@property (nonatomic, strong) NSMutableSet<NSURLSessionDataTask *> *activeTasks;
-@property (nonatomic, strong) dispatch_queue_t stateQueue;
-@property (nonatomic, assign) NSUInteger requestCount;
-@property (nonatomic, copy, readwrite, nullable) NSString *lastErrorMessage;
+#pragma mark - Private Constants
+
+static NSString * const ZXStateStoreDirectoryName = @"Zentrax";
+static NSString * const ZXStateStoreFileName = @"state-ledger.archive";
+static NSString * const ZXStateStoreCheckpointFileName = @"recovery-checkpoint.archive";
+
+static NSString * const ZXStateStoreSchemaVersionKey = @"schema_version";
+static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
+
+#pragma mark - ZXTargetLedgerRecord
+
+@interface ZXTargetLedgerRecord ()
+
+@property (nonatomic, assign, readwrite) BOOL requiresReconciliation;
+
 @end
 
-@implementation ZentraxNetworkManager
+@implementation ZXTargetLedgerRecord
 
-#pragma mark - Singleton / Initialization
-
-+ (instancetype)sharedManager {
-    static ZentraxNetworkManager *sharedInstance;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        sharedInstance = [[self alloc] init];
-    });
-    return sharedInstance;
++ (BOOL)supportsSecureCoding
+{
+    return YES;
 }
 
-- (instancetype)init {
+- (instancetype)init
+{
     self = [super init];
+
     if (self) {
-        _activeTasks = [NSMutableSet set];
-        _stateQueue = dispatch_queue_create("in.zentrax.network.state", DISPATCH_QUEUE_SERIAL);
+        _recordIdentifier = [[NSUUID UUID] UUIDString];
 
-        NSURLSessionConfiguration *configuration =
-            [NSURLSessionConfiguration ephemeralSessionConfiguration];
-        configuration.timeoutIntervalForRequest = DEFAULT_TIMEOUT;
-        configuration.timeoutIntervalForResource = DEFAULT_TIMEOUT + 10.0;
-        configuration.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
-        configuration.URLCache = nil;
-        configuration.HTTPShouldSetCookies = NO;
-        configuration.HTTPShouldUsePipelining = NO;
-        configuration.waitsForConnectivity = NO;
+        _canonicalTarget = @"";
+        _activeFunctionId = @"";
+        _activeFunctionName = @"";
+        _activePayloadHash = @"";
+        _originalBackupHash = @"";
 
-        _secureSession = [NSURLSession sessionWithConfiguration:configuration
-                                                       delegate:self
-                                                  delegateQueue:nil];
+        _originalBackupSize = 0;
+        _activePayloadSize = 0;
+
+        _hasOriginalBackup = NO;
+        _backupValidity = ZXBackupValidityUnknown;
+
+        _state = ZXTargetLedgerStateIdle;
+        _operationState = ZXLedgerOperationStateNone;
+
+        _operationId = @"";
+        _operationAction = ZXModuleOperationActionUnknown;
+
+        _licenseId = @"";
+        _deviceId = @"";
+
+        _createdAt = [NSDate date];
+        _updatedAt = _createdAt;
+        _lastReconciledAt = nil;
+
+        _lastObservedTargetHash = @"";
+        _lastObservedTargetSize = 0;
+
+        _requiresReconciliation = NO;
     }
+
     return self;
 }
 
-#pragma mark - Public State
+- (instancetype)initWithCoder:(NSCoder *)coder
+{
+    self = [super init];
 
-- (BOOL)isRequestInFlight {
-    __block BOOL result = NO;
-    dispatch_sync(self.stateQueue, ^{
-        result = (self.requestCount > 0);
-    });
-    return result;
+    if (!self) {
+        return nil;
+    }
+
+    NSString *recordIdentifier =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"recordIdentifier"];
+
+    NSString *canonicalTarget =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"canonicalTarget"];
+
+    NSString *activeFunctionId =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"activeFunctionId"];
+
+    NSString *activeFunctionName =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"activeFunctionName"];
+
+    NSString *activePayloadHash =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"activePayloadHash"];
+
+    NSString *originalBackupHash =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"originalBackupHash"];
+
+    NSString *operationId =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"operationId"];
+
+    NSString *licenseId =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"licenseId"];
+
+    NSString *deviceId =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"deviceId"];
+
+    NSString *lastObservedTargetHash =
+        [coder decodeObjectOfClass:[NSString class]
+                            forKey:@"lastObservedTargetHash"];
+
+    NSDate *createdAt =
+        [coder decodeObjectOfClass:[NSDate class]
+                            forKey:@"createdAt"];
+
+    NSDate *updatedAt =
+        [coder decodeObjectOfClass:[NSDate class]
+                            forKey:@"updatedAt"];
+
+    NSDate *lastReconciledAt =
+        [coder decodeObjectOfClass:[NSDate class]
+                            forKey:@"lastReconciledAt"];
+
+    NSNumber *originalBackupSize =
+        [coder decodeObjectOfClass:[NSNumber class]
+                            forKey:@"originalBackupSize"];
+
+    NSNumber *activePayloadSize =
+        [coder decodeObjectOfClass:[NSNumber class]
+                            forKey:@"activePayloadSize"];
+
+    NSNumber *hasOriginalBackup =
+        [coder decodeObjectOfClass:[NSNumber class]
+                            forKey:@"hasOriginalBackup"];
+
+    NSNumber *backupValidity =
+        [coder decodeObjectOfClass:[NSNumber class]
+                            forKey:@"backupValidity"];
+
+    NSNumber *state =
+        [coder decodeObjectOfClass:[NSNumber class]
+                            forKey:@"state"];
+
+    NSNumber *operationState =
+        [coder decodeObjectOfClass:[NSNumber class]
+                            forKey:@"operationState"];
+
+    NSNumber *operationAction =
+        [coder decodeObjectOfClass:[NSNumber class]
+                            forKey:@"operationAction"];
+
+    NSNumber *lastObservedTargetSize =
+        [coder decodeObjectOfClass:[NSNumber class]
+                            forKey:@"lastObservedTargetSize"];
+
+    NSNumber *requiresReconciliation =
+        [coder decodeObjectOfClass:[NSNumber class]
+                            forKey:@"requiresReconciliation"];
+
+    _recordIdentifier = recordIdentifier.length
+        ? [recordIdentifier copy]
+        : [[NSUUID UUID] UUIDString];
+
+    _canonicalTarget = canonicalTarget.length
+        ? [canonicalTarget copy]
+        : @"";
+
+    _activeFunctionId = activeFunctionId.length
+        ? [activeFunctionId copy]
+        : @"";
+
+    _activeFunctionName = activeFunctionName.length
+        ? [activeFunctionName copy]
+        : @"";
+
+    _activePayloadHash = activePayloadHash.length
+        ? [activePayloadHash copy]
+        : @"";
+
+    _originalBackupHash = originalBackupHash.length
+        ? [originalBackupHash copy]
+        : @"";
+
+    _operationId = operationId.length
+        ? [operationId copy]
+        : @"";
+
+    _licenseId = licenseId.length
+        ? [licenseId copy]
+        : @"";
+
+    _deviceId = deviceId.length
+        ? [deviceId copy]
+        : @"";
+
+    _lastObservedTargetHash = lastObservedTargetHash.length
+        ? [lastObservedTargetHash copy]
+        : @"";
+
+    _originalBackupSize = originalBackupSize
+        ? originalBackupSize.unsignedLongLongValue
+        : 0;
+
+    _activePayloadSize = activePayloadSize
+        ? activePayloadSize.unsignedLongLongValue
+        : 0;
+
+    _hasOriginalBackup = hasOriginalBackup.boolValue;
+
+    _backupValidity = backupValidity
+        ? (ZXBackupValidity)backupValidity.integerValue
+        : ZXBackupValidityUnknown;
+
+    _state = state
+        ? (ZXTargetLedgerState)state.integerValue
+        : ZXTargetLedgerStateIdle;
+
+    _operationState = operationState
+        ? (ZXLedgerOperationState)operationState.integerValue
+        : ZXLedgerOperationStateNone;
+
+    _operationAction = operationAction
+        ? (ZXModuleOperationAction)operationAction.integerValue
+        : ZXModuleOperationActionUnknown;
+
+    _lastObservedTargetSize = lastObservedTargetSize
+        ? lastObservedTargetSize.unsignedLongLongValue
+        : 0;
+
+    _requiresReconciliation = requiresReconciliation.boolValue;
+
+    _createdAt = createdAt ?: [NSDate date];
+    _updatedAt = updatedAt ?: _createdAt;
+    _lastReconciledAt = lastReconciledAt;
+
+    return self;
 }
 
-- (void)beginRequest {
-    dispatch_async(self.stateQueue, ^{
-        self.requestCount += 1;
-    });
+- (void)encodeWithCoder:(NSCoder *)coder
+{
+    [coder encodeObject:self.recordIdentifier ?: @""
+                 forKey:@"recordIdentifier"];
+
+    [coder encodeObject:self.canonicalTarget ?: @""
+                 forKey:@"canonicalTarget"];
+
+    [coder encodeObject:self.activeFunctionId ?: @""
+                 forKey:@"activeFunctionId"];
+
+    [coder encodeObject:self.activeFunctionName ?: @""
+                 forKey:@"activeFunctionName"];
+
+    [coder encodeObject:self.activePayloadHash ?: @""
+                 forKey:@"activePayloadHash"];
+
+    [coder encodeObject:self.originalBackupHash ?: @""
+                 forKey:@"originalBackupHash"];
+
+    [coder encodeObject:@(self.originalBackupSize)
+                 forKey:@"originalBackupSize"];
+
+    [coder encodeObject:@(self.activePayloadSize)
+                 forKey:@"activePayloadSize"];
+
+    [coder encodeObject:@(self.hasOriginalBackup)
+                 forKey:@"hasOriginalBackup"];
+
+    [coder encodeObject:@(self.backupValidity)
+                 forKey:@"backupValidity"];
+
+    [coder encodeObject:@(self.state)
+                 forKey:@"state"];
+
+    [coder encodeObject:@(self.operationState)
+                 forKey:@"operationState"];
+
+    [coder encodeObject:self.operationId ?: @""
+                 forKey:@"operationId"];
+
+    [coder encodeObject:@(self.operationAction)
+                 forKey:@"operationAction"];
+
+    [coder encodeObject:self.licenseId ?: @""
+                 forKey:@"licenseId"];
+
+    [coder encodeObject:self.deviceId ?: @""
+                 forKey:@"deviceId"];
+
+    [coder encodeObject:self.createdAt ?: [NSDate date]
+                 forKey:@"createdAt"];
+
+    [coder encodeObject:self.updatedAt ?: [NSDate date]
+                 forKey:@"updatedAt"];
+
+    if (self.lastReconciledAt) {
+        [coder encodeObject:self.lastReconciledAt
+                     forKey:@"lastReconciledAt"];
+    }
+
+    [coder encodeObject:self.lastObservedTargetHash ?: @""
+                 forKey:@"lastObservedTargetHash"];
+
+    [coder encodeObject:@(self.lastObservedTargetSize)
+                 forKey:@"lastObservedTargetSize"];
+
+    [coder encodeObject:@(self.requiresReconciliation)
+                 forKey:@"requiresReconciliation"];
 }
 
-- (void)endRequest {
-    dispatch_async(self.stateQueue, ^{
-        if (self.requestCount > 0) {
-            self.requestCount -= 1;
+@end
+
+#pragma mark - ZXStateStore
+
+@interface ZXStateStore ()
+
+@property (nonatomic, strong) NSMutableDictionary<NSString *, ZXTargetLedgerRecord *> *records;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, id> *recoveryCheckpoint;
+
+@property (nonatomic, copy) NSString *storageDirectory;
+@property (nonatomic, copy) NSString *storageFilePath;
+@property (nonatomic, copy) NSString *checkpointFilePath;
+
+@property (nonatomic, assign) BOOL opened;
+
+@end
+
+@implementation ZXStateStore
+
+#pragma mark Singleton
+
++ (instancetype)sharedStore
+{
+    static ZXStateStore *sharedStore = nil;
+    static dispatch_once_t onceToken;
+
+    dispatch_once(&onceToken, ^{
+        sharedStore = [[self alloc] initPrivate];
+    });
+
+    return sharedStore;
+}
+
+- (instancetype)init
+{
+    return [ZXStateStore sharedStore];
+}
+
+- (instancetype)initPrivate
+{
+    self = [super init];
+
+    if (self) {
+        _records = [NSMutableDictionary dictionary];
+        _recoveryCheckpoint = [NSMutableDictionary dictionary];
+        _opened = NO;
+
+        [self buildStoragePaths];
+    }
+
+    return self;
+}
+
+#pragma mark Storage Paths
+
+- (void)buildStoragePaths
+{
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+
+    NSArray<NSURL *> *urls =
+        [fileManager URLsForDirectory:NSApplicationSupportDirectory
+                            inDomains:NSUserDomainMask];
+
+    NSURL *baseURL = urls.firstObject;
+
+    if (!baseURL) {
+        baseURL =
+            [NSURL fileURLWithPath:
+                NSTemporaryDirectory()
+                isDirectory:YES];
+    }
+
+    NSURL *directoryURL =
+        [baseURL URLByAppendingPathComponent:ZXStateStoreDirectoryName
+                                 isDirectory:YES];
+
+    self.storageDirectory = directoryURL.path;
+
+    self.storageFilePath =
+        [[directoryURL URLByAppendingPathComponent:ZXStateStoreFileName]
+            path];
+
+    self.checkpointFilePath =
+        [[directoryURL URLByAppendingPathComponent:
+            ZXStateStoreCheckpointFileName]
+            path];
+}
+
+- (BOOL)ensureStorageDirectory:(NSError **)error
+{
+    if (self.storageDirectory.length == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"ZXStateStore"
+                                          code:1001
+                                      userInfo:@{
+                NSLocalizedDescriptionKey:
+                    @"State store directory is unavailable."
+            }];
         }
-    });
-}
 
-#pragma mark - Keychain
-
-- (NSDictionary *)keychainQueryForAccount:(NSString *)account {
-    return @{
-        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-        (__bridge id)kSecAttrService: KEYCHAIN_SERVICE,
-        (__bridge id)kSecAttrAccount: account
-    };
-}
-
-- (BOOL)saveSecureString:(NSString *)value account:(NSString *)account {
-    if (value.length == 0 || account.length == 0) {
         return NO;
     }
 
-    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+
+    BOOL isDirectory = NO;
+
+    if ([fileManager fileExistsAtPath:self.storageDirectory
+                          isDirectory:&isDirectory]) {
+        if (isDirectory) {
+            return YES;
+        }
+
+        if (error) {
+            *error = [NSError errorWithDomain:@"ZXStateStore"
+                                          code:1002
+                                      userInfo:@{
+                NSLocalizedDescriptionKey:
+                    @"State store path is not a directory."
+            }];
+        }
+
+        return NO;
+    }
+
+    BOOL created =
+        [fileManager createDirectoryAtPath:self.storageDirectory
+               withIntermediateDirectories:YES
+                                attributes:@{
+        NSFileProtectionKey:
+            NSFileProtectionCompleteUntilFirstUserAuthentication
+    }
+                                     error:error];
+
+    return created;
+}
+
+#pragma mark Open / Load
+
+- (BOOL)open:(NSError **)error
+{
+    @synchronized (self) {
+        if (self.opened) {
+            return YES;
+        }
+
+        if (![self ensureStorageDirectory:error]) {
+            return NO;
+        }
+
+        self.records = [NSMutableDictionary dictionary];
+        self.recoveryCheckpoint = [NSMutableDictionary dictionary];
+
+        if (![[NSFileManager defaultManager]
+                fileExistsAtPath:self.storageFilePath]) {
+
+            self.opened = YES;
+
+            if (![self persistLocked:error]) {
+                self.opened = NO;
+                return NO;
+            }
+        } else {
+            if (![self loadLocked:error]) {
+                return NO;
+            }
+        }
+
+        [self loadRecoveryCheckpointLocked:nil];
+
+        self.opened = YES;
+
+        return YES;
+    }
+}
+
+- (BOOL)synchronize:(NSError **)error
+{
+    @synchronized (self) {
+        if (!self.opened) {
+            if (![self open:error]) {
+                return NO;
+            }
+        }
+
+        return [self persistLocked:error];
+    }
+}
+
+- (void)clearTransientState
+{
+    @synchronized (self) {
+        for (ZXTargetLedgerRecord *record in self.records.allValues) {
+            if (record.operationState == ZXLedgerOperationStateCommitted) {
+                record.operationId = @"";
+                record.operationAction = ZXModuleOperationActionUnknown;
+                record.operationState = ZXLedgerOperationStateNone;
+                record.updatedAt = [NSDate date];
+            }
+
+            if (record.state == ZXTargetLedgerStateStagingON ||
+                record.state == ZXTargetLedgerStateONInProgress ||
+                record.state == ZXTargetLedgerStateOFFInProgress ||
+                record.state == ZXTargetLedgerStateRestoring ||
+                record.state == ZXTargetLedgerStateSwitching ||
+                record.state == ZXTargetLedgerStateSwapping) {
+
+                record.requiresReconciliation = YES;
+                record.operationState =
+                    ZXLedgerOperationStateNeedsReconciliation;
+
+                record.updatedAt = [NSDate date];
+            }
+        }
+
+        [self persistLocked:nil];
+    }
+}
+
+#pragma mark Persistence
+
+- (BOOL)loadLocked:(NSError **)error
+{
+    NSData *data =
+        [NSData dataWithContentsOfFile:self.storageFilePath
+                               options:NSDataReadingMappedIfSafe
+                                 error:error];
+
     if (!data) {
         return NO;
     }
 
-    NSDictionary *query = [self keychainQueryForAccount:account];
-    SecItemDelete((__bridge CFDictionaryRef)query);
+    NSError *unarchiveError = nil;
 
-    NSMutableDictionary *item = [query mutableCopy];
-    item[(__bridge id)kSecValueData] = data;
-    item[(__bridge id)kSecAttrAccessible] =
-        (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
+    NSSet *allowedClasses =
+        [NSSet setWithObjects:
+            [NSDictionary class],
+            [NSMutableDictionary class],
+            [NSString class],
+            [NSNumber class],
+            [NSDate class],
+            [ZXTargetLedgerRecord class],
+            [NSArray class],
+            [NSMutableArray class],
+            nil];
 
-    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)item, NULL);
-    return status == errSecSuccess;
-}
+    NSDictionary *root =
+        [NSKeyedUnarchiver unarchivedObjectOfClasses:allowedClasses
+                                           fromData:data
+                                              error:&unarchiveError];
 
-- (NSString * _Nullable)secureStringForAccount:(NSString *)account {
-    if (account.length == 0) {
-        return nil;
-    }
-
-    NSMutableDictionary *query = [[self keychainQueryForAccount:account] mutableCopy];
-    query[(__bridge id)kSecReturnData] = @YES;
-    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
-
-    CFTypeRef result = NULL;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
-    if (status != errSecSuccess || result == NULL) {
-        return nil;
-    }
-
-    NSData *data = (__bridge_transfer NSData *)result;
-    return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-}
-
-- (void)deleteSecureAccount:(NSString *)account {
-    if (account.length == 0) {
-        return;
-    }
-    NSDictionary *query = [self keychainQueryForAccount:account];
-    SecItemDelete((__bridge CFDictionaryRef)query);
-}
-
-- (void)saveTokenToKeychain:(NSString *)token {
-    [self saveSecureString:token account:KEYCHAIN_SESSION_ACCOUNT];
-}
-
-- (NSString * _Nullable)getTokenFromKeychain {
-    return [self secureStringForAccount:KEYCHAIN_SESSION_ACCOUNT];
-}
-
-#pragma mark - Device Identity
-
-- (NSString *)getHardwareID {
-    NSString *stored = [self secureStringForAccount:KEYCHAIN_HWID_ACCOUNT];
-    if (stored.length > 0) {
-        return stored;
-    }
-
-    NSString *vendorID = [UIDevice currentDevice].identifierForVendor.UUIDString;
-    NSString *generated = vendorID.length > 0 ? vendorID : [NSUUID UUID].UUIDString;
-
-    if (generated.length == 0) {
-        generated = @"unknown-device";
-    }
-
-    [self saveSecureString:generated account:KEYCHAIN_HWID_ACCOUNT];
-    return generated;
-}
-
-- (NSString *)applicationVersion {
-    NSString *version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-    if (version.length == 0) {
-        version = [[NSBundle mainBundle] objectForInfoDictionaryKey:(NSString *)kCFBundleVersionKey];
-    }
-    return version.length > 0 ? version : @"0.0.0";
-}
-
-- (NSString *)deviceArchitecture {
-#if defined(__arm64e__)
-    return @"arm64e";
-#elif defined(__arm64__)
-    return @"arm64";
-#else
-    struct utsname systemInfo;
-    uname(&systemInfo);
-    return [NSString stringWithUTF8String:systemInfo.machine] ?: @"unknown";
-#endif
-}
-
-- (NSString *)deviceModelIdentifier {
-    struct utsname systemInfo;
-    uname(&systemInfo);
-    NSString *machine = [NSString stringWithUTF8String:systemInfo.machine];
-    return machine.length > 0 ? machine : @"unknown";
-}
-
-- (NSDictionary *)deviceInformation {
-    UIDevice *device = UIDevice.currentDevice;
-    NSString *systemVersion = device.systemVersion ?: @"unknown";
-    NSString *model = device.model ?: @"iPhone";
-
-    return @{
-        @"model": model,
-        @"model_identifier": [self deviceModelIdentifier],
-        @"ios_version": systemVersion,
-        @"architecture": [self deviceArchitecture],
-        @"app_version": [self applicationVersion],
-        @"device_class": UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad ? @"iPad" : @"iPhone"
-    };
-}
-
-#pragma mark - Server Time
-
-- (NSTimeInterval)serverTimeOffset {
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    if (![defaults boolForKey:SERVER_OFFSET_VALID_KEY]) {
-        return 0.0;
-    }
-    return [defaults doubleForKey:SERVER_OFFSET_KEY];
-}
-
-- (NSDate * _Nullable)estimatedServerDate {
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    if (![defaults boolForKey:SERVER_OFFSET_VALID_KEY]) {
-        return nil;
-    }
-    return [NSDate dateWithTimeIntervalSinceNow:[self serverTimeOffset]];
-}
-
-- (void)resetServerTimeState {
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    [defaults removeObjectForKey:SERVER_OFFSET_KEY];
-    [defaults removeObjectForKey:SERVER_OFFSET_VALID_KEY];
-}
-
-- (void)updateServerTimeFromResponse:(NSDictionary *)response {
-    NSNumber *serverTime = nil;
-    id raw = response[@"server_time"];
-    if ([raw isKindOfClass:NSNumber.class]) {
-        serverTime = raw;
-    } else if ([raw isKindOfClass:NSString.class]) {
-        serverTime = @([(NSString *)raw doubleValue]);
-    }
-
-    if (!serverTime) {
-        NSDictionary *server = response[@"server"];
-        if ([server isKindOfClass:NSDictionary.class]) {
-            id nested = server[@"time"];
-            if ([nested isKindOfClass:NSNumber.class]) {
-                serverTime = nested;
-            } else if ([nested isKindOfClass:NSString.class]) {
-                serverTime = @([(NSString *)nested doubleValue]);
-            }
-        }
-    }
-
-    if (!serverTime || serverTime.doubleValue <= 0.0) {
-        return;
-    }
-
-    NSTimeInterval offset = serverTime.doubleValue - [NSDate date].timeIntervalSince1970;
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    [defaults setDouble:offset forKey:SERVER_OFFSET_KEY];
-    [defaults setBool:YES forKey:SERVER_OFFSET_VALID_KEY];
-}
-
-#pragma mark - Request Helpers
-
-- (NSString *)requestTimestamp {
-    NSTimeInterval timestamp = [NSDate date].timeIntervalSince1970 + [self serverTimeOffset];
-    return [NSString stringWithFormat:@"%.3f", timestamp];
-}
-
-- (NSString *)requestId {
-    return [NSUUID UUID].UUIDString.lowercaseString;
-}
-
-- (NSString *)appVersionForHeader {
-    return [self applicationVersion];
-}
-
-- (void)completeOnMain:(void (^)(void))block {
-    if (!block) return;
-    if ([NSThread isMainThread]) {
-        block();
-    } else {
-        dispatch_async(dispatch_get_main_queue(), block);
-    }
-}
-
-- (ZXNetworkErrorType)errorTypeForCode:(NSString *)code {
-    NSString *normalized = code.uppercaseString ?: @"";
-
-    if ([normalized isEqualToString:@"INVALID_KEY"]) return ZXNetworkErrorInvalidKey;
-    if ([normalized isEqualToString:@"EXPIRED_KEY"]) return ZXNetworkErrorExpiredKey;
-    if ([normalized isEqualToString:@"REVOKED_KEY"]) return ZXNetworkErrorRevokedKey;
-    if ([normalized isEqualToString:@"DISABLED_KEY"]) return ZXNetworkErrorServer;
-    if ([normalized isEqualToString:@"DEVICE_LIMIT"]) return ZXNetworkErrorDeviceLimit;
-    if ([normalized isEqualToString:@"INVALID_SESSION"]) return ZXNetworkErrorInvalidSession;
-    if ([normalized isEqualToString:@"MAINTENANCE"]) return ZXNetworkErrorMaintenance;
-    if ([normalized isEqualToString:@"VERSION_MISMATCH"] ||
-        [normalized isEqualToString:@"INVALID_APP_VERSION"] ||
-        [normalized isEqualToString:@"APP_VERSION_REQUIRED"]) return ZXNetworkErrorVersionMismatch;
-    if ([normalized isEqualToString:@"INCOMPATIBLE_DEVICE"] ||
-        [normalized isEqualToString:@"DEVICE_NOT_SUPPORTED"] ||
-        [normalized isEqualToString:@"UNSUPPORTED_DEVICE"]) return ZXNetworkErrorCompatibility;
-    if ([normalized isEqualToString:@"RATE_LIMITED"] ||
-        [normalized isEqualToString:@"RATE_LIMIT"]) return ZXNetworkErrorRateLimited;
-
-    return ZXNetworkErrorServer;
-}
-
-- (void)updateLastError:(NSString * _Nullable)message {
-    NSString *copy = [message copy];
-    dispatch_async(self.stateQueue, ^{
-        self.lastErrorMessage = copy;
-    });
-}
-
-- (void)invalidateSessionIfNeededForError:(ZXNetworkErrorType)errorType {
-    BOOL shouldInvalidate =
-        errorType == ZXNetworkErrorInvalidSession ||
-        errorType == ZXNetworkErrorRevokedKey ||
-        errorType == ZXNetworkErrorExpiredKey ||
-        errorType == ZXNetworkErrorInvalidKey;
-
-    if (shouldInvalidate) {
-        [self deleteSecureAccount:KEYCHAIN_SESSION_ACCOUNT];
-    }
-}
-
-#pragma mark - Core Transport
-
-- (void)sendRequestToEndpoint:(NSString *)endpoint
-                      payload:(NSDictionary * _Nullable)payloadDict
-                 requiresAuth:(BOOL)requiresAuth
-                   completion:(void (^)(BOOL success,
-                                        NSDictionary * _Nullable responseData,
-                                        ZXNetworkErrorType errorType,
-                                        NSString * _Nullable errorMsg))completion {
-    if (!completion) return;
-
-    NSString *safeEndpoint = endpoint.length > 0 ? endpoint : @"";
-    NSURL *url = [NSURL URLWithString:[BASE_URL stringByAppendingString:safeEndpoint]];
-    if (!url) {
-        [self completeOnMain:^{
-            completion(NO, nil, ZXNetworkErrorServer, @"Internal error: malformed endpoint URL.");
-        }];
-        return;
-    }
-
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-    request.HTTPMethod = @"POST";
-    request.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
-    request.timeoutInterval = DEFAULT_TIMEOUT;
-    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:[self appVersionForHeader] forHTTPHeaderField:@"X-ZENTRAX-App-Version"];
-    [request setValue:[self requestId] forHTTPHeaderField:@"X-Request-ID"];
-
-    if (requiresAuth) {
-        NSString *token = [self getTokenFromKeychain];
-        if (token.length == 0) {
-            [self completeOnMain:^{
-                completion(NO, nil, ZXNetworkErrorInvalidSession, @"Authentication token missing. Please log in again.");
-            }];
-            return;
-        }
-        [request setValue:[NSString stringWithFormat:@"Bearer %@", token]
-       forHTTPHeaderField:@"Authorization"];
-    }
-
-    NSMutableDictionary *body = payloadDict.mutableCopy ?: [NSMutableDictionary dictionary];
-    body[@"timestamp"] = [self requestTimestamp];
-    body[@"app_version"] = [self applicationVersion];
-    body[@"client_version"] = [self applicationVersion];
-
-    NSError *serializationError = nil;
-    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:&serializationError];
-    if (!bodyData || serializationError) {
-        [self completeOnMain:^{
-            completion(NO, nil, ZXNetworkErrorServer, @"Internal error: request serialization failed.");
-        }];
-        return;
-    }
-    request.HTTPBody = bodyData;
-
-    [self beginRequest];
-
-    __weak typeof(self) weakSelf = self;
-    __block NSURLSessionDataTask *task = nil;
-    task = [self.secureSession dataTaskWithRequest:request
-                                 completionHandler:^(NSData * _Nullable data,
-                                                     NSURLResponse * _Nullable response,
-                                                     NSError * _Nullable error) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (strongSelf) {
-            [strongSelf endRequest];
-            dispatch_async(strongSelf.stateQueue, ^{
-                if (task) [strongSelf.activeTasks removeObject:task];
-            });
-        }
-
+    if (![root isKindOfClass:[NSDictionary class]]) {
         if (error) {
-            ZXNetworkErrorType type = ZXNetworkErrorConnection;
-            NSString *message = @"Secure connection could not be established.";
+            *error = unarchiveError ?: [NSError errorWithDomain:@"ZXStateStore"
+                                                            code:1003
+                                                        userInfo:@{
+                NSLocalizedDescriptionKey:
+                    @"State store archive is invalid."
+            }];
+        }
 
-            if (error.code == NSURLErrorCancelled) {
-                message = @"Request was cancelled.";
-            } else if (error.localizedDescription.length > 0) {
-                message = error.localizedDescription;
+        return NO;
+    }
+
+    NSDictionary *storedRecords = root[@"records"];
+
+    if ([storedRecords isKindOfClass:[NSDictionary class]]) {
+        [storedRecords enumerateKeysAndObjectsUsingBlock:
+            ^(id key, id obj, BOOL *stop) {
+
+            if (![key isKindOfClass:[NSString class]]) {
+                return;
             }
 
-            if (strongSelf) [strongSelf updateLastError:message];
-            [self completeOnMain:^{
-                completion(NO, nil, type, message);
-            }];
-            return;
-        }
+            if (![obj isKindOfClass:[ZXTargetLedgerRecord class]]) {
+                return;
+            }
 
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-        if (![httpResponse isKindOfClass:NSHTTPURLResponse.class]) {
-            NSString *message = @"Invalid server response format.";
-            if (strongSelf) [strongSelf updateLastError:message];
-            [self completeOnMain:^{
-                completion(NO, nil, ZXNetworkErrorInvalidResponse, message);
-            }];
-            return;
-        }
+            ZXTargetLedgerRecord *record =
+                (ZXTargetLedgerRecord *)obj;
 
-        if (data.length == 0) {
-            NSString *message = [NSString stringWithFormat:@"Server returned an empty response (HTTP %ld).", (long)httpResponse.statusCode];
-            if (strongSelf) [strongSelf updateLastError:message];
-            [self completeOnMain:^{
-                completion(NO, nil, ZXNetworkErrorServer, message);
-            }];
-            return;
-        }
+            if (record.canonicalTarget.length == 0) {
+                return;
+            }
 
-        NSError *parseError = nil;
-        id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
-        if (parseError || ![object isKindOfClass:NSDictionary.class]) {
-            NSString *message = @"Server responded with malformed data.";
-            if (strongSelf) [strongSelf updateLastError:message];
-            [self completeOnMain:^{
-                completion(NO, nil, ZXNetworkErrorInvalidResponse, message);
-            }];
-            return;
-        }
-
-        NSDictionary *json = (NSDictionary *)object;
-        if (strongSelf) [strongSelf updateServerTimeFromResponse:json];
-
-        NSString *status = [json[@"status"] isKindOfClass:NSString.class] ? json[@"status"] : @"";
-        BOOL success = [status.lowercaseString isEqualToString:@"success"];
-
-        NSString *message = [json[@"message"] isKindOfClass:NSString.class]
-            ? json[@"message"]
-            : (success ? @"Request completed successfully." : @"The server rejected the request.");
-
-        if (success) {
-            if (strongSelf) [strongSelf updateLastError:nil];
-            [self completeOnMain:^{
-                completion(YES, json, ZXNetworkErrorNone, nil);
-            }];
-            return;
-        }
-
-        NSString *errorCode = [json[@"error_code"] isKindOfClass:NSString.class]
-            ? json[@"error_code"] : @"SERVER_ERROR";
-        ZXNetworkErrorType errorType = strongSelf
-            ? [strongSelf errorTypeForCode:errorCode]
-            : ZXNetworkErrorServer;
-
-        if (strongSelf) {
-            [strongSelf invalidateSessionIfNeededForError:errorType];
-            [strongSelf updateLastError:message];
-        }
-
-        [self completeOnMain:^{
-            completion(NO, json, errorType, message);
-        }];
-    }];
-
-    dispatch_async(self.stateQueue, ^{
-        [self.activeTasks addObject:task];
-    });
-    [task resume];
-}
-
-#pragma mark - Bootstrap
-
-- (void)bootstrapWithCompletion:(ZXBootstrapCompletion)completion {
-    [self bootstrapWithPhaseHandler:nil completion:completion];
-}
-
-- (void)bootstrapWithPhaseHandler:(ZXAuthenticationPhaseHandler _Nullable)phaseHandler
-                        completion:(ZXBootstrapCompletion)completion {
-    if (!completion) return;
-
-    if (phaseHandler) {
-        [self completeOnMain:^{
-            phaseHandler(ZXAuthenticationPhaseConnecting, @"Connecting to ZENTRAX server…");
+            self.records[key] = record;
         }];
     }
 
-    NSDictionary *payload = @{
-        @"action": @"bootstrap",
-        @"hwid": [self getHardwareID],
-        @"device": [self deviceInformation]
+    return YES;
+}
+
+- (BOOL)persistLocked:(NSError **)error
+{
+    if (![self ensureStorageDirectory:error]) {
+        return NO;
+    }
+
+    NSDictionary *root = @{
+        ZXStateStoreSchemaVersionKey:
+            @(ZXStateStoreCurrentSchemaVersion),
+
+        @"records":
+            [self.records copy],
+
+        @"saved_at":
+            [NSDate date]
     };
 
-    [self sendRequestToEndpoint:@"auth.php"
-                         payload:payload
-                    requiresAuth:NO
-                      completion:^(BOOL success,
-                                   NSDictionary *responseData,
-                                   ZXNetworkErrorType errorType,
-                                   NSString *errorMsg) {
-        ZXBootstrapState state = ZXBootstrapStateUnknown;
+    NSError *archiveError = nil;
 
-        if (success) {
-            state = ZXBootstrapStateReady;
-            if (phaseHandler) {
-                phaseHandler(ZXAuthenticationPhaseLoadingConfiguration, @"Loading server configuration…");
-            }
-            [self cacheConfigurationFromResponse:responseData];
-            [self cacheCompatibilityFromResponse:responseData];
-            [self completeOnMain:^{
-                completion(YES, responseData, state, ZXNetworkErrorNone, nil);
-            }];
-            return;
+    NSData *data =
+        [NSKeyedArchiver archivedDataWithRootObject:root
+                               requiringSecureCoding:YES
+                                               error:&archiveError];
+
+    if (!data) {
+        if (error) {
+            *error = archiveError;
         }
 
-        switch (errorType) {
-            case ZXNetworkErrorMaintenance:
-                state = ZXBootstrapStateMaintenance;
+        return NO;
+    }
+
+    NSString *temporaryPath =
+        [self.storageFilePath stringByAppendingString:@".tmp"];
+
+    BOOL wrote =
+        [data writeToFile:temporaryPath
+                  options:NSDataWritingAtomic
+                    error:error];
+
+    if (!wrote) {
+        return NO;
+    }
+
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+
+    NSError *replaceError = nil;
+
+    if ([fileManager fileExistsAtPath:self.storageFilePath]) {
+        NSURL *destinationURL =
+            [NSURL fileURLWithPath:self.storageFilePath];
+
+        NSURL *temporaryURL =
+            [NSURL fileURLWithPath:temporaryPath];
+
+        BOOL replaced =
+            [fileManager replaceItemAtURL:destinationURL
+                             withItemAtURL:temporaryURL
+                            backupItemName:nil
+                                   options:0
+                          resultingItemURL:nil
+                                     error:&replaceError];
+
+        if (!replaced) {
+            [fileManager removeItemAtPath:temporaryPath
+                                    error:nil];
+
+            if (error) {
+                *error = replaceError;
+            }
+
+            return NO;
+        }
+    } else {
+        BOOL moved =
+            [fileManager moveItemAtPath:temporaryPath
+                                 toPath:self.storageFilePath
+                                  error:&replaceError];
+
+        if (!moved) {
+            [fileManager removeItemAtPath:temporaryPath
+                                    error:nil];
+
+            if (error) {
+                *error = replaceError;
+            }
+
+            return NO;
+        }
+    }
+
+    [fileManager setAttributes:@{
+        NSFileProtectionKey:
+            NSFileProtectionCompleteUntilFirstUserAuthentication
+    }
+                  ofItemAtPath:self.storageFilePath
+                         error:nil];
+
+    return YES;
+}
+
+#pragma mark Record Lookup
+
+- (ZXTargetLedgerRecord *)recordForTarget:(NSString *)canonicalTarget
+{
+    @synchronized (self) {
+        if (!self.opened) {
+            [self open:nil];
+        }
+
+        if (canonicalTarget.length == 0) {
+            return nil;
+        }
+
+        return self.records[canonicalTarget];
+    }
+}
+
+- (ZXTargetLedgerRecord *)recordForFunctionId:(NSString *)functionId
+{
+    @synchronized (self) {
+        if (!self.opened) {
+            [self open:nil];
+        }
+
+        if (functionId.length == 0) {
+            return nil;
+        }
+
+        for (ZXTargetLedgerRecord *record in self.records.allValues) {
+            if ([record.activeFunctionId isEqualToString:functionId]) {
+                return record;
+            }
+        }
+
+        return nil;
+    }
+}
+
+- (NSArray<ZXTargetLedgerRecord *> *)allTargetRecords
+{
+    @synchronized (self) {
+        if (!self.opened) {
+            [self open:nil];
+        }
+
+        return [self.records.allValues copy];
+    }
+}
+
+#pragma mark Save / Remove
+
+- (BOOL)saveRecord:(ZXTargetLedgerRecord *)record
+             error:(NSError **)error
+{
+    @synchronized (self) {
+        if (!self.opened && ![self open:error]) {
+            return NO;
+        }
+
+        if (!record) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1101
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Cannot save a nil ledger record."
+                }];
+            }
+
+            return NO;
+        }
+
+        if (record.recordIdentifier.length == 0) {
+            record.recordIdentifier =
+                [[NSUUID UUID] UUIDString];
+        }
+
+        if (record.canonicalTarget.length == 0) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1102
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Ledger record has no canonical target."
+                }];
+            }
+
+            return NO;
+        }
+
+        if (!record.createdAt) {
+            record.createdAt = [NSDate date];
+        }
+
+        record.updatedAt = [NSDate date];
+
+        self.records[record.canonicalTarget] = record;
+
+        if (![self persistLocked:error]) {
+            [self.records removeObjectForKey:record.canonicalTarget];
+            return NO;
+        }
+
+        return YES;
+    }
+}
+
+- (BOOL)removeRecordForTarget:(NSString *)canonicalTarget
+                        error:(NSError **)error
+{
+    @synchronized (self) {
+        if (!self.opened && ![self open:error]) {
+            return NO;
+        }
+
+        ZXTargetLedgerRecord *record =
+            self.records[canonicalTarget];
+
+        if (!record) {
+            return YES;
+        }
+
+        if (record.operationState == ZXLedgerOperationStateInProgress ||
+            record.operationState == ZXLedgerOperationStatePrepared ||
+            record.requiresReconciliation) {
+
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1103
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Cannot remove a ledger record with pending recovery."
+                }];
+            }
+
+            return NO;
+        }
+
+        [self.records removeObjectForKey:canonicalTarget];
+
+        return [self persistLocked:error];
+    }
+}
+
+#pragma mark State Updates
+
+- (BOOL)setState:(ZXTargetLedgerState)state
+       forTarget:(NSString *)canonicalTarget
+           error:(NSError **)error
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1201
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Target ledger record does not exist."
+                }];
+            }
+
+            return NO;
+        }
+
+        record.state = state;
+        record.updatedAt = [NSDate date];
+
+        return [self persistLocked:error];
+    }
+}
+
+- (BOOL)setOperationState:(ZXLedgerOperationState)operationState
+                forTarget:(NSString *)canonicalTarget
+                    error:(NSError **)error
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1202
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Target ledger record does not exist."
+                }];
+            }
+
+            return NO;
+        }
+
+        record.operationState = operationState;
+        record.updatedAt = [NSDate date];
+
+        if (operationState ==
+            ZXLedgerOperationStateNeedsReconciliation) {
+
+            record.requiresReconciliation = YES;
+        }
+
+        return [self persistLocked:error];
+    }
+}
+
+- (BOOL)markRequiresReconciliationForTarget:(NSString *)canonicalTarget
+                                      error:(NSError **)error
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1203
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Target ledger record does not exist."
+                }];
+            }
+
+            return NO;
+        }
+
+        record.requiresReconciliation = YES;
+        record.operationState =
+            ZXLedgerOperationStateNeedsReconciliation;
+
+        record.updatedAt = [NSDate date];
+
+        return [self persistLocked:error];
+    }
+}
+
+- (BOOL)markReconciledForTarget:(NSString *)canonicalTarget
+                          error:(NSError **)error
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1204
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Target ledger record does not exist."
+                }];
+            }
+
+            return NO;
+        }
+
+        record.requiresReconciliation = NO;
+        record.operationState =
+            ZXLedgerOperationStateNone;
+
+        record.lastReconciledAt = [NSDate date];
+        record.updatedAt = [NSDate date];
+
+        return [self persistLocked:error];
+    }
+}
+
+#pragma mark Active Function
+
+- (BOOL)setActiveFunctionId:(NSString *)functionId
+                 functionName:(NSString *)functionName
+                  payloadHash:(NSString *)payloadHash
+                  payloadSize:(NSUInteger)payloadSize
+                    forTarget:(NSString *)canonicalTarget
+                        error:(NSError **)error
+{
+    @synchronized (self) {
+        if (!canonicalTarget.length) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1301
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Canonical target is required."
+                }];
+            }
+
+            return NO;
+        }
+
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            record = [[ZXTargetLedgerRecord alloc] init];
+            record.canonicalTarget = canonicalTarget;
+            record.createdAt = [NSDate date];
+        }
+
+        record.activeFunctionId = functionId ?: @"";
+        record.activeFunctionName = functionName ?: @"";
+        record.activePayloadHash = payloadHash ?: @"";
+        record.activePayloadSize = payloadSize;
+
+        record.state =
+            functionId.length
+            ? ZXTargetLedgerStateIdle
+            : ZXTargetLedgerStateIdle;
+
+        record.updatedAt = [NSDate date];
+
+        self.records[canonicalTarget] = record;
+
+        return [self persistLocked:error];
+    }
+}
+
+#pragma mark Original Backup
+
+- (BOOL)setOriginalBackupHash:(NSString *)hash
+                          size:(NSUInteger)size
+                         exists:(BOOL)exists
+                       validity:(ZXBackupValidity)validity
+                      forTarget:(NSString *)canonicalTarget
+                          error:(NSError **)error
+{
+    @synchronized (self) {
+        if (!canonicalTarget.length) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1401
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Canonical target is required."
+                }];
+            }
+
+            return NO;
+        }
+
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            record = [[ZXTargetLedgerRecord alloc] init];
+            record.canonicalTarget = canonicalTarget;
+            record.createdAt = [NSDate date];
+        }
+
+        record.originalBackupHash = hash ?: @"";
+        record.originalBackupSize = size;
+        record.hasOriginalBackup = exists;
+        record.backupValidity = validity;
+        record.updatedAt = [NSDate date];
+
+        self.records[canonicalTarget] = record;
+
+        return [self persistLocked:error];
+    }
+}
+
+- (BOOL)setBackupValidity:(ZXBackupValidity)validity
+                forTarget:(NSString *)canonicalTarget
+                    error:(NSError **)error
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1402
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Target ledger record does not exist."
+                }];
+            }
+
+            return NO;
+        }
+
+        record.backupValidity = validity;
+        record.updatedAt = [NSDate date];
+
+        if (validity == ZXBackupValidityInvalid) {
+            record.requiresReconciliation = YES;
+        }
+
+        return [self persistLocked:error];
+    }
+}
+
+#pragma mark Operations
+
+- (BOOL)beginOperationWithId:(NSString *)operationId
+                       action:(ZXModuleOperationAction)action
+                   functionId:(NSString *)functionId
+                    licenseId:(NSString *)licenseId
+                     deviceId:(NSString *)deviceId
+                       target:(NSString *)canonicalTarget
+                        error:(NSError **)error
+{
+    @synchronized (self) {
+        if (!operationId.length ||
+            !canonicalTarget.length) {
+
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1501
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Operation ID and target are required."
+                }];
+            }
+
+            return NO;
+        }
+
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            record = [[ZXTargetLedgerRecord alloc] init];
+            record.canonicalTarget = canonicalTarget;
+            record.createdAt = [NSDate date];
+        }
+
+        if (record.operationState ==
+                ZXLedgerOperationStateInProgress ||
+            record.operationState ==
+                ZXLedgerOperationStatePrepared) {
+
+            if (![record.operationId isEqualToString:operationId]) {
+                if (error) {
+                    *error =
+                        [NSError errorWithDomain:@"ZXStateStore"
+                                             code:1502
+                                         userInfo:@{
+                        NSLocalizedDescriptionKey:
+                            @"Another operation is already pending for this target."
+                    }];
+                }
+
+                return NO;
+            }
+        }
+
+        record.operationId = operationId;
+        record.operationAction = action;
+
+        if (functionId.length) {
+            record.activeFunctionId = functionId;
+        }
+
+        if (licenseId.length) {
+            record.licenseId = licenseId;
+        }
+
+        if (deviceId.length) {
+            record.deviceId = deviceId;
+        }
+
+        record.operationState =
+            ZXLedgerOperationStatePrepared;
+
+        switch (action) {
+            case ZXModuleOperationActionON:
+                record.state =
+                    ZXTargetLedgerStateStagingON;
                 break;
-            case ZXNetworkErrorVersionMismatch:
-                state = ZXBootstrapStateVersionMismatch;
+
+            case ZXModuleOperationActionOFF:
+                record.state =
+                    ZXTargetLedgerStateOFFInProgress;
                 break;
-            case ZXNetworkErrorCompatibility:
-                state = ZXBootstrapStateIncompatible;
-                break;
-            case ZXNetworkErrorConnection:
-                state = ZXBootstrapStateConnectionError;
-                break;
+
             default:
-                state = ZXBootstrapStateUnknown;
+                record.state =
+                    ZXTargetLedgerStateIdle;
                 break;
         }
 
-        [self completeOnMain:^{
-            completion(NO, responseData, state, errorType, errorMsg);
+        record.updatedAt = [NSDate date];
+
+        self.records[canonicalTarget] = record;
+
+        return [self persistLocked:error];
+    }
+}
+
+- (ZXTargetLedgerRecord *)pendingOperationForTarget:(NSString *)canonicalTarget
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            return nil;
+        }
+
+        if (record.operationState ==
+                ZXLedgerOperationStatePrepared ||
+            record.operationState ==
+                ZXLedgerOperationStateInProgress ||
+            record.operationState ==
+                ZXLedgerOperationStateNeedsReconciliation) {
+
+            return record;
+        }
+
+        return nil;
+    }
+}
+
+- (ZXTargetLedgerRecord *)pendingOperationForFunctionId:(NSString *)functionId
+{
+    @synchronized (self) {
+        if (!functionId.length) {
+            return nil;
+        }
+
+        for (ZXTargetLedgerRecord *record in self.records.allValues) {
+            if (![record.activeFunctionId
+                    isEqualToString:functionId]) {
+                continue;
+            }
+
+            if (record.operationState ==
+                    ZXLedgerOperationStatePrepared ||
+                record.operationState ==
+                    ZXLedgerOperationStateInProgress ||
+                record.operationState ==
+                    ZXLedgerOperationStateNeedsReconciliation) {
+
+                return record;
+            }
+        }
+
+        return nil;
+    }
+}
+
+- (BOOL)commitOperationWithId:(NSString *)operationId
+                    targetHash:(NSString *)targetHash
+                          size:(NSUInteger)size
+                         error:(NSError **)error
+{
+    @synchronized (self) {
+        if (!operationId.length) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1601
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Operation ID is required."
+                }];
+            }
+
+            return NO;
+        }
+
+        ZXTargetLedgerRecord *record = nil;
+
+        for (ZXTargetLedgerRecord *candidate
+             in self.records.allValues) {
+
+            if ([candidate.operationId
+                    isEqualToString:operationId]) {
+
+                record = candidate;
+                break;
+            }
+        }
+
+        if (!record) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1602
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Operation was not found."
+                }];
+            }
+
+            return NO;
+        }
+
+        record.lastObservedTargetHash =
+            targetHash ?: @"";
+
+        record.lastObservedTargetSize =
+            size;
+
+        record.operationState =
+            ZXLedgerOperationStateCommitted;
+
+        record.requiresReconciliation = NO;
+        record.lastReconciledAt = [NSDate date];
+        record.updatedAt = [NSDate date];
+
+        return [self persistLocked:error];
+    }
+}
+
+- (BOOL)failOperationWithId:(NSString *)operationId
+                      error:(NSError **)error
+{
+    @synchronized (self) {
+        if (!operationId.length) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1603
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Operation ID is required."
+                }];
+            }
+
+            return NO;
+        }
+
+        ZXTargetLedgerRecord *record = nil;
+
+        for (ZXTargetLedgerRecord *candidate
+             in self.records.allValues) {
+
+            if ([candidate.operationId
+                    isEqualToString:operationId]) {
+
+                record = candidate;
+                break;
+            }
+        }
+
+        if (!record) {
+            return YES;
+        }
+
+        record.operationState =
+            ZXLedgerOperationStateNeedsReconciliation;
+
+        record.requiresReconciliation = YES;
+        record.updatedAt = [NSDate date];
+
+        return [self persistLocked:error];
+    }
+}
+
+- (BOOL)clearCompletedOperationWithId:(NSString *)operationId
+                                error:(NSError **)error
+{
+    @synchronized (self) {
+        if (!operationId.length) {
+            return YES;
+        }
+
+        ZXTargetLedgerRecord *record = nil;
+
+        for (ZXTargetLedgerRecord *candidate
+             in self.records.allValues) {
+
+            if ([candidate.operationId
+                    isEqualToString:operationId]) {
+
+                record = candidate;
+                break;
+            }
+        }
+
+        if (!record) {
+            return YES;
+        }
+
+        if (record.operationState !=
+            ZXLedgerOperationStateCommitted) {
+
+            if (error) {
+                *error = [NSError errorWithDomain:@"ZXStateStore"
+                                              code:1604
+                                          userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Only committed operations can be cleared."
+                }];
+            }
+
+            return NO;
+        }
+
+        record.operationId = @"";
+        record.operationAction =
+            ZXModuleOperationActionUnknown;
+
+        record.operationState =
+            ZXLedgerOperationStateNone;
+
+        record.state =
+            ZXTargetLedgerStateIdle;
+
+        record.updatedAt = [NSDate date];
+
+        return [self persistLocked:error];
+    }
+}
+
+#pragma mark Reconciliation
+
+- (NSArray<ZXTargetLedgerRecord *> *)recordsRequiringReconciliation
+{
+    @synchronized (self) {
+        NSMutableArray *result =
+            [NSMutableArray array];
+
+        for (ZXTargetLedgerRecord *record
+             in self.records.allValues) {
+
+            if (record.requiresReconciliation ||
+                record.operationState ==
+                    ZXLedgerOperationStateNeedsReconciliation ||
+                record.state != ZXTargetLedgerStateIdle) {
+
+                [result addObject:record];
+            }
+        }
+
+        [result sortUsingComparator:
+            ^NSComparisonResult(ZXTargetLedgerRecord *a,
+                                ZXTargetLedgerRecord *b) {
+
+            return [a.updatedAt compare:b.updatedAt];
         }];
-    }];
+
+        return [result copy];
+    }
 }
 
-#pragma mark - Authentication
+- (BOOL)validateLedger:(NSError **)error
+{
+    @synchronized (self) {
+        if (!self.opened && ![self open:error]) {
+            return NO;
+        }
 
-- (void)authenticateWithKey:(NSString *)key
-                 completion:(ZXNetworkCompletion)completion {
-    [self authenticateWithKey:key phaseHandler:nil completion:completion];
-}
+        NSMutableSet<NSString *> *targets =
+            [NSMutableSet set];
 
-- (void)authenticateWithKey:(NSString *)key
-               phaseHandler:(ZXAuthenticationPhaseHandler _Nullable)phaseHandler
-                 completion:(ZXNetworkCompletion)completion {
-    if (!completion) return;
+        NSMutableSet<NSString *> *recordIds =
+            [NSMutableSet set];
 
-    NSString *cleanKey = [key stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (cleanKey.length == 0) {
-        [self completeOnMain:^{
-            completion(NO, nil, ZXNetworkErrorInvalidKey, @"License key cannot be empty.");
-        }];
-        return;
-    }
+        for (ZXTargetLedgerRecord *record
+             in self.records.allValues) {
 
-    if (phaseHandler) {
-        phaseHandler(ZXAuthenticationPhaseConnecting, @"Connecting to ZENTRAX server…");
-    }
+            if (record.canonicalTarget.length == 0) {
+                if (error) {
+                    *error =
+                        [NSError errorWithDomain:@"ZXStateStore"
+                                             code:1701
+                                         userInfo:@{
+                        NSLocalizedDescriptionKey:
+                            @"Ledger contains a record without a canonical target."
+                    }];
+                }
 
-    NSDictionary *payload = @{
-        @"action": @"login",
-        @"key": cleanKey,
-        @"hwid": [self getHardwareID],
-        @"device": [self deviceInformation]
-    };
-
-    [self sendRequestToEndpoint:@"auth.php"
-                         payload:payload
-                    requiresAuth:NO
-                      completion:^(BOOL success,
-                                   NSDictionary *responseData,
-                                   ZXNetworkErrorType errorType,
-                                   NSString *errorMsg) {
-        if (!success) {
-            if (phaseHandler) {
-                phaseHandler(ZXAuthenticationPhaseIdle, errorMsg ?: @"Authentication failed.");
+                return NO;
             }
-            completion(NO, responseData, errorType, errorMsg);
-            return;
-        }
 
-        if (phaseHandler) {
-            phaseHandler(ZXAuthenticationPhaseAuthenticating, @"Authenticating license…");
-            phaseHandler(ZXAuthenticationPhaseVerifyingLicense, @"Verifying license and device…");
-        }
+            if ([targets containsObject:record.canonicalTarget]) {
+                if (error) {
+                    *error =
+                        [NSError errorWithDomain:@"ZXStateStore"
+                                             code:1702
+                                         userInfo:@{
+                        NSLocalizedDescriptionKey:
+                            @"Duplicate canonical target detected."
+                    }];
+                }
 
-        NSString *token = [responseData[@"token"] isKindOfClass:NSString.class]
-            ? responseData[@"token"] : nil;
-        if (token.length == 0) {
-            NSString *message = @"Authentication succeeded, but no secure session token was returned.";
-            if (phaseHandler) phaseHandler(ZXAuthenticationPhaseIdle, message);
-            completion(NO, responseData, ZXNetworkErrorServer, message);
-            return;
-        }
-
-        if (phaseHandler) {
-            phaseHandler(ZXAuthenticationPhaseSecuringSession, @"Securing session…");
-        }
-
-        if (![self saveSecureString:token account:KEYCHAIN_SESSION_ACCOUNT]) {
-            NSString *message = @"Unable to securely store the session token.";
-            [self deleteSecureAccount:KEYCHAIN_SESSION_ACCOUNT];
-            if (phaseHandler) phaseHandler(ZXAuthenticationPhaseIdle, message);
-            completion(NO, responseData, ZXNetworkErrorServer, message);
-            return;
-        }
-
-        [self saveSecureString:cleanKey account:KEYCHAIN_LICENSE_ACCOUNT];
-        [self cacheConfigurationFromResponse:responseData];
-        [self cacheCompatibilityFromResponse:responseData];
-
-        if (phaseHandler) {
-            phaseHandler(ZXAuthenticationPhaseLoadingConfiguration, @"Loading configuration and features…");
-            phaseHandler(ZXAuthenticationPhaseAccessGranted, @"Access granted.");
-        }
-
-        completion(YES, responseData, ZXNetworkErrorNone, nil);
-    }];
-}
-
-- (NSString * _Nullable)rememberedLicenseKey {
-    return [self secureStringForAccount:KEYCHAIN_LICENSE_ACCOUNT];
-}
-
-#pragma mark - Configuration Cache
-
-- (void)cacheConfigurationFromResponse:(NSDictionary *)response {
-    if (![response isKindOfClass:NSDictionary.class]) return;
-
-    BOOL containsConfiguration = response[@"categories"] != nil ||
-                                  response[@"functions"] != nil ||
-                                  response[@"dashboard"] != nil;
-    if (!containsConfiguration) return;
-
-    NSError *error = nil;
-    NSData *data = [NSJSONSerialization dataWithJSONObject:response options:0 error:&error];
-    if (!error && data) {
-        [NSUserDefaults.standardUserDefaults setObject:data forKey:CONFIGURATION_CACHE_KEY];
-    }
-}
-
-- (NSDictionary * _Nullable)cachedConfiguration {
-    NSData *data = [NSUserDefaults.standardUserDefaults dataForKey:CONFIGURATION_CACHE_KEY];
-    if (!data) return nil;
-
-    NSError *error = nil;
-    id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
-    return (!error && [object isKindOfClass:NSDictionary.class]) ? object : nil;
-}
-
-- (void)loadConfigurationWithCompletion:(ZXNetworkCompletion)completion {
-    NSDictionary *payload = @{
-        @"action": @"heartbeat",
-        @"hwid": [self getHardwareID]
-    };
-
-    [self sendRequestToEndpoint:@"heartbeat.php"
-                         payload:payload
-                    requiresAuth:YES
-                      completion:^(BOOL success,
-                                   NSDictionary *responseData,
-                                   ZXNetworkErrorType errorType,
-                                   NSString *errorMsg) {
-        if (success) {
-            [self cacheConfigurationFromResponse:responseData];
-        }
-        if (completion) completion(success, responseData, errorType, errorMsg);
-    }];
-}
-
-#pragma mark - Module Operations
-
-- (void)toggleModule:(NSString *)moduleName
-               state:(BOOL)isOn
-          completion:(ZXModuleCompletion)completion {
-    if (moduleName.length == 0) {
-        if (completion) completion(NO, nil, @"Invalid function identifier.");
-        return;
-    }
-
-    NSDictionary *payload = @{
-        @"action": @"get_payload",
-        @"module": moduleName,
-        @"state": isOn ? @"ON" : @"OFF",
-        @"hwid": [self getHardwareID]
-    };
-
-    [self sendRequestToEndpoint:@"module.php"
-                         payload:payload
-                    requiresAuth:YES
-                      completion:^(BOOL success,
-                                   NSDictionary *responseData,
-                                   ZXNetworkErrorType errorType,
-                                   NSString *errorMsg) {
-        if (!success) {
-            if (completion) completion(NO, nil, errorMsg);
-            return;
-        }
-
-        NSDictionary *operationPayload = nil;
-        id rawPayload = responseData[@"payload"];
-        if ([rawPayload isKindOfClass:NSDictionary.class]) {
-            operationPayload = rawPayload;
-        }
-
-        NSString *operationID = [responseData[@"operation_id"] isKindOfClass:NSString.class]
-            ? responseData[@"operation_id"] : nil;
-
-        if (operationID.length == 0) {
-            if (completion) completion(NO, nil, @"Server response is missing the operation identifier.");
-            return;
-        }
-
-        NSMutableDictionary *combined = [NSMutableDictionary dictionary];
-        if (operationPayload) [combined addEntriesFromDictionary:operationPayload];
-        combined[@"operation_id"] = operationID;
-
-        if ([responseData[@"target"] isKindOfClass:NSDictionary.class]) {
-            combined[@"target"] = responseData[@"target"];
-        }
-        if ([responseData[@"restore_contract"] isKindOfClass:NSDictionary.class]) {
-            combined[@"restore_contract"] = responseData[@"restore_contract"];
-        }
-        if ([responseData[@"switch_mode"] isKindOfClass:NSString.class]) {
-            combined[@"switch_mode"] = responseData[@"switch_mode"];
-        }
-        if ([responseData[@"server_time"] isKindOfClass:NSNumber.class] ||
-            [responseData[@"server_time"] isKindOfClass:NSString.class]) {
-            combined[@"server_time"] = responseData[@"server_time"];
-        }
-
-        if (isOn) {
-            BOOL validPayload = [combined[@"file_data"] isKindOfClass:NSString.class] &&
-                                [combined[@"sha256"] isKindOfClass:NSString.class] &&
-                                [combined[@"size"] isKindOfClass:NSNumber.class];
-            if (!validPayload) {
-                if (completion) completion(NO, nil, @"Server returned an incomplete verified ON payload.");
-                return;
+                return NO;
             }
-        } else {
-            BOOL validContract = [combined[@"restore_contract"] isKindOfClass:NSDictionary.class];
-            if (!validContract) {
-                if (completion) completion(NO, nil, @"Server returned an incomplete OFF restore contract.");
-                return;
+
+            [targets addObject:record.canonicalTarget];
+
+            if (record.recordIdentifier.length == 0) {
+                if (error) {
+                    *error =
+                        [NSError errorWithDomain:@"ZXStateStore"
+                                             code:1703
+                                         userInfo:@{
+                        NSLocalizedDescriptionKey:
+                            @"Ledger contains a record without an identifier."
+                    }];
+                }
+
+                return NO;
+            }
+
+            if ([recordIds containsObject:record.recordIdentifier]) {
+                if (error) {
+                    *error =
+                        [NSError errorWithDomain:@"ZXStateStore"
+                                             code:1704
+                                         userInfo:@{
+                        NSLocalizedDescriptionKey:
+                            @"Duplicate ledger record identifier detected."
+                    }];
+                }
+
+                return NO;
+            }
+
+            [recordIds addObject:record.recordIdentifier];
+
+            if (record.operationState ==
+                    ZXLedgerOperationStatePrepared ||
+                record.operationState ==
+                    ZXLedgerOperationStateInProgress) {
+
+                if (record.operationId.length == 0) {
+                    if (error) {
+                        *error =
+                            [NSError errorWithDomain:@"ZXStateStore"
+                                                 code:1705
+                                             userInfo:@{
+                            NSLocalizedDescriptionKey:
+                                @"Pending operation has no operation ID."
+                        }];
+                    }
+
+                    return NO;
+                }
+            }
+
+            if (record.hasOriginalBackup &&
+                record.originalBackupHash.length == 0 &&
+                record.backupValidity == ZXBackupValidityValid) {
+
+                if (error) {
+                    *error =
+                        [NSError errorWithDomain:@"ZXStateStore"
+                                             code:1706
+                                         userInfo:@{
+                        NSLocalizedDescriptionKey:
+                            @"Valid original backup is missing its hash."
+                    }];
+                }
+
+                return NO;
+            }
+
+            if (record.activeFunctionId.length > 0 &&
+                record.activePayloadHash.length == 0 &&
+                record.state == ZXTargetLedgerStateIdle) {
+
+                record.requiresReconciliation = YES;
             }
         }
 
-        if (completion) completion(YES, combined, nil);
-    }];
+        return YES;
+    }
 }
 
-- (void)performModuleOperationWithFunctionId:(NSString *)functionId
-                                       action:(ZXModuleOperationAction)action
-                                  completion:(ZXModuleCompletion)completion {
-    if (functionId.length == 0 || action == ZXModuleOperationActionUnknown) {
-        if (completion) completion(NO, nil, @"Invalid function operation.");
-        return;
-    }
+- (BOOL)markUnresolvedRecordsForReconciliation
+{
+    @synchronized (self) {
+        BOOL changed = NO;
 
-    NSString *state = action == ZXModuleOperationActionON ? @"ON" : @"OFF";
-    NSDictionary *payload = @{
-        @"action": @"get_payload",
-        @"function_id": functionId,
-        @"state": state,
-        @"hwid": [self getHardwareID]
-    };
+        for (ZXTargetLedgerRecord *record
+             in self.records.allValues) {
 
-    [self sendRequestToEndpoint:@"module.php"
-                         payload:payload
-                    requiresAuth:YES
-                      completion:^(BOOL success,
-                                   NSDictionary *responseData,
-                                   ZXNetworkErrorType errorType,
-                                   NSString *errorMsg) {
-        if (!success) {
-            if (completion) completion(NO, nil, errorMsg);
-            return;
-        }
+            BOOL unresolved =
+                record.operationState ==
+                    ZXLedgerOperationStatePrepared ||
+                record.operationState ==
+                    ZXLedgerOperationStateInProgress ||
+                record.operationState ==
+                    ZXLedgerOperationStateNeedsReconciliation ||
+                record.state != ZXTargetLedgerStateIdle;
 
-        NSString *operationID = [responseData[@"operation_id"] isKindOfClass:NSString.class]
-            ? responseData[@"operation_id"] : nil;
-        if (operationID.length == 0) {
-            if (completion) completion(NO, nil, @"Server response is missing the operation identifier.");
-            return;
-        }
+            if (unresolved &&
+                !record.requiresReconciliation) {
 
-        NSMutableDictionary *result = [NSMutableDictionary dictionaryWithDictionary:responseData];
-        result[@"operation_id"] = operationID;
+                record.requiresReconciliation = YES;
+                record.operationState =
+                    ZXLedgerOperationStateNeedsReconciliation;
+                record.updatedAt = [NSDate date];
 
-        if (action == ZXModuleOperationActionON) {
-            NSDictionary *payloadData = [responseData[@"payload"] isKindOfClass:NSDictionary.class]
-                ? responseData[@"payload"] : nil;
-            BOOL valid = [payloadData[@"file_data"] isKindOfClass:NSString.class] &&
-                         [payloadData[@"sha256"] isKindOfClass:NSString.class] &&
-                         [payloadData[@"size"] isKindOfClass:NSNumber.class];
-            if (!valid) {
-                if (completion) completion(NO, nil, @"Server returned an incomplete verified ON payload.");
-                return;
-            }
-        } else {
-            NSDictionary *contract = [responseData[@"restore_contract"] isKindOfClass:NSDictionary.class]
-                ? responseData[@"restore_contract"] : nil;
-            if (!contract) {
-                if (completion) completion(NO, nil, @"Server returned an incomplete OFF restore contract.");
-                return;
+                changed = YES;
             }
         }
 
-        if (completion) completion(YES, result, nil);
-    }];
-}
-
-#pragma mark - Module Synchronization
-
-- (NSString *)fallbackTransactionHashForOperation:(NSString *)operationID state:(BOOL)isOn {
-    NSString *material = [NSString stringWithFormat:@"%@|%@|%@|%@",
-                           operationID ?: @"",
-                           isOn ? @"ON" : @"OFF",
-                           [self getHardwareID],
-                           [self applicationVersion]];
-    NSData *data = [material dataUsingEncoding:NSUTF8StringEncoding];
-    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
-    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
-
-    NSMutableString *hash = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
-    for (NSUInteger i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) {
-        [hash appendFormat:@"%02x", digest[i]];
-    }
-    return hash;
-}
-
-- (void)syncModuleState:(NSString *)moduleName
-                  state:(BOOL)isOn
-            operationId:(NSString *)operationId
-             completion:(ZXModuleSyncCompletion)completion {
-    if (moduleName.length == 0 || operationId.length == 0) {
-        if (completion) completion(NO, @"Missing required identifiers for synchronization.");
-        return;
-    }
-
-    NSDictionary *payload = @{
-        @"action": @"sync_state",
-        @"module": moduleName,
-        @"state": isOn ? @"ON" : @"OFF",
-        @"operation_id": operationId,
-        @"transaction_hash": [self fallbackTransactionHashForOperation:operationId state:isOn],
-        @"hwid": [self getHardwareID]
-    };
-
-    [self sendRequestToEndpoint:@"module.php"
-                         payload:payload
-                    requiresAuth:YES
-                      completion:^(BOOL success,
-                                   NSDictionary *responseData,
-                                   ZXNetworkErrorType errorType,
-                                   NSString *errorMsg) {
-        if (completion) completion(success, errorMsg);
-    }];
-}
-
-- (void)syncModuleStateForFunctionId:(NSString *)functionId
-                               state:(BOOL)isOn
-                         operationId:(NSString *)operationId
-                          completion:(ZXModuleSyncCompletion)completion {
-    if (functionId.length == 0 || operationId.length == 0) {
-        if (completion) completion(NO, @"Missing required identifiers for synchronization.");
-        return;
-    }
-
-    NSDictionary *payload = @{
-        @"action": @"sync_state",
-        @"function_id": functionId,
-        @"state": isOn ? @"ON" : @"OFF",
-        @"operation_id": operationId,
-        @"transaction_hash": [self fallbackTransactionHashForOperation:operationId state:isOn],
-        @"hwid": [self getHardwareID]
-    };
-
-    [self sendRequestToEndpoint:@"module.php"
-                         payload:payload
-                    requiresAuth:YES
-                      completion:^(BOOL success,
-                                   NSDictionary *responseData,
-                                   ZXNetworkErrorType errorType,
-                                   NSString *errorMsg) {
-        if (completion) completion(success, errorMsg);
-    }];
-}
-
-#pragma mark - Function Status / Dashboard
-
-- (void)getFunctionStatus:(NSString *)functionId
-               completion:(ZXNetworkCompletion)completion {
-    if (functionId.length == 0) {
-        if (completion) completion(NO, nil, ZXNetworkErrorServer, @"Invalid function identifier.");
-        return;
-    }
-
-    [self loadConfigurationWithCompletion:^(BOOL success,
-                                            NSDictionary *responseData,
-                                            ZXNetworkErrorType errorType,
-                                            NSString *errorMsg) {
-        if (!success) {
-            if (completion) completion(NO, responseData, errorType, errorMsg);
-            return;
+        if (!changed) {
+            return YES;
         }
 
-        NSDictionary *match = [self findFunction:functionId inConfiguration:responseData];
-        if (!match) {
-            if (completion) completion(NO, nil, ZXNetworkErrorServer, @"Function was not found in the current server configuration.");
-            return;
-        }
-
-        if (completion) completion(YES, match, ZXNetworkErrorNone, nil);
-    }];
-}
-
-- (void)getFunctionStatusesWithCompletion:(ZXNetworkCompletion)completion {
-    [self loadConfigurationWithCompletion:completion];
-}
-
-- (NSDictionary * _Nullable)findFunction:(NSString *)functionId
-                         inConfiguration:(NSDictionary *)configuration {
-    if (![configuration isKindOfClass:NSDictionary.class]) return nil;
-
-    NSArray *categories = [configuration[@"categories"] isKindOfClass:NSArray.class]
-        ? configuration[@"categories"] : nil;
-
-    for (NSDictionary *category in categories) {
-        if (![category isKindOfClass:NSDictionary.class]) continue;
-        NSArray *functions = [category[@"functions"] isKindOfClass:NSArray.class]
-            ? category[@"functions"] : nil;
-
-        for (NSDictionary *function in functions) {
-            if (![function isKindOfClass:NSDictionary.class]) continue;
-            NSString *candidate = [NSString stringWithFormat:@"%@", function[@"id"] ?: @""];
-            if ([candidate isEqualToString:functionId]) return function;
-        }
-    }
-
-    NSArray *flatFunctions = [configuration[@"functions"] isKindOfClass:NSArray.class]
-        ? configuration[@"functions"] : nil;
-    for (NSDictionary *function in flatFunctions) {
-        if (![function isKindOfClass:NSDictionary.class]) continue;
-        NSString *candidate = [NSString stringWithFormat:@"%@", function[@"id"] ?: @""];
-        if ([candidate isEqualToString:functionId]) return function;
-    }
-
-    return nil;
-}
-
-#pragma mark - Heartbeat / Session
-
-- (void)verifySessionWithCompletion:(ZXSessionCompletion)completion {
-    [self sendHeartbeatWithCompletion:completion];
-}
-
-- (void)sendHeartbeatWithCompletion:(ZXSessionCompletion)completion {
-    if (!completion) return;
-
-    if (![self hasActiveSession]) {
-        [self completeOnMain:^{
-            completion(NO, nil, ZXNetworkErrorInvalidSession, @"No active session.");
-        }];
-        return;
-    }
-
-    NSDictionary *payload = @{
-        @"action": @"heartbeat",
-        @"hwid": [self getHardwareID]
-    };
-
-    [self sendRequestToEndpoint:@"heartbeat.php"
-                         payload:payload
-                    requiresAuth:YES
-                      completion:^(BOOL success,
-                                   NSDictionary *responseData,
-                                   ZXNetworkErrorType errorType,
-                                   NSString *errorMsg) {
-        if (success) {
-            [self cacheConfigurationFromResponse:responseData];
-            [self cacheCompatibilityFromResponse:responseData];
-        }
-        completion(success, responseData, errorType, errorMsg);
-    }];
-}
-
-#pragma mark - Session State
-
-- (BOOL)hasActiveSession {
-    return [self getTokenFromKeychain].length > 0;
-}
-
-- (BOOL)isSessionLocallyUsable {
-    return [self hasActiveSession];
-}
-
-- (void)logout {
-    /*
-     * Server-side session invalidation, when provided by the API, should be
-     * performed by the caller before this local purge. This method always
-     * removes the local bearer token and transient authentication state.
-     */
-    [self deleteSecureAccount:KEYCHAIN_SESSION_ACCOUNT];
-    [self deleteSecureAccount:KEYCHAIN_LICENSE_ACCOUNT];
-    [self resetServerTimeState];
-    [self resetCompatibilityState];
-}
-
-#pragma mark - Compatibility
-
-- (void)cacheCompatibilityFromResponse:(NSDictionary *)response {
-    if (![response isKindOfClass:NSDictionary.class]) return;
-
-    NSDictionary *compatibility = nil;
-    if ([response[@"compatibility"] isKindOfClass:NSDictionary.class]) {
-        compatibility = response[@"compatibility"];
-    } else if ([response[@"device_compatibility"] isKindOfClass:NSDictionary.class]) {
-        compatibility = response[@"device_compatibility"];
-    }
-
-    if (!compatibility) return;
-
-    NSError *error = nil;
-    NSData *data = [NSJSONSerialization dataWithJSONObject:compatibility options:0 error:&error];
-    if (!error && data) {
-        [NSUserDefaults.standardUserDefaults setObject:data forKey:COMPATIBILITY_CACHE_KEY];
+        return [self persistLocked:error];
     }
 }
 
-- (NSDictionary * _Nullable)cachedCompatibilityData {
-    NSData *data = [NSUserDefaults.standardUserDefaults dataForKey:COMPATIBILITY_CACHE_KEY];
-    if (!data) return nil;
+#pragma mark License Association
 
-    NSError *error = nil;
-    id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
-    return (!error && [object isKindOfClass:NSDictionary.class]) ? object : nil;
-}
-
-- (void)resetCompatibilityState {
-    [NSUserDefaults.standardUserDefaults removeObjectForKey:COMPATIBILITY_CACHE_KEY];
-}
-
-- (void)checkDeviceCompatibilityWithCompletion:(ZXCompatibilityCompletion)completion {
-    if (!completion) return;
-
-    NSDictionary *device = [self deviceInformation];
-    NSDictionary *payload = @{
-        @"action": @"bootstrap",
-        @"hwid": [self getHardwareID],
-        @"device": device
-    };
-
-    [self sendRequestToEndpoint:@"auth.php"
-                         payload:payload
-                    requiresAuth:NO
-                      completion:^(BOOL success,
-                                   NSDictionary *responseData,
-                                   ZXNetworkErrorType errorType,
-                                   NSString *errorMsg) {
-        NSDictionary *compatibility = nil;
-        if ([responseData[@"compatibility"] isKindOfClass:NSDictionary.class]) {
-            compatibility = responseData[@"compatibility"];
-        } else if ([responseData[@"device_compatibility"] isKindOfClass:NSDictionary.class]) {
-            compatibility = responseData[@"device_compatibility"];
-        } else if ([self cachedCompatibilityData]) {
-            compatibility = [self cachedCompatibilityData];
+- (NSArray<ZXTargetLedgerRecord *> *)recordsForLicenseId:(NSString *)licenseId
+{
+    @synchronized (self) {
+        if (!licenseId.length) {
+            return @[];
         }
 
-        BOOL supported = YES;
-        if (compatibility) {
-            id value = compatibility[@"supported"];
-            if ([value isKindOfClass:NSNumber.class]) supported = [value boolValue];
-            else if ([value isKindOfClass:NSString.class]) supported = [value boolValue];
+        NSMutableArray *result =
+            [NSMutableArray array];
+
+        for (ZXTargetLedgerRecord *record
+             in self.records.allValues) {
+
+            if ([record.licenseId
+                    isEqualToString:licenseId]) {
+
+                [result addObject:record];
+            }
         }
 
-        if (!success && errorType != ZXNetworkErrorCompatibility) {
-            completion(NO, compatibility ?: responseData, ZXDeviceCompatibilityStatusUnknown, errorMsg);
-            return;
+        return [result copy];
+    }
+}
+
+- (BOOL)associateTarget:(NSString *)canonicalTarget
+              licenseId:(NSString *)licenseId
+               deviceId:(NSString *)deviceId
+                  error:(NSError **)error
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            if (error) {
+                *error =
+                    [NSError errorWithDomain:@"ZXStateStore"
+                                         code:1801
+                                     userInfo:@{
+                    NSLocalizedDescriptionKey:
+                        @"Target ledger record does not exist."
+                }];
+            }
+
+            return NO;
         }
 
-        if (!success && errorType == ZXNetworkErrorCompatibility) {
-            completion(YES, compatibility ?: responseData, ZXDeviceCompatibilityStatusUnsupported,
-                       errorMsg ?: @"This device is not supported.");
-            return;
+        record.licenseId = licenseId ?: @"";
+        record.deviceId = deviceId ?: @"";
+        record.updatedAt = [NSDate date];
+
+        return [self persistLocked:error];
+    }
+}
+
+- (BOOL)clearSessionAssociationForLicenseId:(NSString *)licenseId
+                                      error:(NSError **)error
+{
+    @synchronized (self) {
+        if (!licenseId.length) {
+            return YES;
         }
 
-        [self cacheCompatibilityFromResponse:responseData];
-        completion(YES, compatibility ?: @{},
-                   supported ? ZXDeviceCompatibilityStatusSupported : ZXDeviceCompatibilityStatusUnsupported,
-                   supported ? nil : ([compatibility[@"reason"] isKindOfClass:NSString.class] ? compatibility[@"reason"] : @"This device is not supported."));
-    }];
-}
+        BOOL changed = NO;
 
-#pragma mark - Shortcut / Automation
+        for (ZXTargetLedgerRecord *record
+             in self.records.allValues) {
 
-- (void)performShortcutFunctionOperation:(NSString *)functionId
-                                  action:(ZXModuleOperationAction)action
-                             completion:(ZXModuleCompletion)completion {
-    /*
-     * Shortcuts intentionally use the same authenticated module endpoint as
-     * the main application. There is no unrestricted filesystem operation or
-     * authentication bypass here.
-     */
-    [self performModuleOperationWithFunctionId:functionId action:action completion:completion];
-}
+            if (![record.licenseId
+                    isEqualToString:licenseId]) {
 
-- (void)getShortcutFunctionStatus:(NSString *)functionId
-                      completion:(ZXNetworkCompletion)completion {
-    [self getFunctionStatus:functionId completion:completion];
-}
+                continue;
+            }
 
-#pragma mark - Request Cancellation
+            record.licenseId = @"";
+            record.deviceId = @"";
+            record.updatedAt = [NSDate date];
 
-- (void)cancelAllRequests {
-    dispatch_async(self.stateQueue, ^{
-        NSArray<NSURLSessionDataTask *> *tasks = self.activeTasks.allObjects;
-        for (NSURLSessionDataTask *task in tasks) {
-            [task cancel];
+            changed = YES;
         }
-        [self.activeTasks removeAllObjects];
-    });
+
+        if (!changed) {
+            return YES;
+        }
+
+        return [self persistLocked:error];
+    }
 }
 
-#pragma mark - TLS Trust
+#pragma mark Recovery
 
-- (void)URLSession:(NSURLSession *)session
-didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
- completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition,
-                             NSURLCredential * _Nullable credential))completionHandler {
-    /*
-     * Use Apple's system trust evaluation. No certificate pin/hash is
-     * hardcoded because the deployment does not provide a maintained pin set.
-     */
-    if ([challenge.protectionSpace.authenticationMethod
-         isEqualToString:NSURLAuthenticationMethodServerTrust]) {
-        completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
-        return;
-    } 
+- (BOOL)hasPendingRecovery
+{
+    @synchronized (self) {
+        if (!self.opened) {
+            [self open:nil];
+        }
 
-    completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+        for (ZXTargetLedgerRecord *record
+             in self.records.allValues) {
+
+            if (record.requiresReconciliation ||
+                record.operationState ==
+                    ZXLedgerOperationStatePrepared ||
+                record.operationState ==
+                    ZXLedgerOperationStateInProgress ||
+                record.operationState ==
+                    ZXLedgerOperationStateNeedsReconciliation) {
+
+                return YES;
+            }
+        }
+
+        return NO;
+    }
+}
+
+- (NSUInteger)pendingRecoveryCount
+{
+    @synchronized (self) {
+        if (!self.opened) {
+            [self open:nil];
+        }
+
+        NSUInteger count = 0;
+
+        for (ZXTargetLedgerRecord *record
+             in self.records.allValues) {
+
+            if (record.requiresReconciliation ||
+                record.operationState ==
+                    ZXLedgerOperationStatePrepared ||
+                record.operationState ==
+                    ZXLedgerOperationStateInProgress ||
+                record.operationState ==
+                    ZXLedgerOperationStateNeedsReconciliation) {
+
+                count++;
+            }
+        }
+
+        return count;
+    }
+}
+
+- (BOOL)createRecoveryCheckpoint:(NSError **)error
+{
+    @synchronized (self) {
+        if (!self.opened && ![self open:error]) {
+            return NO;
+        }
+
+        NSMutableArray *pending =
+            [NSMutableArray array];
+
+        for (ZXTargetLedgerRecord *record
+             in [self recordsRequiringReconciliation]) {
+
+            NSDictionary *entry = @{
+                @"record_identifier":
+                    record.recordIdentifier ?: @"",
+
+                @"target":
+                    record.canonicalTarget ?: @"",
+
+                @"function_id":
+                    record.activeFunctionId ?: @"",
+
+                @"payload_hash":
+                    record.activePayloadHash ?: @"",
+
+                @"original_backup_hash":
+                    record.originalBackupHash ?: @"",
+
+                @"operation_id":
+                    record.operationId ?: @"",
+
+                @"operation_action":
+                    @(record.operationAction),
+
+                @"state":
+                    @(record.state),
+
+                @"operation_state":
+                    @(record.operationState),
+
+                @"created_at":
+                    record.createdAt ?: [NSDate date],
+
+                @"updated_at":
+                    record.updatedAt ?: [NSDate date]
+            };
+
+            [pending addObject:entry];
+        }
+
+        NSDictionary *checkpoint = @{
+            @"schema_version":
+                @(ZXStateStoreCurrentSchemaVersion),
+
+            @"created_at":
+                [NSDate date],
+
+            @"pending":
+                pending
+        };
+
+        NSError *archiveError = nil;
+
+        NSData *data =
+            [NSKeyedArchiver archivedDataWithRootObject:checkpoint
+                               requiringSecureCoding:YES
+                                               error:&archiveError];
+
+        if (!data) {
+            if (error) {
+                *error = archiveError;
+            }
+
+            return NO;
+        }
+
+        BOOL written =
+            [data writeToFile:self.checkpointFilePath
+                      options:NSDataWritingAtomic
+                        error:error];
+
+        if (!written) {
+            return NO;
+        }
+
+        self.recoveryCheckpoint =
+            [checkpoint mutableCopy];
+
+        return YES;
+    }
+}
+
+- (BOOL)clearRecoveryCheckpoint:(NSError **)error
+{
+    @synchronized (self) {
+        self.recoveryCheckpoint =
+            [NSMutableDictionary dictionary];
+
+        if (![[NSFileManager defaultManager]
+                fileExistsAtPath:self.checkpointFilePath]) {
+
+            return YES;
+        }
+
+        return [[NSFileManager defaultManager]
+            removeItemAtPath:self.checkpointFilePath
+                       error:error];
+    }
+}
+
+- (BOOL)loadRecoveryCheckpointLocked:(NSError **)error
+{
+    if (![[NSFileManager defaultManager]
+            fileExistsAtPath:self.checkpointFilePath]) {
+
+        self.recoveryCheckpoint =
+            [NSMutableDictionary dictionary];
+
+        return YES;
+    }
+
+    NSData *data =
+        [NSData dataWithContentsOfFile:self.checkpointFilePath
+                               options:NSDataReadingMappedIfSafe
+                                 error:error];
+
+    if (!data) {
+        return NO;
+    }
+
+    NSError *unarchiveError = nil;
+
+    NSSet *allowedClasses =
+        [NSSet setWithObjects:
+            [NSDictionary class],
+            [NSMutableDictionary class],
+            [NSArray class],
+            [NSMutableArray class],
+            [NSString class],
+            [NSNumber class],
+            [NSDate class],
+            nil];
+
+    NSDictionary *checkpoint =
+        [NSKeyedUnarchiver unarchivedObjectOfClasses:allowedClasses
+                                           fromData:data
+                                              error:&unarchiveError];
+
+    if (![checkpoint isKindOfClass:[NSDictionary class]]) {
+        if (error) {
+            *error = unarchiveError ?: [NSError errorWithDomain:@"ZXStateStore"
+                                                            code:1901
+                                                        userInfo:@{
+                NSLocalizedDescriptionKey:
+                    @"Recovery checkpoint is invalid."
+            }];
+        }
+
+        return NO;
+    }
+
+    self.recoveryCheckpoint =
+        [checkpoint mutableCopy];
+
+    return YES;
+}
+
+#pragma mark Target Ownership
+
+- (BOOL)isTargetOwned:(NSString *)canonicalTarget
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            return NO;
+        }
+
+        return record.activeFunctionId.length > 0 ||
+               record.hasOriginalBackup;
+    }
+}
+
+- (BOOL)hasValidOriginalBackup:(NSString *)canonicalTarget
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            return NO;
+        }
+
+        return record.hasOriginalBackup &&
+               record.backupValidity == ZXBackupValidityValid &&
+               record.originalBackupHash.length > 0;
+    }
+}
+
+- (NSString *)activeFunctionIdForTarget:(NSString *)canonicalTarget
+{
+    @synchronized (self) {
+        ZXTargetLedgerRecord *record =
+            [self recordForTarget:canonicalTarget];
+
+        if (!record) {
+            return nil;
+        }
+
+        return record.activeFunctionId.length
+            ? record.activeFunctionId
+            : nil;
+    }
 }
 
 @end
