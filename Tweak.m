@@ -156,11 +156,15 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     });
 }
 
+
 #pragma mark - ================= ZENTRAX VIP EXECUTION BRIDGE =================
+
+#import "ZXStateStore.h"
 
 @interface ZXCoreBridge : NSObject <ZentraxUIDelegate>
 @property (nonatomic, weak) ZentraxUI *uiController;
 @property (nonatomic, strong) dispatch_queue_t moduleExecutionQueue;
+@property (nonatomic, strong) ZXStateStore *stateStore;
 + (instancetype)sharedBridge;
 @end
 
@@ -178,203 +182,678 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 - (instancetype)init {
     self = [super init];
     if (self) {
-        // Dedicated serial queue to prevent rapid concurrent filesystem overwrites
-        _moduleExecutionQueue = dispatch_queue_create("in.zentrax.execution.queue", DISPATCH_QUEUE_SERIAL);
+        _moduleExecutionQueue = dispatch_queue_create("in.zentrax.execution.queue",
+                                                       DISPATCH_QUEUE_SERIAL);
+        _stateStore = [ZXStateStore sharedStore];
+
+        /*
+         * Open the persistent application-layer ledger before UI work.
+         * The ledger records transactions/recovery state only; it does not
+         * implement or alter any low-level privilege mechanism.
+         */
+        [_stateStore open];
+        [_stateStore synchronize];
+        [_stateStore markUnresolvedRecordsForReconciliation];
     }
     return self;
 }
 
-// Map NetworkManager errors exactly to UI AuthErrors
+#pragma mark - UI / Thread Helpers
+
+- (void)completeOnMain:(void (^)(void))block {
+    if (!block) return;
+    if ([NSThread isMainThread]) {
+        block();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), block);
+    }
+}
+
 - (ZXAuthError)mapNetworkErrorToAuthError:(ZXNetworkErrorType)networkError {
     switch (networkError) {
-        case ZXNetworkErrorNone: return ZXAuthErrorNone;
-        case ZXNetworkErrorInvalidKey: return ZXAuthErrorInvalidKey;
-        case ZXNetworkErrorExpiredKey: return ZXAuthErrorExpiredKey;
-        case ZXNetworkErrorRevokedKey: return ZXAuthErrorRevokedKey;
-        case ZXNetworkErrorDeviceLimit: return ZXAuthErrorDeviceLimit;
-        case ZXNetworkErrorInvalidSession: return ZXAuthErrorInvalidSession;
-        case ZXNetworkErrorConnection: return ZXAuthErrorConnection;
-        case ZXNetworkErrorServer: return ZXAuthErrorServer;
-        default: return ZXAuthErrorServer;
+        case ZXNetworkErrorNone:
+            return ZXAuthErrorNone;
+        case ZXNetworkErrorInvalidKey:
+            return ZXAuthErrorInvalidKey;
+        case ZXNetworkErrorExpiredKey:
+            return ZXAuthErrorExpiredKey;
+        case ZXNetworkErrorRevokedKey:
+            return ZXAuthErrorRevokedKey;
+        case ZXNetworkErrorDeviceLimit:
+            return ZXAuthErrorDeviceLimit;
+        case ZXNetworkErrorInvalidSession:
+            return ZXAuthErrorInvalidSession;
+        case ZXNetworkErrorConnection:
+            return ZXAuthErrorConnection;
+        case ZXNetworkErrorMaintenance:
+        case ZXNetworkErrorVersionMismatch:
+        case ZXNetworkErrorCompatibility:
+        case ZXNetworkErrorRateLimited:
+            return ZXAuthErrorServer;
+        default:
+            return ZXAuthErrorServer;
     }
 }
 
-// 1. Authentication Bridge
-- (void)zentraxDidRequestAuthenticationWithKey:(NSString *)key completion:(void(^)(BOOL success, ZXAuthError errorType, NSString * _Nullable errorMsg))completion {
-    [[ZentraxNetworkManager sharedManager] authenticateWithKey:key completion:^(BOOL success, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg) {
-        
-        ZXAuthError mappedError = [self mapNetworkErrorToAuthError:errorType];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (success && responseData) {
-                NSArray *modules = responseData[@"modules"];
-                if (modules && [modules isKindOfClass:[NSArray class]]) {
-                    [self.uiController updateDashboardWithModules:modules];
-                }
-                NSDictionary *subscription = responseData[@"subscription"];
-                if (subscription && [subscription isKindOfClass:[NSDictionary class]]) {
-                    [self.uiController updateSubscriptionState:subscription];
-                }
-                completion(YES, ZXAuthErrorNone, nil);
-            } else {
-                completion(NO, mappedError, errorMsg ?: @"Authentication failed.");
-            }
-        });
-    }];
-}
+#pragma mark - Authentication
 
-// 2. Session Verification Bridge (Restores Dashboard Data)
-- (void)zentraxDidRequestSessionVerificationWithCompletion:(void(^)(BOOL isValid))completion {
-    if (![[ZentraxNetworkManager sharedManager] hasActiveSession]) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(NO);
-        });
+- (void)zentraxDidRequestAuthenticationWithKey:(NSString *)key
+                                    completion:(void(^)(BOOL success,
+                                                        ZXAuthError errorType,
+                                                        NSString * _Nullable errorMsg))completion {
+    if (key.length == 0) {
+        [self completeOnMain:^{
+            if (completion) completion(NO, ZXAuthErrorInvalidKey,
+                                        @"Please enter a valid license key.");
+        }];
         return;
     }
-    
-    [[ZentraxNetworkManager sharedManager] verifySessionWithCompletion:^(BOOL isValid, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (isValid && responseData) {
-                NSArray *modules = responseData[@"modules"];
-                if (modules && [modules isKindOfClass:[NSArray class]]) {
-                    [self.uiController updateDashboardWithModules:modules];
+
+    [[ZentraxNetworkManager sharedManager]
+        authenticateWithKey:key
+        completion:^(BOOL success,
+                     NSDictionary * _Nullable responseData,
+                     ZXNetworkErrorType errorType,
+                     NSString * _Nullable errorMsg) {
+
+        ZXAuthError mappedError = [self mapNetworkErrorToAuthError:errorType];
+
+        [self completeOnMain:^{
+            if (!success || !responseData) {
+                if (completion) {
+                    completion(NO, mappedError,
+                               errorMsg.length ? errorMsg : @"Authentication failed.");
                 }
-                NSDictionary *subscription = responseData[@"subscription"];
-                if (subscription && [subscription isKindOfClass:[NSDictionary class]]) {
-                    [self.uiController updateSubscriptionState:subscription];
-                }
-                completion(YES);
-            } else {
-                // Network Manager auto-purges token on auth invalidation. Pass NO to return to login.
-                completion(NO);
+                return;
             }
-        });
+
+            NSArray *modules = responseData[@"modules"];
+            if ([modules isKindOfClass:NSArray.class]) {
+                [self.uiController updateDashboardWithModules:modules];
+            }
+
+            NSDictionary *subscription = responseData[@"subscription"];
+            if ([subscription isKindOfClass:NSDictionary.class]) {
+                [self.uiController updateSubscriptionState:subscription];
+            }
+
+            /*
+             * Associate any existing ledger records with the newly verified
+             * server session. This never changes activation/expiry timing.
+             */
+            NSString *licenseId = [responseData[@"license"][@"id"] description];
+            NSString *deviceId = [responseData[@"device"][@"id"] description];
+
+            if (licenseId.length && deviceId.length) {
+                NSError *associationError = nil;
+                NSArray *records = [self.stateStore recordsForLicenseId:licenseId];
+
+                for (ZXTargetLedgerRecord *record in records) {
+                    if (record.canonicalTarget.length) {
+                        [self.stateStore associateTarget:record.canonicalTarget
+                                               licenseId:licenseId
+                                                deviceId:deviceId
+                                                   error:&associationError];
+                    }
+                }
+            }
+
+            if (completion) completion(YES, ZXAuthErrorNone, nil);
+        }];
     }];
 }
 
-// 3. Module Execution & Secure 2-Step File Replacement Bridge
-- (void)zentraxDidRequestModuleToggle:(NSString *)moduleId state:(BOOL)isOn completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion {
-    
-    // Step 1: Fetch payload and operation identifier
-    [[ZentraxNetworkManager sharedManager] toggleModule:moduleId state:isOn completion:^(BOOL fetchSuccess, NSDictionary * _Nullable modulePayload, NSString * _Nullable fetchErrorMsg) {
-        
-        if (!fetchSuccess || !modulePayload) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(NO, fetchErrorMsg ?: @"Failed to securely fetch payload from server.");
-            });
+#pragma mark - Session Verification / Recovery
+
+- (void)zentraxDidRequestSessionVerificationWithCompletion:(void(^)(BOOL isValid))completion {
+    ZentraxNetworkManager *network = [ZentraxNetworkManager sharedManager];
+
+    if (![network hasActiveSession]) {
+        [self completeOnMain:^{
+            if (completion) completion(NO);
+        }];
+        return;
+    }
+
+    /*
+     * Load/revalidate the local transaction ledger before restoring the
+     * dashboard. Unresolved entries remain visible to reconciliation logic
+     * instead of being silently discarded.
+     */
+    [self.stateStore synchronize];
+    [self.stateStore validateLedger];
+
+    [network verifySessionWithCompletion:^(BOOL isValid,
+                                           NSDictionary * _Nullable responseData,
+                                           ZXNetworkErrorType errorType,
+                                           NSString * _Nullable errorMsg) {
+        [self completeOnMain:^{
+            if (!isValid || !responseData) {
+                if (completion) completion(NO);
+                return;
+            }
+
+            NSArray *modules = responseData[@"modules"];
+            if ([modules isKindOfClass:NSArray.class]) {
+                [self.uiController updateDashboardWithModules:modules];
+            }
+
+            NSDictionary *subscription = responseData[@"subscription"];
+            if ([subscription isKindOfClass:NSDictionary.class]) {
+                [self.uiController updateSubscriptionState:subscription];
+            }
+
+            if (completion) completion(YES);
+        }];
+    }];
+}
+
+#pragma mark - Module Helpers
+
+- (BOOL)isSafeRelativePath:(NSString *)relativePath
+                  filename:(NSString *)filename {
+    if (relativePath.length == 0 || filename.length == 0) return NO;
+
+    if ([relativePath hasPrefix:@"/"] ||
+        [relativePath hasPrefix:@"\\"] ||
+        [relativePath containsString:@"../"] ||
+        [relativePath containsString:@"..\\"] ||
+        [relativePath containsString:@"\0"]) {
+        return NO;
+    }
+
+    if ([filename containsString:@"/"] ||
+        [filename containsString:@"\\"] ||
+        [filename containsString:@".."] ||
+        [filename containsString:@"\0"]) {
+        return NO;
+    }
+
+    return YES;
+}
+
+- (void)finishModuleFailure:(NSString *)message
+                 completion:(void(^)(BOOL success,
+                                     NSString * _Nullable errorMsg))completion {
+    [self completeOnMain:^{
+        if (completion) {
+            completion(NO, message.length
+                      ? message
+                      : @"The requested operation could not be completed.");
+        }
+    }];
+}
+
+- (void)executeModulePayload:(NSDictionary *)modulePayload
+                   functionId:(NSString *)functionId
+                       action:(ZXModuleOperationAction)action
+               requestedState:(BOOL)isOn
+                    completion:(void(^)(BOOL success,
+                                        NSString * _Nullable errorMsg))completion {
+
+    if (![modulePayload isKindOfClass:NSDictionary.class]) {
+        [self finishModuleFailure:@"Invalid module operation response."
+                       completion:completion];
+        return;
+    }
+
+    NSString *operationId = [modulePayload[@"operation_id"] description];
+    NSString *serverFunctionId = [modulePayload[@"function_id"] description];
+    NSString *resolvedFunctionId =
+        serverFunctionId.length ? serverFunctionId : functionId;
+
+    NSString *target = [modulePayload[@"target"] description];
+    if (target.length == 0) {
+        target = [modulePayload[@"canonical_target"] description];
+    }
+
+    if (operationId.length == 0 ||
+        resolvedFunctionId.length == 0 ||
+        target.length == 0) {
+        [self finishModuleFailure:@"Invalid module operation contract received from server."
+                       completion:completion];
+        return;
+    }
+
+    NSString *licenseId = [modulePayload[@"license_id"] description];
+    NSString *deviceId = [modulePayload[@"device_id"] description];
+
+    NSError *ledgerError = nil;
+    [self.stateStore beginOperationWithId:operationId
+                                   action:(action == ZXModuleOperationActionON ? @"ON" : @"OFF")
+                               functionId:resolvedFunctionId
+                                licenseId:licenseId
+                                 deviceId:deviceId
+                                   target:target
+                                    error:&ledgerError];
+
+    if (ledgerError) {
+        [self finishModuleFailure:@"Unable to prepare the local transaction safely."
+                       completion:completion];
+        return;
+    }
+
+    /*
+     * OFF is restore/delete-contract driven. The client does not request or
+     * manufacture an OFF payload.
+     */
+    if (!isOn) {
+        NSDictionary *restore = modulePayload[@"restore_contract"];
+        NSString *mode = [restore[@"mode"] description];
+
+        if (![mode isEqualToString:@"CLIENT_ORIGINAL_BACKUP"]) {
+            [self.stateStore failOperationWithId:operationId error:nil];
+            [self finishModuleFailure:@"Invalid restore contract received from server."
+                           completion:completion];
             return;
         }
-        
-        // Execute filesystem operations on serial background queue
+
+        ZXTargetLedgerRecord *record = [self.stateStore recordForTarget:target];
+        NSString *bundleId = [modulePayload[@"bundle_id"] description];
+        NSString *relativePath = [modulePayload[@"relative_path"] description];
+        NSString *targetFilename = [modulePayload[@"target_filename"] description];
+
+        /*
+         * If the server has no file operation to perform locally (for example
+         * the ledger has no active target), simply synchronize the state.
+         */
+        if (!record &&
+            bundleId.length == 0 &&
+            relativePath.length == 0 &&
+            targetFilename.length == 0) {
+
+            [[ZentraxNetworkManager sharedManager]
+                syncModuleStateForFunctionId:resolvedFunctionId
+                                      state:NO
+                                operationId:operationId
+                                  completion:^(BOOL syncSuccess,
+                                               NSString * _Nullable syncErrorMsg) {
+                if (syncSuccess) {
+                    [self.stateStore commitOperationWithId:operationId
+                                                targetHash:nil
+                                                      size:0
+                                                     error:nil];
+                    [self.stateStore clearCompletedOperationWithId:operationId
+                                                               error:nil];
+                    [self completeOnMain:^{
+                        if (completion) completion(YES, nil);
+                    }];
+                } else {
+                    [self.stateStore failOperationWithId:operationId error:nil];
+                    [self finishModuleFailure:syncErrorMsg ?: @"Failed to synchronize module state."
+                                   completion:completion];
+                }
+            }];
+            return;
+        }
+
+        if (!record ||
+            ![self isSafeRelativePath:relativePath filename:targetFilename] ||
+            bundleId.length == 0) {
+            [self.stateStore failOperationWithId:operationId error:nil];
+            [self finishModuleFailure:@"Security validation failed for the restore target."
+                           completion:completion];
+            return;
+        }
+
         dispatch_async(self.moduleExecutionQueue, ^{
-            
-            NSString *base64Data = modulePayload[@"file_data"];
-            NSString *bundleId = modulePayload[@"bundle_id"];
-            NSString *relativePath = modulePayload[@"relative_path"];
-            NSString *targetFilename = modulePayload[@"target_filename"];
-            NSString *operationId = modulePayload[@"operation_id"];
-            
-            if (!base64Data || !bundleId || !relativePath || !targetFilename || !operationId) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, @"Invalid module contract configuration received from server.");
-                });
-                return;
-            }
-            
-            // Path traversal and absolute path injection prevention
-            if ([relativePath containsString:@"../"] || [relativePath containsString:@"..\\"] || [relativePath hasPrefix:@"/"] ||
-                [targetFilename containsString:@"/"] || [targetFilename containsString:@"\\"] || [targetFilename containsString:@".."]) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, @"Security Violation: Malformed target path parameters.");
-                });
-                return;
-            }
-            
-            NSData *fileData = [[NSData alloc] initWithBase64EncodedString:base64Data options:NSDataBase64DecodingIgnoreUnknownCharacters];
-            if (!fileData || fileData.length == 0) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, @"Corrupted file payload data or decode failure.");
-                });
-                return;
-            }
-            
-            NSString *expectedHash = computeSHA256OfData(fileData);
-            
-            // Resolve Target App Container
             NSString *dataContainer = findDataContainer(bundleId);
             if (!dataContainer) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, [NSString stringWithFormat:@"Target app container (%@) not found or inaccessible.", bundleId]);
-                });
+                [self.stateStore failOperationWithId:operationId error:nil];
+                [self finishModuleFailure:@"Target app container could not be resolved."
+                               completion:completion];
                 return;
             }
-            
-            // Construct exact local target resolution
-            NSString *directoryPath = [dataContainer stringByAppendingPathComponent:relativePath];
-            NSString *finalTargetPath = [directoryPath stringByAppendingPathComponent:targetFilename];
-            
+
+            NSString *directoryPath =
+                [dataContainer stringByAppendingPathComponent:relativePath];
+            NSString *finalTargetPath =
+                [directoryPath stringByAppendingPathComponent:targetFilename];
+            NSString *backupPath =
+                [finalTargetPath stringByAppendingString:@".bak"];
+
+            NSFileManager *fm = NSFileManager.defaultManager;
             NSError *fsError = nil;
-            NSFileManager *fm = [NSFileManager defaultManager];
-            
-            // DIRECT WRITE: We assume the target directory already exists per the game's structure.
-            // This bypasses the useless iOS Sandbox directory creation restriction.
-            BOOL written = [fileData writeToFile:finalTargetPath options:NSDataWritingAtomic error:&fsError];
-            
-            if (!written) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    // CLEAN PRODUCTION ERROR LOG: Explicitly removed fsError.localizedDescription for premium feel.
-                    completion(NO, @"Failed to safely apply the requested modification to the target file.");
-                });
-                return;
-            }
-            
-            // Perform Local Verification
-            if (![fm fileExistsAtPath:finalTargetPath]) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, @"Verification failed: File missing after write.");
-                });
-                return;
-            }
-            
-            NSData *writtenData = [NSData dataWithContentsOfFile:finalTargetPath];
-            if (!writtenData || writtenData.length != fileData.length) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, @"Verification failed: File size mismatch after write.");
-                });
-                return;
-            }
-            
-            NSString *writtenHash = computeSHA256OfData(writtenData);
-            if (![writtenHash isEqualToString:expectedHash]) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, @"Verification failed: SHA-256 integrity mismatch on disk.");
-                });
-                return;
-            }
-            
-            // Step 2: Local write successful, execute Sync State with server operation_id
-            [[ZentraxNetworkManager sharedManager] syncModuleState:moduleId state:isOn operationId:operationId completion:^(BOOL syncSuccess, NSString * _Nullable syncErrorMsg) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (syncSuccess) {
-                        completion(YES, nil); // Perfect Execution
-                    } else {
-                        // Server state failed to commit, despite local success.
-                        // UI must receive NO so it rolls back toggle visually to avoid desync.
-                        completion(NO, syncErrorMsg ?: @"Failed to commit server state sync.");
+            BOOL success = YES;
+
+            if ([fm fileExistsAtPath:backupPath]) {
+                [self.stateStore setState:ZXTargetLedgerStateRestoring
+                                 forTarget:target
+                                    error:nil];
+
+                if (!record.hasOriginalBackup ||
+                    record.backupValidity != ZXBackupValidityValid) {
+                    success = NO;
+                } else {
+                    if ([fm fileExistsAtPath:finalTargetPath]) {
+                        [fm removeItemAtPath:finalTargetPath error:&fsError];
                     }
-                });
+
+                    if (success &&
+                        ![fm moveItemAtPath:backupPath
+                                     toPath:finalTargetPath
+                                      error:&fsError]) {
+                        success = NO;
+                    }
+                }
+            } else if (record.activeFunctionId.length > 0 &&
+                       [fm fileExistsAtPath:finalTargetPath]) {
+
+                [self.stateStore setState:ZXTargetLedgerStateRestoring
+                                 forTarget:target
+                                    error:nil];
+
+                success = [fm removeItemAtPath:finalTargetPath
+                                          error:&fsError];
+            }
+
+            if (!success) {
+                [self.stateStore markTarget:target
+                  requiresReconciliation:YES
+                                    error:nil];
+                [self.stateStore failOperationWithId:operationId
+                                               error:fsError];
+                [self finishModuleFailure:@"Failed to restore the original target safely."
+                               completion:completion];
+                return;
+            }
+
+            [self.stateStore setActiveFunctionId:nil
+                                      functionName:nil
+                                       payloadHash:nil
+                                      payloadSize:0
+                                         forTarget:target
+                                             error:nil];
+
+            [self.stateStore setState:ZXTargetLedgerStateIdle
+                             forTarget:target
+                                error:nil];
+
+            [[ZentraxNetworkManager sharedManager]
+                syncModuleStateForFunctionId:resolvedFunctionId
+                                      state:NO
+                                operationId:operationId
+                                  completion:^(BOOL syncSuccess,
+                                               NSString * _Nullable syncErrorMsg) {
+                if (!syncSuccess) {
+                    [self.stateStore markTarget:target
+                      requiresReconciliation:YES
+                                        error:nil];
+                    [self.stateStore failOperationWithId:operationId error:nil];
+                    [self finishModuleFailure:
+                        syncErrorMsg ?: @"Server synchronization failed; recovery is required."
+                               completion:completion];
+                    return;
+                }
+
+                [self.stateStore commitOperationWithId:operationId
+                                            targetHash:nil
+                                                  size:0
+                                                 error:nil];
+                [self.stateStore clearCompletedOperationWithId:operationId
+                                                           error:nil];
+                [self.stateStore markTarget:target
+                  requiresReconciliation:NO
+                                    error:nil];
+
+                [self completeOnMain:^{
+                    if (completion) completion(YES, nil);
+                }];
             }];
         });
+
+        return;
+    }
+
+    /*
+     * ON receives exactly one server-authorized payload. Verify its declared
+     * hash before applying it.
+     */
+    NSString *base64Data = [modulePayload[@"file_data"] description];
+    NSString *bundleId = [modulePayload[@"bundle_id"] description];
+    NSString *relativePath = [modulePayload[@"relative_path"] description];
+    NSString *targetFilename = [modulePayload[@"target_filename"] description];
+
+    if (base64Data.length == 0 ||
+        bundleId.length == 0 ||
+        ![self isSafeRelativePath:relativePath filename:targetFilename]) {
+        [self.stateStore failOperationWithId:operationId error:nil];
+        [self finishModuleFailure:@"Invalid module payload or target configuration."
+                       completion:completion];
+        return;
+    }
+
+    NSData *fileData =
+        [[NSData alloc] initWithBase64EncodedString:base64Data
+                                            options:NSDataBase64DecodingIgnoreUnknownCharacters];
+
+    if (!fileData.length) {
+        [self.stateStore failOperationWithId:operationId error:nil];
+        [self finishModuleFailure:@"The module payload could not be decoded."
+                       completion:completion];
+        return;
+    }
+
+    NSString *declaredHash = [modulePayload[@"sha256"] description];
+    NSString *computedHash = computeSHA256OfData(fileData);
+
+    if (declaredHash.length &&
+        ![declaredHash.lowercaseString isEqualToString:computedHash.lowercaseString]) {
+        [self.stateStore failOperationWithId:operationId error:nil];
+        [self finishModuleFailure:@"Payload integrity verification failed."
+                       completion:completion];
+        return;
+    }
+
+    dispatch_async(self.moduleExecutionQueue, ^{
+        NSString *dataContainer = findDataContainer(bundleId);
+        if (!dataContainer) {
+            [self.stateStore failOperationWithId:operationId error:nil];
+            [self finishModuleFailure:@"Target app container could not be resolved."
+                           completion:completion];
+            return;
+        }
+
+        NSString *directoryPath =
+            [dataContainer stringByAppendingPathComponent:relativePath];
+        NSString *finalTargetPath =
+            [directoryPath stringByAppendingPathComponent:targetFilename];
+        NSString *backupPath =
+            [finalTargetPath stringByAppendingString:@".bak"];
+
+        NSFileManager *fm = NSFileManager.defaultManager;
+        NSError *fsError = nil;
+
+        ZXTargetLedgerRecord *record =
+            [self.stateStore recordForTarget:target];
+
+        /*
+         * Preserve the original target only once. During a function switch,
+         * an existing .bak is never overwritten.
+         */
+        if (!record || !record.hasOriginalBackup) {
+            if ([fm fileExistsAtPath:finalTargetPath] &&
+                ![fm fileExistsAtPath:backupPath]) {
+
+                if (![fm copyItemAtPath:finalTargetPath
+                                 toPath:backupPath
+                                  error:&fsError]) {
+                    [self.stateStore failOperationWithId:operationId
+                                                   error:fsError];
+                    [self finishModuleFailure:
+                        @"Could not preserve the original target safely."
+                               completion:completion];
+                    return;
+                }
+
+                NSData *originalData =
+                    [NSData dataWithContentsOfFile:backupPath];
+                NSString *originalHash =
+                    computeSHA256OfData(originalData);
+
+                [self.stateStore setOriginalBackupHash:originalHash
+                                                  size:originalData.length
+                                                exists:YES
+                                             validity:ZXBackupValidityValid
+                                             forTarget:target
+                                                 error:nil];
+            } else if (![fm fileExistsAtPath:backupPath]) {
+                [self.stateStore setOriginalBackupHash:nil
+                                                  size:0
+                                                exists:NO
+                                             validity:ZXBackupValidityMissing
+                                             forTarget:target
+                                                 error:nil];
+            }
+        }
+
+        [self.stateStore setState:record.activeFunctionId.length
+                                  ? ZXTargetLedgerStateSwitching
+                                  : ZXTargetLedgerStateStagingON
+                         forTarget:target
+                            error:nil];
+
+        BOOL written =
+            [fileData writeToFile:finalTargetPath
+                          options:NSDataWritingAtomic
+                            error:&fsError];
+
+        if (!written) {
+            [self.stateStore failOperationWithId:operationId
+                                           error:fsError];
+            [self finishModuleFailure:
+                @"Failed to apply the requested module payload."
+                       completion:completion];
+            return;
+        }
+
+        NSData *writtenData =
+            [NSData dataWithContentsOfFile:finalTargetPath];
+        NSString *writtenHash =
+            computeSHA256OfData(writtenData);
+
+        if (!writtenData ||
+            writtenData.length != fileData.length ||
+            ![writtenHash.lowercaseString
+                isEqualToString:computedHash.lowercaseString]) {
+
+            [self.stateStore markTarget:target
+              requiresReconciliation:YES
+                                error:nil];
+            [self.stateStore failOperationWithId:operationId error:nil];
+
+            [self finishModuleFailure:
+                @"Post-write integrity verification failed."
+                       completion:completion];
+            return;
+        }
+
+        [self.stateStore setState:ZXTargetLedgerStateONInProgress
+                         forTarget:target
+                            error:nil];
+
+        [self.stateStore setActiveFunctionId:resolvedFunctionId
+                                  functionName:[modulePayload[@"function_name"] description]
+                                   payloadHash:writtenHash
+                                  payloadSize:writtenData.length
+                                     forTarget:target
+                                         error:nil];
+
+        [[ZentraxNetworkManager sharedManager]
+            syncModuleStateForFunctionId:resolvedFunctionId
+                                  state:YES
+                            operationId:operationId
+                              completion:^(BOOL syncSuccess,
+                                           NSString * _Nullable syncErrorMsg) {
+
+            if (!syncSuccess) {
+                [self.stateStore markTarget:target
+                  requiresReconciliation:YES
+                                    error:nil];
+                [self.stateStore failOperationWithId:operationId
+                                               error:nil];
+
+                [self finishModuleFailure:
+                    syncErrorMsg ?: @"Server synchronization failed; recovery is required."
+                           completion:completion];
+                return;
+            }
+
+            [self.stateStore setState:ZXTargetLedgerStateIdle
+                             forTarget:target
+                                error:nil];
+
+            [self.stateStore commitOperationWithId:operationId
+                                        targetHash:writtenHash
+                                              size:writtenData.length
+                                             error:nil];
+            [self.stateStore clearCompletedOperationWithId:operationId
+                                                       error:nil];
+            [self.stateStore markTarget:target
+              requiresReconciliation:NO
+                                error:nil];
+
+            [self completeOnMain:^{
+                if (completion) completion(YES, nil);
+            }];
+        }];
+    });
+}
+
+#pragma mark - Module Toggle Entry Point
+
+- (void)zentraxDidRequestModuleToggle:(NSString *)moduleId
+                                state:(BOOL)isOn
+                           completion:(void(^)(BOOL success,
+                                               NSString * _Nullable errorMsg))completion {
+
+    if (moduleId.length == 0) {
+        [self finishModuleFailure:@"Invalid function identifier."
+                       completion:completion];
+        return;
+    }
+
+    ZXModuleOperationAction action =
+        isOn ? ZXModuleOperationActionON : ZXModuleOperationActionOFF;
+
+    [[ZentraxNetworkManager sharedManager]
+        performModuleOperationWithFunctionId:moduleId
+                                      action:action
+                                  completion:^(BOOL success,
+                                               NSDictionary * _Nullable modulePayload,
+                                               NSString * _Nullable errorMsg) {
+
+        if (!success || !modulePayload) {
+            [self finishModuleFailure:
+                errorMsg ?: @"The server rejected the module operation."
+                       completion:completion];
+            return;
+        }
+
+        [self executeModulePayload:modulePayload
+                         functionId:moduleId
+                             action:action
+                     requestedState:isOn
+                          completion:completion];
     }];
 }
 
-// 4. Logout Bridge
+#pragma mark - Logout
+
 - (void)zentraxDidRequestLogoutWithCompletion:(void(^)(void))completion {
-    [[ZentraxNetworkManager sharedManager] logout];
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
+    ZentraxNetworkManager *network = [ZentraxNetworkManager sharedManager];
+
+    /*
+     * Logout removes the authenticated session association only.
+     * Persistent target ledger records are retained for recovery and the
+     * license activation/expiry clock is never modified here.
+     */
+    [network logout];
+    [self.stateStore clearTransientState];
+
+    [self completeOnMain:^{
         if (completion) completion();
-    });
+    }];
 }
 
 @end
