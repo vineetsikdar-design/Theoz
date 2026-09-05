@@ -1,4 +1,4 @@
-//
+	//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -859,7 +859,6 @@ static NSInteger const ZXMaxPINAttempts = 5;
 @property(nonatomic,copy) NSString *serverBannerMessage;
 @property(nonatomic,copy) NSString *serverBannerTitle;
 @property(nonatomic,strong) NSDictionary *compatibilityData;
-@property(nonatomic,strong) NSDictionary *shortcutStatus;
 @property(nonatomic,strong) NSDictionary *dashboardConfiguration;
 @property(nonatomic,strong) NSMutableDictionary<NSString *, NSNumber *> *functionStates;
 @property(nonatomic,strong) NSMutableDictionary<NSString *, UIView *> *functionCards;
@@ -911,7 +910,6 @@ static NSInteger const ZXMaxPINAttempts = 5;
 @property(nonatomic,strong) UIStackView *settingsStack;
 @property(nonatomic,strong) UILabel *settingsTitle;
 @property(nonatomic,strong) UIView *compatibilityCard;
-@property(nonatomic,strong) UIView *shortcutsCard;
 @property(nonatomic,strong) UIView *safeModeCard;
 
 @property(nonatomic,strong) UILabel *startupBlockTitle;
@@ -2167,10 +2165,6 @@ static NSInteger const ZXMaxPINAttempts = 5;
     self.compatibilityCard = [self settingsRow:@"Device Compatibility" subtitle:[self compatibilitySubtitle] icon:@"iphone.gen3" action:@selector(showDeviceCompatibilityDetails) accessory:nil];
     [self.settingsStack addArrangedSubview:self.compatibilityCard];
 
-    [self.settingsStack addArrangedSubview:[self settingsSectionLabel:@"AUTOMATION"]];
-    self.shortcutsCard = [self settingsRow:@"Shortcuts & Automation" subtitle:@"Use authenticated ZENTRAX actions with Shortcuts" icon:@"command.square" action:@selector(showShortcutsAndAutomation) accessory:nil];
-    [self.settingsStack addArrangedSubview:self.shortcutsCard];
-
     [self.settingsStack addArrangedSubview:[self settingsSectionLabel:@"PREFERENCES"]];
     NSString *language = [[NSUserDefaults standardUserDefaults] stringForKey:ZXLanguageKey] ?: @"English";
     [self.settingsStack addArrangedSubview:[self settingsRow:@"Language" subtitle:language icon:@"globe" action:@selector(showLanguagePicker) accessory:nil]];
@@ -2508,17 +2502,6 @@ static NSInteger const ZXMaxPINAttempts = 5;
     }
 }
 
-#pragma mark - Shortcuts
-
-- (void)showShortcutsAndAutomation {
-    NSString *message = @"Shortcuts use the same authenticated ZENTRAX operation path as the main app.\n\nAvailable actions can include:\n• Open ZENTRAX\n• Turn a server function ON\n• Turn a server function OFF\n• Toggle a function\n• Read function status\n\nNo shortcut is granted direct filesystem access.";
-    [self showCustomConfirmationWithTitle:@"SHORTCUTS & AUTOMATION" message:message confirmTitle:@"DONE" completion:nil];
-}
-
-- (void)updateShortcutStatus:(NSDictionary *)status {
-    self.shortcutStatus = status;
-}
-
 #pragma mark - Global Loading / Toast / Modal
 
 - (void)setupGlobalLoading {
@@ -2665,11 +2648,11 @@ static NSInteger const ZXMaxPINAttempts = 5;
 - (void)appDidBecomeActive:(NSNotification *)note { [self updatePrivacyCaptureState]; }
 - (void)handleScreenshotNotification:(NSNotification *)note {
     if (!self.safeModeEnabled) return;
-    [self showPrivacyOverlayForReason:@"Screenshot event detected. Stop screen capture to continue."];
+    [self showPrivacyOverlayForReason:@"Screenshot event detected. Private content remains protected while Safe UI Mode is active."];
 }
 - (void)updatePrivacyCaptureState {
     BOOL captured = [UIScreen mainScreen].isCaptured;
-    if (captured && self.safeModeEnabled) [self showPrivacyOverlayForReason:@"Stop screen recording or screen sharing to continue."];
+    if (captured && self.safeModeEnabled) [self showPrivacyOverlayForReason:@"Screen recording or screen sharing detected. Private content is currently protected."];
     else if (!captured && self.privacyOverlayPresented) [self hidePrivacyOverlay];
 }
 
@@ -2684,7 +2667,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
             UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:b]; [b setTitle:@"CHECK AGAIN" forState:UIControlStateNormal]; b.translatesAutoresizingMaskIntoConstraints=NO; [b addTarget:self action:@selector(updatePrivacyCaptureState) forControlEvents:UIControlEventTouchUpInside]; [self.privacyOverlay addSubview:b];
             [NSLayoutConstraint activateConstraints:@[[logo.centerXAnchor constraintEqualToAnchor:self.privacyOverlay.centerXAnchor],[logo.centerYAnchor constraintEqualToAnchor:self.privacyOverlay.centerYAnchor constant:-105],[logo.widthAnchor constraintEqualToConstant:72],[logo.heightAnchor constraintEqualToConstant:72],[t.topAnchor constraintEqualToAnchor:logo.bottomAnchor constant:24],[t.leadingAnchor constraintEqualToAnchor:self.privacyOverlay.leadingAnchor constant:25],[t.trailingAnchor constraintEqualToAnchor:self.privacyOverlay.trailingAnchor constant:-25],[m.topAnchor constraintEqualToAnchor:t.bottomAnchor constant:10],[m.leadingAnchor constraintEqualToAnchor:self.privacyOverlay.leadingAnchor constant:35],[m.trailingAnchor constraintEqualToAnchor:self.privacyOverlay.trailingAnchor constant:-35],[b.topAnchor constraintEqualToAnchor:m.bottomAnchor constant:24],[b.centerXAnchor constraintEqualToAnchor:self.privacyOverlay.centerXAnchor],[b.heightAnchor constraintEqualToConstant:48],[b.widthAnchor constraintEqualToConstant:170]]];
         }
-        UILabel *m=[self.privacyOverlay viewWithTag:9300]; m.text=reason ?: @"Screen recording and screen sharing are blocked while Safe UI Mode is active. Screenshot events are detected by iOS.";
+        UILabel *m=[self.privacyOverlay viewWithTag:9300]; m.text=reason ?: @"Screen recording and screen sharing are blocked while Safe UI Mode is active. iOS reports screenshot events to the app.";
         if (!self.privacyOverlay.superview) [self.view addSubview:self.privacyOverlay];
         self.privacyOverlayPresented=YES;
     });
