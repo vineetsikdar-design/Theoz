@@ -1588,7 +1588,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
     }
 }
 
-- (BOOL)markUnresolvedRecordsForReconciliation:(NSError **)error
+- (BOOL)markUnresolvedRecordsForReconciliation
 {
     @synchronized (self) {
         BOOL changed = NO;
