@@ -1,71 +1,213 @@
 //
 //  ZentraxUI.h
-//  Zentrax VIP - Premium Execution Node UI
+//  Zentrax VIP - Flagship Premium UI Layer
 //
-//  Created by Zentrax Team.
-//  Architecture: Ultra-Premium SaaS Layer
-//  Status: PRODUCTION READY
+//  Architecture: Server-authoritative UI / Network-driven state
+//  Status: FINAL CONTRACT
 //
 
 #import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
-/**
- * Strict Authentication Error Mapping
- * Matches exact server-side responses for unified UI handling.
- */
+@class ZentraxUI;
+
 typedef NS_ENUM(NSInteger, ZXAuthError) {
-    ZXAuthErrorNone,
+    ZXAuthErrorNone = 0,
     ZXAuthErrorInvalidKey,
     ZXAuthErrorExpiredKey,
     ZXAuthErrorRevokedKey,
     ZXAuthErrorDeviceLimit,
     ZXAuthErrorInvalidSession,
     ZXAuthErrorConnection,
-    ZXAuthErrorServer
+    ZXAuthErrorServer,
+    ZXAuthErrorMaintenance,
+    ZXAuthErrorVersionMismatch,
+    ZXAuthErrorCompatibility,
+    ZXAuthErrorRateLimited,
+    ZXAuthErrorInvalidResponse
 };
 
-/// Delegate protocol for secure backend network integration and execution bridge
+typedef NS_ENUM(NSInteger, ZXStartupState) {
+    ZXStartupStateUnknown = 0,
+    ZXStartupStateBootstrapping,
+    ZXStartupStateReady,
+    ZXStartupStateMaintenance,
+    ZXStartupStateVersionMismatch,
+    ZXStartupStateIncompatible,
+    ZXStartupStateConnectionError
+};
+
+typedef NS_ENUM(NSInteger, ZXLicenseUIStatus) {
+    ZXLicenseUIStatusUnknown = 0,
+    ZXLicenseUIStatusUnactivated,
+    ZXLicenseUIStatusActive,
+    ZXLicenseUIStatusExpired,
+    ZXLicenseUIStatusRevoked,
+    ZXLicenseUIStatusDisabled
+};
+
+typedef NS_ENUM(NSInteger, ZXSafeModeState) {
+    ZXSafeModeStateOff = 0,
+    ZXSafeModeStateLocked,
+    ZXSafeModeStateUnlocked
+};
+
+typedef NS_ENUM(NSInteger, ZXDeviceCompatibilityUIStatus) {
+    ZXDeviceCompatibilityUIStatusUnknown = 0,
+    ZXDeviceCompatibilityUIStatusSupported,
+    ZXDeviceCompatibilityUIStatusUnsupported
+};
+
 @protocol ZentraxUIDelegate <NSObject>
 @optional
 
-/// Fired when the user attempts to authenticate with a license key
-- (void)zentraxDidRequestAuthenticationWithKey:(NSString *)key completion:(void(^)(BOOL success, ZXAuthError errorType, NSString * _Nullable errorMsg))completion;
+#pragma mark - Authentication / Session
 
-/// Fired when a module switch is toggled. The execution bridge handles the 2-step secure payload synchronization.
-- (void)zentraxDidRequestModuleToggle:(NSString *)moduleId state:(BOOL)isOn completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion;
+- (void)zentraxDidRequestAuthenticationWithKey:(NSString *)key
+                                    completion:(void (^)(BOOL success,
+                                                         ZXAuthError errorType,
+                                                         NSString * _Nullable errorMsg))completion;
 
-/// Fired if a secure logout action is triggered, purging local keychain and state
-- (void)zentraxDidRequestLogoutWithCompletion:(void(^)(void))completion;
+- (void)zentraxDidRequestSessionVerificationWithCompletion:(void (^)(BOOL isValid))completion;
 
-/// Silently verifies the existing Keychain session on app launch and triggers dashboard restore
-- (void)zentraxDidRequestSessionVerificationWithCompletion:(void(^)(BOOL isValid))completion;
+- (void)zentraxDidRequestLogoutWithCompletion:(void (^)(void))completion;
+
+#pragma mark - Module Operations
+
+- (void)zentraxDidRequestModuleToggle:(NSString *)moduleId
+                                state:(BOOL)isOn
+                           completion:(void (^)(BOOL success,
+                                                NSString * _Nullable errorMsg))completion;
+
+- (void)zentraxDidRequestFunctionOperation:(NSString *)functionId
+                                   action:(BOOL)isOn
+                               completion:(void (^)(BOOL success,
+                                                    NSString * _Nullable errorMsg))completion;
+
+#pragma mark - Settings / Security
+
+- (void)zentraxDidRequestSafeModeChange:(BOOL)enabled
+                              completion:(void (^)(BOOL success,
+                                                   NSString * _Nullable errorMsg))completion;
+
+- (void)zentraxDidRequestCompatibilityRecheckWithCompletion:(void (^)(BOOL success,
+                                                                        NSDictionary * _Nullable compatibility,
+                                                                        NSString * _Nullable errorMsg))completion;
+
+#pragma mark - Shortcuts
+
+- (void)zentraxDidRequestShortcutFunction:(NSString *)functionId
+                                  action:(BOOL)isOn
+                             completion:(void (^)(BOOL success,
+                                                  NSString * _Nullable errorMsg))completion;
 
 @end
 
 @interface ZentraxUI : UIViewController
 
-/// Set this delegate to the Core Bridge (Tweak.m) to handle secure execution and requests
-@property (nonatomic, weak) id<ZentraxUIDelegate> delegate;
+@property (nonatomic, weak, nullable) id<ZentraxUIDelegate> delegate;
 
-// MARK: - Global UI Overlays
+#pragma mark - Lifecycle / Bootstrap
+
+- (void)startZentraxUI;
+- (void)beginBootstrap;
+- (void)handleBootstrapState:(ZXStartupState)state
+                     message:(NSString * _Nullable)message;
+- (void)showStartupState:(ZXStartupState)state
+                 message:(NSString * _Nullable)message;
+- (void)showLoginScreen;
+- (void)showDashboard;
+- (void)showMaintenanceScreenWithMessage:(NSString *)message;
+- (void)showUpdateRequiredScreenWithMessage:(NSString *)message;
+- (void)showConnectionErrorScreenWithMessage:(NSString *)message;
+- (void)showCompatibilityScreenWithData:(NSDictionary *)compatibility;
+
+#pragma mark - Global UI / Overlays
+
 - (void)showGlobalLoadingState:(NSString *)message;
+- (void)updateGlobalLoadingMessage:(NSString *)message;
 - (void)hideGlobalLoadingState;
 
-// MARK: - Error & Success Handling Modals
+- (void)showGlobalErrorWithTitle:(NSString *)title
+                         message:(NSString *)message;
+
 - (void)showNetworkError;
 - (void)showServerError;
 - (void)showRateLimitErrorWithSecondsRemaining:(NSInteger)seconds;
-- (void)showSuccessMessage:(NSString *)title message:(NSString *)message;
-- (void)showGlobalErrorWithTitle:(NSString *)title message:(NSString *)msg;
+- (void)showSuccessMessage:(NSString *)title
+                   message:(NSString *)message;
 
-// MARK: - Dynamic Data Injection
-/// Passes the array of module dictionaries received from the PHP backend to dynamically build the dashboard
+- (void)showToast:(NSString *)message;
+- (void)showToast:(NSString *)message
+          success:(BOOL)success;
+
+#pragma mark - Dynamic Dashboard
+
+/// Backend-driven hierarchy. UI must not hard-code the available function list.
 - (void)updateDashboardWithModules:(NSArray<NSDictionary *> *)modules;
 
-/// Updates the session details (e.g., expiry date, license status) on the premium dashboard
+/// Accepts the complete server dashboard/configuration payload.
+- (void)updateDashboardWithConfiguration:(NSDictionary *)configuration;
+
+/// Updates license/subscription information supplied by the server.
 - (void)updateSubscriptionState:(NSDictionary *)subData;
+
+/// Updates one function's authoritative state.
+- (void)updateFunctionState:(NSString *)functionId
+                      state:(BOOL)isOn;
+
+/// Updates multiple function states.
+- (void)updateFunctionStates:(NSDictionary<NSString *, NSNumber *> *)states;
+
+/// Updates server-controlled banners/notices.
+- (void)updateServerBanner:(NSDictionary * _Nullable)banner;
+
+/// Updates server time data used by the UI countdown.
+- (void)updateServerTime:(NSDate *)serverDate;
+
+#pragma mark - License / Countdown
+
+- (void)updateLicenseStatus:(ZXLicenseUIStatus)status
+                activatedAt:(NSDate * _Nullable)activatedAt
+                  expiresAt:(NSDate * _Nullable)expiresAt
+                  isPermanent:(BOOL)isPermanent;
+
+- (void)startLicenseCountdown;
+- (void)stopLicenseCountdown;
+- (void)refreshLicenseCountdown;
+
+#pragma mark - Device Compatibility
+
+- (void)updateDeviceCompatibility:(NSDictionary *)compatibility;
+- (void)showDeviceCompatibilityDetails;
+- (void)requestDeviceCompatibilityRecheck;
+
+#pragma mark - Safe UI Mode
+
+- (void)updateSafeModeState:(ZXSafeModeState)state;
+- (void)showSafeModeLockScreen;
+- (void)showSafeModeSettings;
+- (void)lockSafeMode;
+- (void)unlockSafeMode;
+
+#pragma mark - Settings
+
+- (void)showSettings;
+- (void)showSettingsSection:(NSString *)sectionIdentifier;
+
+#pragma mark - Shortcuts / Automation
+
+- (void)showShortcutsAndAutomation;
+- (void)updateShortcutStatus:(NSDictionary *)status;
+
+#pragma mark - Navigation / State
+
+- (void)resetToStartup;
+- (void)dismissPresentedUI;
+- (BOOL)isShowingLogin;
+- (BOOL)isShowingDashboard;
+- (BOOL)isShowingSafeModeLock;
 
 @end
 
