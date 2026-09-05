@@ -15,6 +15,7 @@ FilzaSlop_FILES = \
     MCMFilzaIntegration.m \
     ZentraxNetworkManager.m \
     ZentraxUI.m \
+    ZXStateStore.m \
     kexploit/kexploit_opa334.m \
     kexploit/krw.m \
     kexploit/kutils.m \
