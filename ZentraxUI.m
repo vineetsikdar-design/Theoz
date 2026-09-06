@@ -1,4 +1,4 @@
-	//
+//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -9,6 +9,7 @@
 #import "ZentraxUI.h"
 #import "ZentraxNetworkManager.h"
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
 
 #pragma mark - Constants & Keys
 
@@ -706,6 +707,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         return;
     }
     
+    // Always remember key in this premium version for user convenience
     [[NSUserDefaults standardUserDefaults] setObject:key forKey:ZXLastKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
 
@@ -1095,7 +1097,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
                 state.textColor = requested ? [ZXTheme success] : [ZXTheme mutedText];
                 [self showToast:ZXLocalizedUI(requested ? @"Function enabled" : @"Function disabled") success:YES];
             } else {
-                // IMPORTANT: Revert toggle safely without fake success
                 sender.on = !requested;
                 self.functionStates[fid] = @(!requested);
                 state.text = ZXLocalizedUI(!requested ? @"ACTIVE" : @"READY");
@@ -1110,22 +1111,10 @@ static NSString *ZXLocalizedUI(NSString *text) {
     } else if ([self.delegate respondsToSelector:@selector(zentraxDidRequestModuleToggle:state:completion:)]) {
         [self.delegate zentraxDidRequestModuleToggle:fid state:requested completion:finish];
     } else {
-        // Direct integration support fallback when UI protocol isn't properly registered
-        Class mgrCls = NSClassFromString(@"ZentraxNetworkManager");
-        if (mgrCls && [mgrCls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
-            id manager = ((id (*)(id, SEL))objc_msgSend)((id)mgrCls, NSSelectorFromString(@"sharedManager"));
-            SEL operSel = NSSelectorFromString(@"performModuleOperationWithFunctionId:action:completion:");
-            
-            if ([manager respondsToSelector:operSel]) {
-                void (^netCompletion)(BOOL, NSDictionary *, NSString *) = ^(BOOL succ, NSDictionary *res, NSString *err) { finish(succ, err); };
-                void (*func)(id, SEL, id, NSInteger, id) = (void(*)(id, SEL, id, NSInteger, id))objc_msgSend;
-                func(manager, operSel, fid, requested ? 2 : 1, netCompletion);
-            } else {
-                finish(NO, @"Function operation bridge is unavailable.");
-            }
-        } else {
-            finish(NO, @"Function operation bridge is unavailable.");
-        }
+        // Fallback to direct call since header is imported
+        [[ZentraxNetworkManager sharedManager] performModuleOperationWithFunctionId:fid action:(requested ? 2 : 1) completion:^(BOOL success, NSDictionary * _Nullable modulePayload, NSString * _Nullable errorMsg) {
+            finish(success, errorMsg);
+        }];
     }
 }
 
@@ -1151,7 +1140,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 }
 
 - (void)updateServerBanner:(NSDictionary *)banner {
-    // Basic banner handling; further updates based on user preference can be integrated.
+    // Basic banner handling
 }
 
 #pragma mark - Subscription / Time
@@ -1377,21 +1366,11 @@ static NSString *ZXLocalizedUI(NSString *text) {
                 });
             }];
         } else {
-            // Direct network manager fallback
-            Class mgrCls = NSClassFromString(@"ZentraxNetworkManager");
-            if (mgrCls && [mgrCls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
-                id manager = ((id (*)(id, SEL))objc_msgSend)((id)mgrCls, NSSelectorFromString(@"sharedManager"));
-                SEL verifySel = NSSelectorFromString(@"verifySessionWithCompletion:");
-                if ([manager respondsToSelector:verifySel]) {
-                    void (^netCompletion)(BOOL, NSDictionary *, NSInteger, NSString *) = ^(BOOL valid, NSDictionary *res, NSInteger errType, NSString *errMsg) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            if (valid) [self showDashboard]; else [self showLoginScreen];
-                        });
-                    };
-                    void (*func)(id, SEL, id) = (void(*)(id, SEL, id))objc_msgSend;
-                    func(manager, verifySel, netCompletion);
-                } else [self showLoginScreen];
-            } else [self showLoginScreen];
+            [[ZentraxNetworkManager sharedManager] verifySessionWithCompletion:^(BOOL valid, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (valid) [self showDashboard]; else [self showLoginScreen];
+                });
+            }];
         }
     } else {
         [self showLoginScreen];
@@ -1408,29 +1387,17 @@ static NSString *ZXLocalizedUI(NSString *text) {
     self.startupState = ZXStartupStateBootstrapping;
     [self showStartupState:ZXStartupStateBootstrapping message:nil];
 
-    Class cls = NSClassFromString(@"ZentraxNetworkManager");
-    if (!cls || ![cls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
-        [self handleBootstrapState:ZXStartupStateReady message:nil];
-        return;
-    }
-    id manager = ((id (*)(id, SEL))objc_msgSend)((id)cls, NSSelectorFromString(@"sharedManager"));
-    SEL bootstrap = NSSelectorFromString(@"bootstrapWithCompletion:");
-    if (!manager || ![manager respondsToSelector:bootstrap]) {
-        [self handleBootstrapState:ZXStartupStateReady message:nil];
-        return;
-    }
     __weak typeof(self) weakSelf = self;
-    
-    void (^completion)(BOOL, NSDictionary *, NSInteger, NSInteger, NSString *) = ^(BOOL success, NSDictionary *response, NSInteger bootstrapState, NSInteger errorType, NSString *errorMsg) {
+    [[ZentraxNetworkManager sharedManager] bootstrapWithCompletion:^(BOOL success, NSDictionary * _Nullable response, ZXBootstrapState bootstrapState, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
         ZXStartupState state = ZXStartupStateConnectionError;
         switch (bootstrapState) {
-            case 1: state = ZXStartupStateReady; break;
-            case 2: state = ZXStartupStateMaintenance; break;
-            case 3: state = ZXStartupStateVersionMismatch; break;
-            case 4: state = ZXStartupStateIncompatible; break;
-            case 5: state = ZXStartupStateConnectionError; break;
+            case ZXBootstrapStateReady: state = ZXStartupStateReady; break;
+            case ZXBootstrapStateMaintenance: state = ZXStartupStateMaintenance; break;
+            case ZXBootstrapStateVersionMismatch: state = ZXStartupStateVersionMismatch; break;
+            case ZXBootstrapStateIncompatible: state = ZXStartupStateIncompatible; break;
+            case ZXBootstrapStateConnectionError: state = ZXStartupStateConnectionError; break;
             default: state = success ? ZXStartupStateReady : ZXStartupStateConnectionError; break;
         }
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -1458,10 +1425,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
             }
             [self handleBootstrapState:state message:message];
         });
-    };
-    
-    void (*func)(id, SEL, id) = (void(*)(id, SEL, id))objc_msgSend;
-    func(manager, bootstrap, completion);
+    }];
 }
 
 #pragma mark - Heartbeat
@@ -1478,35 +1442,25 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
 - (void)heartbeatTick {
     if (self.currentState != ZXAppStateDashboard) return;
-    if (![self.delegate respondsToSelector:@selector(zentraxDidRequestSessionVerificationWithCompletion:)]) {
-        Class mgrCls = NSClassFromString(@"ZentraxNetworkManager");
-        if (mgrCls && [mgrCls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
-            id manager = ((id (*)(id, SEL))objc_msgSend)((id)mgrCls, NSSelectorFromString(@"sharedManager"));
-            SEL verifySel = NSSelectorFromString(@"verifySessionWithCompletion:");
-            if ([manager respondsToSelector:verifySel]) {
-                __weak typeof(self) weakSelf = self;
-                void (^netCompletion)(BOOL, NSDictionary *, NSInteger, NSString *) = ^(BOOL valid, NSDictionary *res, NSInteger errType, NSString *errMsg) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        __strong typeof(weakSelf) self = weakSelf; if (!self) return;
-                        if (!valid) [self handleRevokedSessionEnvironment];
-                        else { self.connectionLabel.text = ZXLocalizedUI(@"● SECURE"); self.connectionLabel.textColor = [ZXTheme success]; }
-                    });
-                };
-                void (*func)(id, SEL, id) = (void(*)(id, SEL, id))objc_msgSend;
-                func(manager, verifySel, netCompletion);
-            }
-        }
-        return;
-    }
-    
     __weak typeof(self) weakSelf = self;
-    [self.delegate zentraxDidRequestSessionVerificationWithCompletion:^(BOOL valid) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) self = weakSelf; if (!self) return;
-            if (!valid) [self handleRevokedSessionEnvironment];
-            else { self.connectionLabel.text = ZXLocalizedUI(@"● SECURE"); self.connectionLabel.textColor = [ZXTheme success]; }
-        });
-    }];
+    
+    if ([self.delegate respondsToSelector:@selector(zentraxDidRequestSessionVerificationWithCompletion:)]) {
+        [self.delegate zentraxDidRequestSessionVerificationWithCompletion:^(BOOL valid) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) self = weakSelf; if (!self) return;
+                if (!valid) [self handleRevokedSessionEnvironment];
+                else { self.connectionLabel.text = ZXLocalizedUI(@"● SECURE"); self.connectionLabel.textColor = [ZXTheme success]; }
+            });
+        }];
+    } else {
+        [[ZentraxNetworkManager sharedManager] verifySessionWithCompletion:^(BOOL valid, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) self = weakSelf; if (!self) return;
+                if (!valid) [self handleRevokedSessionEnvironment];
+                else { self.connectionLabel.text = ZXLocalizedUI(@"● SECURE"); self.connectionLabel.textColor = [ZXTheme success]; }
+            });
+        }];
+    }
 }
 
 - (void)handleRevokedSessionEnvironment {
@@ -1519,14 +1473,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestLogoutWithCompletion:)]) {
         [self.delegate zentraxDidRequestLogoutWithCompletion:^{ dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf showLoginScreen]; }); }];
     } else {
-        Class mgrCls = NSClassFromString(@"ZentraxNetworkManager");
-        if (mgrCls && [mgrCls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
-            id manager = ((id (*)(id, SEL))objc_msgSend)((id)mgrCls, NSSelectorFromString(@"sharedManager"));
-            SEL outSel = NSSelectorFromString(@"logout");
-            if ([manager respondsToSelector:outSel]) {
-                ((void (*)(id, SEL))objc_msgSend)(manager, outSel);
-            }
-        }
+        [[ZentraxNetworkManager sharedManager] logout];
         [[NSUserDefaults standardUserDefaults] removeObjectForKey:ZXLastKey];
         [self showLoginScreen];
     }
@@ -2338,15 +2285,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
     
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.currentState != ZXAppStateDashboard) return;
-        Class cls = NSClassFromString(@"ZentraxNetworkManager");
-        if (cls && [cls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
-            id manager = ((id (*)(id, SEL))objc_msgSend)((id)cls, NSSelectorFromString(@"sharedManager"));
-            SEL configSel = NSSelectorFromString(@"cachedConfiguration");
-            if ([manager respondsToSelector:configSel]) {
-                NSDictionary *config = ((NSDictionary *(*)(id, SEL))objc_msgSend)(manager, configSel);
-                if ([config isKindOfClass:[NSDictionary class]]) [self updateDashboardWithConfiguration:config];
-            }
-        }
+        NSDictionary *config = [[ZentraxNetworkManager sharedManager] cachedConfiguration];
+        if (config) [self updateDashboardWithConfiguration:config];
     });
 }
 
@@ -2361,14 +2301,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [alert addAction:[UIAlertAction actionWithTitle:ZXLocalizedUI(@"Sign Out") style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
         __strong typeof(weakSelf) self = weakSelf; if (!self) return;
         
-        Class mgrCls = NSClassFromString(@"ZentraxNetworkManager");
-        if (mgrCls && [mgrCls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
-            id manager = ((id (*)(id, SEL))objc_msgSend)((id)mgrCls, NSSelectorFromString(@"sharedManager"));
-            SEL outSel = NSSelectorFromString(@"logout");
-            if ([manager respondsToSelector:outSel]) {
-                ((void (*)(id, SEL))objc_msgSend)(manager, outSel);
-            }
-        }
+        [[ZentraxNetworkManager sharedManager] logout];
         
         [[NSUserDefaults standardUserDefaults] removeObjectForKey:ZXLastKey];
         [[NSUserDefaults standardUserDefaults] synchronize];
@@ -2382,6 +2315,31 @@ static NSString *ZXLocalizedUI(NSString *text) {
         }
     }]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (UIImage *)preferredLogoImage {
+    NSArray *names=@[@"ZentraxLogo",@"AppIcon60x60",@"AppIcon"];
+    for (NSString *n in names) { UIImage *i=[UIImage imageNamed:n]; if(i) return i; }
+    
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(120,120),YES,0);
+    [[UIColor blackColor] setFill]; UIRectFill(CGRectMake(0,0,120,120));
+    [[UIColor whiteColor] setStroke]; UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(20, 20, 80, 80) cornerRadius:16]; path.lineWidth = 4; [path stroke];
+    NSDictionary *attrs=@{NSFontAttributeName:[UIFont systemFontOfSize:50 weight:UIFontWeightHeavy],NSForegroundColorAttributeName:[UIColor whiteColor]};
+    [@"Z" drawInRect:CGRectMake(42,32,50,60) withAttributes:attrs];
+    UIImage *i=UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return i;
+}
+
+- (NSDate *)estimatedServerNow {
+    if (self.serverDate) {
+        NSDate *reference = objc_getAssociatedObject(self, @selector(estimatedServerNow));
+        if (!reference) {
+            reference = [NSDate date];
+            objc_setAssociatedObject(self, @selector(estimatedServerNow), reference, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:reference];
+        return [self.serverDate dateByAddingTimeInterval:MAX(0, elapsed)];
+    }
+    return [NSDate date];
 }
 
 - (void)resetToStartup { self.hasStarted = NO; self.currentState = ZXAppStateInit; [self stopHeartbeatMonitor]; [self stopLicenseCountdown]; [self beginBootstrap]; }
