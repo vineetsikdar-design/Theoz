@@ -1,4 +1,4 @@
-//
+	//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -99,7 +99,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     };
     NSDictionary *zh = @{
         @"Settings": @"设置", @"Safe UI Mode": @"安全界面模式",
-        @"Protected lock screen is enabled": @"受保护的锁定屏幕已启用", @"Add a private six-digit lock screen": @"添加私密六位锁屏",
+        @"Protected lock screen is enabled": @"受保护的锁定屏幕已启用", @"Add a private六位锁屏": @"添加私密六位锁屏",
         @"DEVICE STATUS": @"设备状态", @"PREFERENCES": @"偏好设置", @"ACCOUNT": @"账户",
         @"Language": @"语言", @"Appearance": @"外观", @"Sign Out": @"退出登录",
         @"Close the current secure session": @"关闭当前安全会话", @"LICENSE CONTROL": @"许可证控制",
@@ -139,13 +139,13 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
 @implementation ZXTheme
 + (NSString *)currentTheme { return [[NSUserDefaults standardUserDefaults] stringForKey:ZXThemeKey] ?: @"Obsidian Black"; }
-+ (UIColor *)background { return [UIColor blackColor]; } // Always pure black
++ (UIColor *)background { return [UIColor blackColor]; } 
 + (UIColor *)surface {
     NSString *t = [self currentTheme];
     if ([t isEqualToString:@"Carbon Silver"]) return [UIColor colorWithWhite:0.06 alpha:1.0];
     if ([t isEqualToString:@"Midnight Graphite"]) return [UIColor colorWithRed:0.04 green:0.04 blue:0.05 alpha:1.0];
     if ([t isEqualToString:@"Stealth Mono"]) return [UIColor colorWithWhite:0.02 alpha:1.0];
-    return [UIColor colorWithWhite:0.04 alpha:1.0]; // Obsidian Black
+    return [UIColor colorWithWhite:0.04 alpha:1.0]; 
 }
 + (UIColor *)surfaceRaised {
     NSString *t = [self currentTheme];
@@ -166,8 +166,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
 + (UIColor *)primaryText { return [UIColor whiteColor]; }
 + (UIColor *)secondaryText { return [UIColor colorWithWhite:0.65 alpha:1.0]; }
 + (UIColor *)mutedText { return [UIColor colorWithWhite:0.45 alpha:1.0]; }
-+ (UIColor *)accent { return [UIColor whiteColor]; } // Clean white accent for premium feel
-+ (UIColor *)success { return [UIColor colorWithWhite:0.95 alpha:1.0]; } // Premium white instead of neon green
++ (UIColor *)accent { return [UIColor whiteColor]; } 
++ (UIColor *)success { return [UIColor colorWithWhite:0.95 alpha:1.0]; } 
 + (UIColor *)warning { return [UIColor colorWithWhite:0.75 alpha:1.0]; }
 + (UIColor *)error { return [UIColor colorWithRed:0.9 green:0.3 blue:0.3 alpha:1.0]; }
 
@@ -390,6 +390,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
 @property(nonatomic,strong) UIActivityIndicatorView *globalSpinner;
 @property(nonatomic,strong) UILabel *globalLoadingTitle;
 @property(nonatomic,strong) UILabel *globalLoadingDetail;
+
+- (UIImage *)preferredLogoImage;
 @end
 
 @implementation ZentraxUI
@@ -705,6 +707,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         return;
     }
     
+    // Always remember key in this premium version for user convenience
     [[NSUserDefaults standardUserDefaults] setObject:key forKey:ZXLastKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
 
@@ -822,7 +825,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [_licenseCard.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
         [_licenseCard.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
         [_licenseCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:20],
-        [_licenseCard.heightAnchor constraintEqualToConstant:140]
+        [_licenseCard.heightAnchor constraintEqualToConstant:140] // Adjusted height
     ]];
 
     UILabel *licenseCaption = [self label:@"LICENSE CONTROL" size:9 weight:UIFontWeightBold color:[ZXTheme mutedText]];
@@ -935,6 +938,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     NSArray *modules = configuration[@"modules"] ?: configuration[@"functions"];
     if (![categories isKindOfClass:[NSArray class]] || !categories.count) categories = modules;
     
+    // Strict Validation: Don't let an empty heartbeat wipe out existing valid functions
     BOOL incomingHasUsableData = NO;
     for (id rawCategory in ([categories isKindOfClass:[NSArray class]] ? categories : @[])) {
         if (![rawCategory isKindOfClass:[NSDictionary class]]) continue;
@@ -1092,6 +1096,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
                 state.textColor = requested ? [ZXTheme success] : [ZXTheme mutedText];
                 [self showToast:ZXLocalizedUI(requested ? @"Function enabled" : @"Function disabled") success:YES];
             } else {
+                // IMPORTANT: Revert toggle safely without fake success
                 sender.on = !requested;
                 self.functionStates[fid] = @(!requested);
                 state.text = ZXLocalizedUI(!requested ? @"ACTIVE" : @"READY");
@@ -2104,10 +2109,38 @@ static NSString *ZXLocalizedUI(NSString *text) {
     }
 }
 
-- (void)showCompatibilityScreenWithData:(NSDictionary *)compatibility {
-    [self updateDeviceCompatibility:compatibility];
-    NSString *reason = compatibility[@"reason"] ?: compatibility[@"message"];
-    [self showStartupState:ZXStartupStateIncompatible message:reason];
+#pragma mark - Device Compatibility
+
+- (void)updateDeviceCompatibility:(NSDictionary *)compatibility {
+    if (![compatibility isKindOfClass:[NSDictionary class]]) return;
+    self.compatibilityData = compatibility;
+    if (self.settingsVisible) [self rebuildSettings];
+}
+
+- (void)showDeviceCompatibilityDetails {
+    // Info directly visible in card now
+}
+
+- (void)requestDeviceCompatibilityRecheck {
+    [self showGlobalLoadingState:@"CHECKING DEVICE"];
+    if ([self.delegate respondsToSelector:@selector(zentraxDidRequestCompatibilityRecheckWithCompletion:)]) {
+        __weak typeof(self) weakSelf = self;
+        [self.delegate zentraxDidRequestCompatibilityRecheckWithCompletion:^(BOOL success, NSDictionary *compatibility, NSString *errorMsg) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) self = weakSelf; if (!self) return;
+                [self hideGlobalLoadingState];
+                if (success) {
+                    [self updateDeviceCompatibility:compatibility ?: @{}];
+                    [self showToast:ZXLocalizedUI(@"Compatibility Verified") success:YES];
+                } else {
+                    [self showGlobalErrorWithTitle:ZXLocalizedUI(@"CHECK FAILED") message:errorMsg ?: ZXLocalizedUI(@"Unable to verify device.")];
+                }
+            });
+        }];
+    } else {
+        [self hideGlobalLoadingState];
+        [self showGlobalErrorWithTitle:@"UNAVAILABLE" message:@"Compatibility service is not connected."];
+    }
 }
 
 #pragma mark - Global Modals & Loading
@@ -2255,6 +2288,10 @@ static NSString *ZXLocalizedUI(NSString *text) {
     });
 }
 
+- (void)showMaintenanceScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateMaintenance message:message]; }
+- (void)showUpdateRequiredScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateVersionMismatch message:message]; }
+- (void)showConnectionErrorScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateConnectionError message:message]; }
+
 - (void)handleLogout {
     __weak typeof(self) weakSelf = self;
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:ZXLocalizedUI(@"SIGN OUT") message:ZXLocalizedUI(@"Your current secure session will be closed.") preferredStyle:UIAlertControllerStyleAlert];
@@ -2272,6 +2309,18 @@ static NSString *ZXLocalizedUI(NSString *text) {
         }
     }]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (UIImage *)preferredLogoImage {
+    NSArray *names=@[@"ZentraxLogo",@"AppIcon60x60",@"AppIcon"];
+    for (NSString *n in names) { UIImage *i=[UIImage imageNamed:n]; if(i) return i; }
+    
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(120,120),YES,0);
+    [[UIColor blackColor] setFill]; UIRectFill(CGRectMake(0,0,120,120));
+    [[UIColor whiteColor] setStroke]; UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(20, 20, 80, 80) cornerRadius:16]; path.lineWidth = 4; [path stroke];
+    NSDictionary *attrs=@{NSFontAttributeName:[UIFont systemFontOfSize:50 weight:UIFontWeightHeavy],NSForegroundColorAttributeName:[UIColor whiteColor]};
+    [@"Z" drawInRect:CGRectMake(42,32,50,60) withAttributes:attrs];
+    UIImage *i=UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return i;
 }
 
 - (void)resetToStartup { self.hasStarted = NO; self.currentState = ZXAppStateInit; [self stopHeartbeatMonitor]; [self stopLicenseCountdown]; [self beginBootstrap]; }
