@@ -1,4 +1,4 @@
-//
+    //
 //  ZXStateStore.h
 //  Zentrax VIP
 //
@@ -217,7 +217,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
  * target. Existing original backups must never be overwritten merely
  * because another function becomes active.
  */
-- (BOOL)setActiveFunctionId:(NSString *)functionId
+- (BOOL)setActiveFunctionId:(NSString * _Nullable)functionId
                     functionName:(NSString * _Nullable)functionName
                        payloadHash:(NSString * _Nullable)payloadHash
                          payloadSize:(long long)payloadSize
@@ -227,7 +227,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
 /**
  * Records the original backup metadata.
  */
-- (BOOL)setOriginalBackupHash:(NSString *)backupHash
+- (BOOL)setOriginalBackupHash:(NSString * _Nullable)backupHash
                          size:(long long)size
                        exists:(BOOL)exists
                      validity:(ZXBackupValidity)validity
