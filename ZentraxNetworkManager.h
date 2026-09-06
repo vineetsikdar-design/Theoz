@@ -6,6 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import "ZXStateStore.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -42,12 +43,6 @@ typedef NS_ENUM(NSInteger, ZXAuthenticationPhase) {
     ZXAuthenticationPhaseSecuringSession,
     ZXAuthenticationPhaseLoadingConfiguration,
     ZXAuthenticationPhaseAccessGranted
-};
-
-typedef NS_ENUM(NSInteger, ZXModuleOperationAction) {
-    ZXModuleOperationActionUnknown = 0,
-    ZXModuleOperationActionOFF,
-    ZXModuleOperationActionON
 };
 
 typedef NS_ENUM(NSInteger, ZXDeviceCompatibilityStatus) {
