@@ -1,4 +1,4 @@
-//
+	//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
@@ -593,7 +593,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
 
             NSFileManager *fm = NSFileManager.defaultManager;
-            NSError *fsError = nil;
+            NSError * __autoreleasing fsError = nil;
             BOOL success = YES;
 
             if ([fm fileExistsAtPath:backupPath]) {
@@ -765,7 +765,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
 
         NSFileManager *fm = NSFileManager.defaultManager;
-        NSError *fsError = nil;
+        NSError * __autoreleasing fsError = nil;
 
         ZXTargetLedgerRecord *record =
             [self.stateStore recordForTarget:target];
