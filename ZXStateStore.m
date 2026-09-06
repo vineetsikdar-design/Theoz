@@ -1,4 +1,4 @@
-	//
+		//
 //  ZXStateStore.m
 //  ZENTRAX
 //
@@ -1090,8 +1090,8 @@ requiresReconciliation:(BOOL)requiresReconciliation
 
 #pragma mark Original Backup
 
-- (BOOL)setOriginalBackupHash:(NSString *)hash
-                          size:(NSUInteger)size
+- (BOOL)setOriginalBackupHash:(NSString * _Nullable)hash
+                          size:(long long)size
                          exists:(BOOL)exists
                        validity:(ZXBackupValidity)validity
                       forTarget:(NSString *)canonicalTarget
