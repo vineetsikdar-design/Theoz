@@ -1069,7 +1069,21 @@ static NSInteger const ZXMaxPINAttempts = 5;
     button.layer.borderColor = [ZXTheme border].CGColor;
     button.titleLabel.font = [ZXTheme heading:13];
     [button setTitleColor:[ZXTheme primaryText] forState:UIControlStateNormal];
-    button.contentEdgeInsets = UIEdgeInsetsMake(13, 18, 13, 18);
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *configuration = [UIButtonConfiguration plainButtonConfiguration];
+        configuration.contentInsets = NSDirectionalEdgeInsetsMake(13, 18, 13, 18);
+        configuration.baseForegroundColor = [ZXTheme primaryText];
+        configuration.background.backgroundColor = [ZXTheme surfaceRaised];
+        configuration.background.strokeColor = [ZXTheme border];
+        configuration.background.strokeWidth = 1.0;
+        configuration.background.cornerRadius = 14.0;
+        configuration.titleTextAttributesTransformer = ^NSDictionary *(NSDictionary *attributes) {
+            NSMutableDictionary *updated = [attributes mutableCopy];
+            updated[NSFontAttributeName] = [ZXTheme heading:13];
+            return updated;
+        };
+        button.configuration = configuration;
+    }
 }
 
 #pragma mark - Splash
@@ -1162,27 +1176,39 @@ static NSInteger const ZXMaxPINAttempts = 5;
         @[@0.78, @"LOADING", @"Loading configuration"],
         @[@0.94, @"READY", @"Finalizing secure interface"]
     ];
-    __block NSInteger index = 0;
+    [self runPremiumSplashStep:0 steps:steps completion:completion];
+}
+
+- (void)runPremiumSplashStep:(NSInteger)index
+                        steps:(NSArray *)steps
+                   completion:(void (^)(void))completion {
+    if (index >= steps.count) {
+        if (completion) completion();
+        return;
+    }
+
+    NSArray *step = steps[index];
+    CGFloat fraction = [step[0] doubleValue];
+    self.splashStatus.text = step[1];
+    self.splashDetail.text = step[2];
+    self.splashPercent.text = [NSString stringWithFormat:@"%ld%%", (long)llround(fraction * 100.0)];
+
     __weak typeof(self) weakSelf = self;
-    __block void (^next)(void);
-    next = ^{
+    [UIView animateWithDuration:0.22
+                          delay:0
+                        options:UIViewAnimationOptionCurveEaseInOut
+                     animations:^{
         __strong typeof(weakSelf) self = weakSelf;
-        if (!self || index >= steps.count) {
-            if (completion) completion();
-            return;
-        }
-        NSArray *step = steps[index++];
-        CGFloat fraction = [step[0] doubleValue];
-        self.splashStatus.text = step[1];
-        self.splashDetail.text = step[2];
-        self.splashPercent.text = [NSString stringWithFormat:@"%ld%%", (long)llround(fraction * 100.0)];
-        [UIView animateWithDuration:0.22 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
-            self.splashFill.transform = CGAffineTransformMakeScale(MAX(0.001, fraction), 1.0);
-        } completion:^(BOOL finished) {
-            dispatch_async(dispatch_get_main_queue(), next);
-        }];
-    };
-    next();
+        if (!self) return;
+        self.splashFill.transform = CGAffineTransformMakeScale(MAX(0.001, fraction), 1.0);
+    }
+                     completion:^(BOOL finished) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self runPremiumSplashStep:index + 1 steps:steps completion:completion];
+        });
+    }];
 }
 
 #pragma mark - Authentication
@@ -1368,7 +1394,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
         case ZXAuthErrorRateLimited: title = @"TOO MANY REQUESTS"; break;
         case ZXAuthErrorExpiredKey: title = @"LICENSE EXPIRED"; break;
         case ZXAuthErrorRevokedKey: title = @"ACCESS REVOKED"; break;
-        case ZXAuthErrorDeviceLimit: title = @"DEVICE LIMIT"; icon = @"iphone.gen3.badge.exclamationmark"; break;
+        case ZXAuthErrorDeviceLimit: title = @"DEVICE LIMIT"; break;
         default: break;
     }
     _authStatus.textColor = [ZXTheme error];
