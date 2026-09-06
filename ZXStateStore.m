@@ -1,4 +1,4 @@
-//
+	//
 //  ZXStateStore.m
 //  ZENTRAX
 //
@@ -777,7 +777,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 #pragma mark Save / Remove
 
 - (BOOL)saveTargetRecord:(ZXTargetLedgerRecord *)record
-             error:(NSError **)error
+             error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         if (!self.opened && ![self open:error]) {
@@ -839,7 +839,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 }
 
 - (BOOL)removeTargetRecordForTarget:(NSString *)canonicalTarget
-                        error:(NSError **)error
+                        error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         if (!self.opened && ![self open:error]) {
@@ -884,7 +884,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
 - (BOOL)setState:(ZXTargetLedgerState)state
        forTarget:(NSString *)canonicalTarget
-           error:(NSError **)error
+           error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         ZXTargetLedgerRecord *record =
@@ -912,7 +912,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
 - (BOOL)setOperationState:(ZXLedgerOperationState)operationState
                 forTarget:(NSString *)canonicalTarget
-                    error:(NSError **)error
+                    error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         ZXTargetLedgerRecord *record =
@@ -945,7 +945,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 }
 
 - (BOOL)markTargetForReconciliation:(NSString *)canonicalTarget
-                                      error:(NSError **)error
+                                      error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         ZXTargetLedgerRecord *record =
@@ -975,7 +975,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 }
 
 - (BOOL)markTargetReconciled:(NSString *)canonicalTarget
-                          error:(NSError **)error
+                          error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         ZXTargetLedgerRecord *record =
@@ -1007,7 +1007,7 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
 - (BOOL)markTarget:(NSString *)canonicalTarget
 requiresReconciliation:(BOOL)requiresReconciliation
-             error:(NSError **)error
+             error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         ZXTargetLedgerRecord *record =
@@ -1043,12 +1043,12 @@ requiresReconciliation:(BOOL)requiresReconciliation
 
 #pragma mark Active Function
 
-- (BOOL)setActiveFunctionId:(NSString *)functionId
-                 functionName:(NSString *)functionName
-                  payloadHash:(NSString *)payloadHash
-                  payloadSize:(NSUInteger)payloadSize
+- (BOOL)setActiveFunctionId:(NSString * _Nullable)functionId
+                 functionName:(NSString * _Nullable)functionName
+                  payloadHash:(NSString * _Nullable)payloadHash
+                  payloadSize:(long long)payloadSize
                     forTarget:(NSString *)canonicalTarget
-                        error:(NSError **)error
+                        error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         if (!canonicalTarget.length) {
@@ -1095,7 +1095,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
                          exists:(BOOL)exists
                        validity:(ZXBackupValidity)validity
                       forTarget:(NSString *)canonicalTarget
-                          error:(NSError **)error
+                          error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         if (!canonicalTarget.length) {
@@ -1134,7 +1134,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
 
 - (BOOL)setBackupValidity:(ZXBackupValidity)validity
                 forTarget:(NSString *)canonicalTarget
-                    error:(NSError **)error
+                    error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         ZXTargetLedgerRecord *record =
@@ -1172,7 +1172,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
                     licenseId:(NSString *)licenseId
                      deviceId:(NSString *)deviceId
                        target:(NSString *)canonicalTarget
-                        error:(NSError **)error
+                        error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         if (!operationId.length ||
@@ -1317,7 +1317,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
 - (BOOL)commitOperationWithId:(NSString *)operationId
                     targetHash:(NSString *)targetHash
                           size:(NSUInteger)size
-                         error:(NSError **)error
+                         error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         if (!operationId.length) {
@@ -1377,7 +1377,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
 }
 
 - (BOOL)failOperationWithId:(NSString *)operationId
-                      error:(NSError **)error
+                      error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         if (!operationId.length) {
@@ -1421,7 +1421,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
 }
 
 - (BOOL)clearCompletedOperationWithId:(NSString *)operationId
-                                error:(NSError **)error
+                                error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         if (!operationId.length) {
@@ -1709,7 +1709,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
 - (BOOL)associateTarget:(NSString *)canonicalTarget
               licenseId:(NSString *)licenseId
                deviceId:(NSString *)deviceId
-                  error:(NSError **)error
+                  error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         ZXTargetLedgerRecord *record =
@@ -1738,7 +1738,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
 }
 
 - (BOOL)clearSessionAssociationForLicenseId:(NSString *)licenseId
-                                      error:(NSError **)error
+                                      error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
         if (!licenseId.length) {
