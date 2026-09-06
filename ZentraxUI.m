@@ -1,4 +1,4 @@
-//
+	//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -160,7 +160,6 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
 @property(nonatomic,strong) UITextField *textField;
 @property(nonatomic,strong) UILabel *caption;
 @property(nonatomic,strong) UIView *container;
-@property(nonatomic,strong) UIButton *pasteButton;
 @property(nonatomic,strong) UIButton *eyeButton;
 @property(nonatomic,strong) UIImageView *icon;
 @end
@@ -211,18 +210,6 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
     [_eyeButton addTarget:self action:@selector(toggleSecureEntry) forControlEvents:UIControlEventTouchUpInside];
     [_container addSubview:_eyeButton];
 
-    _pasteButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_pasteButton setTitle:@"PASTE" forState:UIControlStateNormal];
-    _pasteButton.titleLabel.font = [ZXTheme heading:11];
-    [_pasteButton setTitleColor:[ZXTheme lavender] forState:UIControlStateNormal];
-    _pasteButton.backgroundColor = [[ZXTheme violet] colorWithAlphaComponent:0.10];
-    _pasteButton.layer.cornerRadius = 8;
-    _pasteButton.layer.borderWidth = 1;
-    _pasteButton.layer.borderColor = [[ZXTheme violet] colorWithAlphaComponent:0.24].CGColor;
-    _pasteButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [_pasteButton addTarget:self action:@selector(pasteKeyTapped) forControlEvents:UIControlEventTouchUpInside];
-    [_container addSubview:_pasteButton];
-
     [NSLayoutConstraint activateConstraints:@[
         [_caption.topAnchor constraintEqualToAnchor:self.topAnchor],
         [_caption.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:3],
@@ -238,12 +225,7 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
         [_icon.widthAnchor constraintEqualToConstant:18],
         [_icon.heightAnchor constraintEqualToConstant:18],
 
-        [_pasteButton.trailingAnchor constraintEqualToAnchor:_container.trailingAnchor constant:-9],
-        [_pasteButton.centerYAnchor constraintEqualToAnchor:_container.centerYAnchor],
-        [_pasteButton.widthAnchor constraintEqualToConstant:58],
-        [_pasteButton.heightAnchor constraintEqualToConstant:32],
-
-        [_eyeButton.trailingAnchor constraintEqualToAnchor:_pasteButton.leadingAnchor constant:-3],
+        [_eyeButton.trailingAnchor constraintEqualToAnchor:_container.trailingAnchor constant:-12],
         [_eyeButton.centerYAnchor constraintEqualToAnchor:_container.centerYAnchor],
         [_eyeButton.widthAnchor constraintEqualToConstant:30],
         [_eyeButton.heightAnchor constraintEqualToConstant:32],
@@ -255,16 +237,6 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
     ]];
 
     return self;
-}
-
-- (void)pasteKeyTapped {
-    NSString *value = [[UIPasteboard generalPasteboard].string
-        stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if (value.length) {
-        self.textField.text = value;
-        [self.textField sendActionsForControlEvents:UIControlEventEditingChanged];
-        [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
-    }
 }
 
 - (void)toggleSecureEntry {
@@ -1515,7 +1487,16 @@ static NSInteger const ZXMaxPINAttempts = 5;
             if (!fid.length) continue;
             hasFunctions=YES;
             [self.functionDefinitions setObject:function forKey:fid];
-            BOOL on=[function[@"current_state"] boolValue] || [function[@"state"] boolValue] || [self.functionStates[fid] boolValue];
+            id serverCurrentState = function[@"current_state"];
+            id serverState = function[@"state"];
+            BOOL on = NO;
+            if (serverCurrentState && serverCurrentState != [NSNull null] && [serverCurrentState respondsToSelector:@selector(boolValue)]) {
+                on = [serverCurrentState boolValue];
+            } else if (serverState && serverState != [NSNull null] && [serverState respondsToSelector:@selector(boolValue)]) {
+                on = [serverState boolValue];
+            } else {
+                on = [self.functionStates[fid] boolValue];
+            }
             self.functionStates[fid]=@(on);
             UIView *card=[self functionCardForDefinition:function functionId:fid isOn:on];
             [_modulesStack addArrangedSubview:card];
@@ -1529,23 +1510,34 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
 - (UIView *)functionCardForDefinition:(NSDictionary *)definition functionId:(NSString *)fid isOn:(BOOL)on {
     UIView *card = [self card];
-    card.layer.cornerRadius = 18;
+    card.layer.cornerRadius = 20.0;
+    card.layer.borderWidth = 1.0;
+    card.layer.borderColor = [[ZXTheme primaryText] colorWithAlphaComponent:0.075].CGColor;
+    card.layer.shadowOpacity = 0.20;
+    card.layer.shadowRadius = 20.0;
+    card.layer.shadowOffset = CGSizeMake(0, 8);
 
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"bolt.shield.fill"]];
-    icon.tintColor = on ? [ZXTheme success] : [ZXTheme mutedText];
+    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:on ? @"bolt.shield.fill" : @"bolt.shield"]];
+    icon.tintColor = on ? [ZXTheme primaryText] : [ZXTheme mutedText];
     icon.contentMode = UIViewContentModeScaleAspectFit;
     icon.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:icon];
 
-    UILabel *title = [self label:[NSString stringWithFormat:@"%@", definition[@"name"] ?: definition[@"title"] ?: fid] size:15 weight:UIFontWeightSemibold color:[ZXTheme primaryText]];
+    UILabel *title = [self label:[NSString stringWithFormat:@"%@", definition[@"name"] ?: definition[@"title"] ?: fid]
+                              size:15 weight:UIFontWeightSemibold color:[ZXTheme primaryText]];
+    title.numberOfLines = 2;
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:title];
 
-    UILabel *detail = [self label:[NSString stringWithFormat:@"%@", definition[@"description"] ?: @"Server-managed secure function"] size:10 weight:UIFontWeightRegular color:[ZXTheme secondaryText]];
+    NSString *description = [NSString stringWithFormat:@"%@", definition[@"description"] ?: @"Server-managed secure function"];
+    UILabel *detail = [self label:description size:11 weight:UIFontWeightRegular color:[ZXTheme secondaryText]];
+    detail.numberOfLines = 0;
+    detail.lineBreakMode = NSLineBreakByWordWrapping;
     detail.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:detail];
 
-    UILabel *stateLabel = [self label:on ? @"ACTIVE" : @"READY" size:8 weight:UIFontWeightBold color:on ? [ZXTheme success] : [ZXTheme mutedText]];
+    UILabel *stateLabel = [self label:on ? @"ACTIVE" : @"READY"
+                               size:8 weight:UIFontWeightBold color:on ? [ZXTheme primaryText] : [ZXTheme mutedText]];
     [ZXTheme track:stateLabel spacing:1.0];
     stateLabel.textAlignment = NSTextAlignmentRight;
     stateLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1553,27 +1545,40 @@ static NSInteger const ZXMaxPINAttempts = 5;
     self.functionStateLabels[fid] = stateLabel;
 
     UISwitch *toggle = [[UISwitch alloc] init];
-    toggle.onTintColor = [ZXTheme success];
+    toggle.onTintColor = [ZXTheme primaryText];
     toggle.thumbTintColor = [ZXTheme background];
     toggle.on = on;
     toggle.accessibilityLabel = title.text;
-    toggle.tag = (NSInteger)fid.hash;
     toggle.translatesAutoresizingMaskIntoConstraints = NO;
     [toggle addTarget:self action:@selector(functionToggleChanged:) forControlEvents:UIControlEventValueChanged];
     [card addSubview:toggle];
     self.functionControls[fid] = toggle;
 
     [NSLayoutConstraint activateConstraints:@[
-        [card.heightAnchor constraintGreaterThanOrEqualToConstant:84],
-        [icon.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:15], [icon.centerYAnchor constraintEqualToAnchor:card.centerYAnchor], [icon.widthAnchor constraintEqualToConstant:26], [icon.heightAnchor constraintEqualToConstant:26],
-        [title.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:12], [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:16], [title.trailingAnchor constraintLessThanOrEqualToAnchor:stateLabel.leadingAnchor constant:-10],
-        [detail.leadingAnchor constraintEqualToAnchor:title.leadingAnchor], [detail.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:4], [detail.trailingAnchor constraintLessThanOrEqualToAnchor:card.trailingAnchor constant:-80],
-        [stateLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-15], [stateLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:16],
-        [toggle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-14], [toggle.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-12]
+        [card.heightAnchor constraintGreaterThanOrEqualToConstant:108],
+        [icon.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:17],
+        [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:18],
+        [icon.widthAnchor constraintEqualToConstant:24],
+        [icon.heightAnchor constraintEqualToConstant:24],
+
+        [stateLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-17],
+        [stateLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:18],
+
+        [toggle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-15],
+        [toggle.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-15],
+
+        [title.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:12],
+        [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:17],
+        [title.trailingAnchor constraintLessThanOrEqualToAnchor:stateLabel.leadingAnchor constant:-10],
+
+        [detail.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+        [detail.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:6],
+        [detail.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        [detail.bottomAnchor constraintLessThanOrEqualToAnchor:toggle.topAnchor constant:-12],
+        [detail.bottomAnchor constraintGreaterThanOrEqualToAnchor:card.bottomAnchor constant:-58]
     ]];
     return card;
 }
-
 - (NSString *)functionIdForControl:(UIControl *)control {
     for (NSString *fid in self.functionControls) {
         if (self.functionControls[fid] == control) return fid;
@@ -2228,49 +2233,109 @@ static NSInteger const ZXMaxPINAttempts = 5;
 }
 
 - (void)setupSafeModeLock {
-    _safeLockContainer = [[UIView alloc] init]; _safeLockContainer.translatesAutoresizingMaskIntoConstraints = NO; [self.view addSubview:_safeLockContainer];
-    [NSLayoutConstraint activateConstraints:@[[_safeLockContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],[_safeLockContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],[_safeLockContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],[_safeLockContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]]];
+    _safeLockContainer = [[UIView alloc] init];
+    _safeLockContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    _safeLockContainer.backgroundColor = [ZXTheme background];
+    [self.view addSubview:_safeLockContainer];
+    [NSLayoutConstraint activateConstraints:@[
+        [_safeLockContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_safeLockContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_safeLockContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [_safeLockContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
 
-    _safeLockBackButton = [self iconButton:@"chevron.left" size:34]; _safeLockBackButton.backgroundColor = [ZXTheme surfaceRaised]; _safeLockBackButton.layer.cornerRadius = 12; _safeLockBackButton.hidden = YES; [_safeLockBackButton addTarget:self action:@selector(cancelSafeModeCreation) forControlEvents:UIControlEventTouchUpInside]; [_safeLockContainer addSubview:_safeLockBackButton];
-    [NSLayoutConstraint activateConstraints:@[[_safeLockBackButton.leadingAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.leadingAnchor constant:20],[_safeLockBackButton.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:8]]];
+    _safeLockBackButton = [self iconButton:@"chevron.left" size:34];
+    _safeLockBackButton.backgroundColor = [ZXTheme surfaceRaised];
+    _safeLockBackButton.layer.cornerRadius = 12;
+    _safeLockBackButton.hidden = YES;
+    [_safeLockBackButton addTarget:self action:@selector(cancelSafeModeCreation) forControlEvents:UIControlEventTouchUpInside];
+    [_safeLockContainer addSubview:_safeLockBackButton];
+    [NSLayoutConstraint activateConstraints:@[
+        [_safeLockBackButton.leadingAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.leadingAnchor constant:20],
+        [_safeLockBackButton.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:8],
+        [_safeLockBackButton.widthAnchor constraintEqualToConstant:38],
+        [_safeLockBackButton.heightAnchor constraintEqualToConstant:38]
+    ]];
 
-    UIImageView *logo = [[UIImageView alloc] initWithImage:[self safeModeLogoImage]]; logo.contentMode = UIViewContentModeScaleAspectFit; logo.layer.cornerRadius = 24; logo.clipsToBounds = YES; logo.translatesAutoresizingMaskIntoConstraints = NO; [_safeLockContainer addSubview:logo];
-    _safeLockTitle = [self label:@"Enter passcode" size:27 weight:UIFontWeightSemibold color:[ZXTheme primaryText]]; _safeLockTitle.textAlignment = NSTextAlignmentCenter; _safeLockTitle.translatesAutoresizingMaskIntoConstraints = NO; [_safeLockContainer addSubview:_safeLockTitle];
-    _safeLockSubtitle = [self label:@"" size:1 weight:UIFontWeightRegular color:[UIColor clearColor]]; _safeLockSubtitle.textAlignment = NSTextAlignmentCenter; _safeLockSubtitle.translatesAutoresizingMaskIntoConstraints = NO; [_safeLockContainer addSubview:_safeLockSubtitle];
-    _safePinError = [self label:@"" size:12 weight:UIFontWeightMedium color:[ZXTheme error]]; _safePinError.textAlignment = NSTextAlignmentCenter; _safePinError.translatesAutoresizingMaskIntoConstraints = NO; [_safeLockContainer addSubview:_safePinError];
+    // Safe Mode is intentionally unbranded: no logo and no biometric UI.
+    _safeLockTitle = [self label:@"Enter passcode" size:28 weight:UIFontWeightSemibold color:[ZXTheme primaryText]];
+    _safeLockTitle.textAlignment = NSTextAlignmentCenter;
+    _safeLockTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    [_safeLockContainer addSubview:_safeLockTitle];
 
-    _pinBoxes = [[UIStackView alloc] init]; _pinBoxes.axis = UILayoutConstraintAxisHorizontal; _pinBoxes.spacing = 10; _pinBoxes.distribution = UIStackViewDistributionFillEqually; _pinBoxes.translatesAutoresizingMaskIntoConstraints = NO; [_safeLockContainer addSubview:_pinBoxes];
-    for (NSInteger i=0;i<6;i++) { UIView *box = [[UIView alloc] init]; box.layer.cornerRadius=15; box.layer.borderWidth=1.2; box.layer.borderColor=[UIColor colorWithWhite:0.20 alpha:1].CGColor; box.backgroundColor=[UIColor colorWithWhite:0.025 alpha:1]; box.tag=7000+i; [_pinBoxes addArrangedSubview:box]; [box.heightAnchor constraintEqualToConstant:66].active=YES; }
+    _safeLockSubtitle = [self label:@"" size:13 weight:UIFontWeightRegular color:[ZXTheme secondaryText]];
+    _safeLockSubtitle.textAlignment = NSTextAlignmentCenter;
+    _safeLockSubtitle.numberOfLines = 2;
+    _safeLockSubtitle.translatesAutoresizingMaskIntoConstraints = NO;
+    [_safeLockContainer addSubview:_safeLockSubtitle];
 
-    _keypadView = [[UIView alloc] init]; _keypadView.backgroundColor=[UIColor colorWithWhite:0.075 alpha:1]; _keypadView.layer.cornerRadius=42; _keypadView.layer.maskedCorners=kCALayerMinXMinYCorner|kCALayerMaxXMinYCorner; _keypadView.layer.borderWidth=1; _keypadView.layer.borderColor=[UIColor colorWithWhite:0.19 alpha:1].CGColor; _keypadView.clipsToBounds=YES; _keypadView.translatesAutoresizingMaskIntoConstraints = NO; [_safeLockContainer addSubview:_keypadView];
+    _safePinError = [self label:@"" size:12 weight:UIFontWeightMedium color:[ZXTheme error]];
+    _safePinError.textAlignment = NSTextAlignmentCenter;
+    _safePinError.translatesAutoresizingMaskIntoConstraints = NO;
+    [_safeLockContainer addSubview:_safePinError];
+
+    _pinBoxes = [[UIStackView alloc] init];
+    _pinBoxes.axis = UILayoutConstraintAxisHorizontal;
+    _pinBoxes.spacing = 10;
+    _pinBoxes.distribution = UIStackViewDistributionFillEqually;
+    _pinBoxes.translatesAutoresizingMaskIntoConstraints = NO;
+    [_safeLockContainer addSubview:_pinBoxes];
+    for (NSInteger i = 0; i < 6; i++) {
+        UIView *box = [[UIView alloc] init];
+        box.layer.cornerRadius = 17;
+        box.layer.borderWidth = 1.0;
+        box.layer.borderColor = [UIColor colorWithWhite:0.20 alpha:1.0].CGColor;
+        box.backgroundColor = [UIColor colorWithWhite:0.035 alpha:1.0];
+        box.tag = 7000 + i;
+        [_pinBoxes addArrangedSubview:box];
+        [box.heightAnchor constraintEqualToConstant:58].active = YES;
+    }
+
+    _keypadView = [[UIView alloc] init];
+    _keypadView.backgroundColor = [UIColor colorWithWhite:0.045 alpha:1.0];
+    _keypadView.layer.cornerRadius = 34;
+    _keypadView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+    _keypadView.layer.borderWidth = 1.0;
+    _keypadView.layer.borderColor = [UIColor colorWithWhite:0.15 alpha:1.0].CGColor;
+    _keypadView.clipsToBounds = YES;
+    _keypadView.translatesAutoresizingMaskIntoConstraints = NO;
+    [_safeLockContainer addSubview:_keypadView];
     [self buildSafeKeypad];
-    _safeModeFooter = [self label:@"" size:1 weight:UIFontWeightRegular color:[UIColor clearColor]]; _safeModeFooter.hidden=YES; _safeModeFooter.translatesAutoresizingMaskIntoConstraints = NO; [_safeLockContainer addSubview:_safeModeFooter];
 
     [NSLayoutConstraint activateConstraints:@[
-        [logo.centerXAnchor constraintEqualToAnchor:_safeLockContainer.centerXAnchor], [logo.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:92], [logo.widthAnchor constraintEqualToConstant:58], [logo.heightAnchor constraintEqualToConstant:58],
-        [NSLayoutConstraint constraintWithItem:_safeLockTitle attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:_safeLockContainer attribute:NSLayoutAttributeCenterY multiplier:0.66 constant:0.0], [_safeLockTitle.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24], [_safeLockTitle.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
-        [_safeLockSubtitle.topAnchor constraintEqualToAnchor:_safeLockTitle.bottomAnchor constant:1], [_safeLockSubtitle.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24], [_safeLockSubtitle.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
-        [_safePinError.topAnchor constraintEqualToAnchor:_safeLockSubtitle.bottomAnchor constant:1], [_safePinError.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24], [_safePinError.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
-        [_pinBoxes.topAnchor constraintEqualToAnchor:_safePinError.bottomAnchor constant:18], [_pinBoxes.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:50], [_pinBoxes.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-50],
-        [_keypadView.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor], [_keypadView.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor], [_keypadView.bottomAnchor constraintEqualToAnchor:_safeLockContainer.bottomAnchor], [_keypadView.heightAnchor constraintEqualToConstant:420],
-        [_safeModeFooter.bottomAnchor constraintEqualToAnchor:_keypadView.topAnchor], [_safeModeFooter.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor], [_safeModeFooter.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor]
+        [_safeLockTitle.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:84],
+        [_safeLockTitle.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24],
+        [_safeLockTitle.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
+        [_safeLockSubtitle.topAnchor constraintEqualToAnchor:_safeLockTitle.bottomAnchor constant:7],
+        [_safeLockSubtitle.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:32],
+        [_safeLockSubtitle.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-32],
+        [_safePinError.topAnchor constraintEqualToAnchor:_safeLockSubtitle.bottomAnchor constant:7],
+        [_safePinError.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24],
+        [_safePinError.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
+        [_pinBoxes.topAnchor constraintEqualToAnchor:_safePinError.bottomAnchor constant:18],
+        [_pinBoxes.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:48],
+        [_pinBoxes.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-48],
+        [_keypadView.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor],
+        [_keypadView.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor],
+        [_keypadView.bottomAnchor constraintEqualToAnchor:_safeLockContainer.bottomAnchor],
+        [_keypadView.topAnchor constraintGreaterThanOrEqualToAnchor:_pinBoxes.bottomAnchor constant:26],
+        [_keypadView.heightAnchor constraintEqualToConstant:402]
     ]];
 }
-
 - (void)buildSafeKeypad {
     NSArray *titles = @[@"1",@"2",@"3",@"4",@"5",@"6",@"7",@"8",@"9",@"",@"0",@"⌫"];
     UIStackView *rows = [[UIStackView alloc] init];
     rows.axis = UILayoutConstraintAxisVertical;
-    rows.spacing = 10;
+    rows.spacing = 12;
     rows.distribution = UIStackViewDistributionFillEqually;
     rows.translatesAutoresizingMaskIntoConstraints = NO;
     [_keypadView addSubview:rows];
-    [NSLayoutConstraint activateConstraints:@[[rows.leadingAnchor constraintEqualToAnchor:_keypadView.leadingAnchor constant:10],[rows.trailingAnchor constraintEqualToAnchor:_keypadView.trailingAnchor constant:-10],[rows.topAnchor constraintEqualToAnchor:_keypadView.topAnchor constant:18],[rows.bottomAnchor constraintEqualToAnchor:_keypadView.bottomAnchor constant:-18]]];
+    [NSLayoutConstraint activateConstraints:@[[rows.leadingAnchor constraintEqualToAnchor:_keypadView.leadingAnchor constant:24],[rows.trailingAnchor constraintEqualToAnchor:_keypadView.trailingAnchor constant:-24],[rows.topAnchor constraintEqualToAnchor:_keypadView.topAnchor constant:22],[rows.bottomAnchor constraintEqualToAnchor:_keypadView.bottomAnchor constant:-22]]];
 
     for (NSInteger rowIndex=0; rowIndex<4; rowIndex++) {
         UIStackView *row = [[UIStackView alloc] init];
         row.axis = UILayoutConstraintAxisHorizontal;
-        row.spacing = 10;
+        row.spacing = 12;
         row.distribution = UIStackViewDistributionFillEqually;
         [rows addArrangedSubview:row];
         for (NSInteger col=0; col<3; col++) {
@@ -2278,12 +2343,12 @@ static NSInteger const ZXMaxPINAttempts = 5;
             UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem];
             NSString *title=titles[idx];
             [button setTitle:title forState:UIControlStateNormal];
-            button.titleLabel.font=[ZXTheme body:(idx==11?26:29) weight:UIFontWeightMedium];
+            button.titleLabel.font=[ZXTheme body:(idx==11?23:27) weight:UIFontWeightMedium];
             [button setTitleColor:[ZXTheme primaryText] forState:UIControlStateNormal];
-            button.backgroundColor=[UIColor colorWithWhite:0.105 alpha:1];
-            button.layer.cornerRadius=16;
+            button.backgroundColor=[UIColor colorWithWhite:0.085 alpha:1];
+            button.layer.cornerRadius=20;
             button.layer.borderWidth=1;
-            button.layer.borderColor=[UIColor colorWithWhite:0.17 alpha:1].CGColor;
+            button.layer.borderColor=[UIColor colorWithWhite:0.16 alpha:1].CGColor;
             button.tag=8000+idx;
             button.translatesAutoresizingMaskIntoConstraints=NO;
             if (idx==9) { button.alpha=0; button.userInteractionEnabled=NO; }
@@ -2661,32 +2726,58 @@ static NSInteger const ZXMaxPINAttempts = 5;
     [nc addObserver:self selector:@selector(appDidBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
 }
 
-- (void)appWillResignActive:(NSNotification *)note { if (self.safeModeEnabled) { [self lockSafeMode]; [self showPrivacyOverlayForReason:@"Private Space is protected while the app is not active."]; } }
+- (void)appWillResignActive:(NSNotification *)note { if (self.safeModeEnabled) [self lockSafeMode]; }
 - (void)appDidBecomeActive:(NSNotification *)note { [self updatePrivacyCaptureState]; }
 - (void)handleScreenshotNotification:(NSNotification *)note {
-    if (!self.safeModeEnabled) return;
-    [self showPrivacyOverlayForReason:@"Screenshot event detected. Private content remains protected while Safe UI Mode is active."];
+    [self showPrivacyOverlayForReason:nil];
 }
 - (void)updatePrivacyCaptureState {
     BOOL captured = [UIScreen mainScreen].isCaptured;
-    if (captured && self.safeModeEnabled) [self showPrivacyOverlayForReason:@"Screen recording or screen sharing detected. Private content is currently protected."];
+    if (captured) [self showPrivacyOverlayForReason:nil];
     else if (!captured && self.privacyOverlayPresented) [self hidePrivacyOverlay];
 }
 
 - (void)showPrivacyOverlayForReason:(NSString *)reason {
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!self.safeModeEnabled) return;
         if (!self.privacyOverlay) {
-            self.privacyOverlay=[[UIView alloc] initWithFrame:self.view.bounds]; self.privacyOverlay.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight; self.privacyOverlay.backgroundColor=[ZXTheme background]; self.privacyOverlay.layer.zPosition=30000;
-            UIImageView *logo=[[UIImageView alloc] initWithImage:[self safeModeLogoImage]]; logo.contentMode=UIViewContentModeScaleAspectFit; logo.translatesAutoresizingMaskIntoConstraints=NO; [self.privacyOverlay addSubview:logo];
-            UILabel *t=[self label:@"PRIVATE CONTENT PROTECTED" size:19 weight:UIFontWeightBlack color:[ZXTheme primaryText]]; t.textAlignment=NSTextAlignmentCenter; t.translatesAutoresizingMaskIntoConstraints=NO; [self.privacyOverlay addSubview:t];
-            UILabel *m=[self label:@"" size:13 weight:UIFontWeightMedium color:[ZXTheme secondaryText]]; m.tag=9300; m.textAlignment=NSTextAlignmentCenter; m.translatesAutoresizingMaskIntoConstraints=NO; [self.privacyOverlay addSubview:m];
-            UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:b]; [b setTitle:@"CHECK AGAIN" forState:UIControlStateNormal]; b.translatesAutoresizingMaskIntoConstraints=NO; [b addTarget:self action:@selector(updatePrivacyCaptureState) forControlEvents:UIControlEventTouchUpInside]; [self.privacyOverlay addSubview:b];
-            [NSLayoutConstraint activateConstraints:@[[logo.centerXAnchor constraintEqualToAnchor:self.privacyOverlay.centerXAnchor],[logo.centerYAnchor constraintEqualToAnchor:self.privacyOverlay.centerYAnchor constant:-105],[logo.widthAnchor constraintEqualToConstant:72],[logo.heightAnchor constraintEqualToConstant:72],[t.topAnchor constraintEqualToAnchor:logo.bottomAnchor constant:24],[t.leadingAnchor constraintEqualToAnchor:self.privacyOverlay.leadingAnchor constant:25],[t.trailingAnchor constraintEqualToAnchor:self.privacyOverlay.trailingAnchor constant:-25],[m.topAnchor constraintEqualToAnchor:t.bottomAnchor constant:10],[m.leadingAnchor constraintEqualToAnchor:self.privacyOverlay.leadingAnchor constant:35],[m.trailingAnchor constraintEqualToAnchor:self.privacyOverlay.trailingAnchor constant:-35],[b.topAnchor constraintEqualToAnchor:m.bottomAnchor constant:24],[b.centerXAnchor constraintEqualToAnchor:self.privacyOverlay.centerXAnchor],[b.heightAnchor constraintEqualToConstant:48],[b.widthAnchor constraintEqualToConstant:170]]];
+            self.privacyOverlay = [[UIView alloc] initWithFrame:self.view.bounds];
+            self.privacyOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            self.privacyOverlay.backgroundColor = [ZXTheme background];
+            self.privacyOverlay.layer.zPosition = 30000;
+
+            UIImageView *shield = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"rectangle.on.rectangle.slash"]];
+            shield.tintColor = [ZXTheme primaryText];
+            shield.contentMode = UIViewContentModeScaleAspectFit;
+            shield.translatesAutoresizingMaskIntoConstraints = NO;
+            [self.privacyOverlay addSubview:shield];
+
+            UILabel *title = [self label:@"Close screen sharing app" size:24 weight:UIFontWeightSemibold color:[ZXTheme primaryText]];
+            title.textAlignment = NSTextAlignmentCenter;
+            title.translatesAutoresizingMaskIntoConstraints = NO;
+            [self.privacyOverlay addSubview:title];
+
+            UILabel *message = [self label:@"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information" size:14 weight:UIFontWeightRegular color:[ZXTheme secondaryText]];
+            message.textAlignment = NSTextAlignmentCenter;
+            message.numberOfLines = 0;
+            message.translatesAutoresizingMaskIntoConstraints = NO;
+            [self.privacyOverlay addSubview:message];
+
+            [NSLayoutConstraint activateConstraints:@[
+                [shield.centerXAnchor constraintEqualToAnchor:self.privacyOverlay.centerXAnchor],
+                [shield.centerYAnchor constraintEqualToAnchor:self.privacyOverlay.centerYAnchor constant:-105],
+                [shield.widthAnchor constraintEqualToConstant:44],
+                [shield.heightAnchor constraintEqualToConstant:44],
+                [title.topAnchor constraintEqualToAnchor:shield.bottomAnchor constant:26],
+                [title.leadingAnchor constraintEqualToAnchor:self.privacyOverlay.leadingAnchor constant:28],
+                [title.trailingAnchor constraintEqualToAnchor:self.privacyOverlay.trailingAnchor constant:-28],
+                [message.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:12],
+                [message.leadingAnchor constraintEqualToAnchor:self.privacyOverlay.leadingAnchor constant:42],
+                [message.trailingAnchor constraintEqualToAnchor:self.privacyOverlay.trailingAnchor constant:-42]
+            ]];
         }
-        UILabel *m=[self.privacyOverlay viewWithTag:9300]; m.text=reason ?: @"Screen recording and screen sharing are blocked while Safe UI Mode is active. iOS reports screenshot events to the app.";
         if (!self.privacyOverlay.superview) [self.view addSubview:self.privacyOverlay];
-        self.privacyOverlayPresented=YES;
+        self.privacyOverlayPresented = YES;
+        self.privacyOverlay.alpha = 1.0;
     });
 }
 - (void)hidePrivacyOverlay { dispatch_async(dispatch_get_main_queue(), ^{[self.privacyOverlay removeFromSuperview];self.privacyOverlayPresented=NO;}); }
