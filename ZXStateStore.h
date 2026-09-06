@@ -1,6 +1,6 @@
 //
 //  ZXStateStore.h
-//  Zentrax VIP
+//  Zentrax  VIP
 //
 //  Persistent local state / operation ledger.
 //  This layer stores only client-side execution state.
