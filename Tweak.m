@@ -1,4 +1,4 @@
-	//
+//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
@@ -576,7 +576,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
     NSError *ledgerError = nil;
     [self.stateStore beginOperationWithId:operationId
-                                   action:(isOn ? @"ON" : @"OFF")
+                                   action:(action == ZXModuleOperationActionON ? @"ON" : @"OFF")
                                functionId:resolvedFunctionId
                                 licenseId:licenseId
                                  deviceId:deviceId
@@ -1119,25 +1119,15 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 static IMP orig_UIWindow_makeKeyAndVisible = NULL;
 static BOOL ZXUIInstalled = NO;
 static UIWindow *zx_secureOverlayWindow = nil;
+static BOOL zx_is_hook_entered = NO;
 
 static void ZXInstallUIBeforeVisibility(UIWindow *window) {
     if (ZXUIInstalled || !window) return;
-    if (!NSThread.isMainThread) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            ZXInstallUIBeforeVisibility(window);
-        });
-        return;
-    }
 
     Class uiClass = NSClassFromString(@"ZentraxUI");
     if (!uiClass) return;
 
     @try {
-        /*
-         * This is intentionally the original interception point used by the
-         * working Filza integration. Do NOT wait for UIWindowDidBecomeVisible
-         * or UIApplicationDidBecomeActive.
-         */
         MCMFilzaStart();
 
         ZentraxUI *zentraxVC = [[uiClass alloc] init];
@@ -1150,17 +1140,13 @@ static void ZXInstallUIBeforeVisibility(UIWindow *window) {
         UINavigationController *navController =
             [[UINavigationController alloc] initWithRootViewController:zentraxVC];
         navController.navigationBarHidden = YES;
-        
-        /* 
-         * SURGICAL CRASH FIX: 
-         * Instead of destroying the host app's rootViewController (which causes 
-         * unrecognized selector crashes when Filza updates its UI 3 seconds later), 
-         * we create an isolated, top-level window for Zentrax.
-         */
+
+        // SURGICAL FIX: Create isolated overlay window
         zx_secureOverlayWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
         zx_secureOverlayWindow.windowLevel = UIWindowLevelAlert + 100;
         zx_secureOverlayWindow.rootViewController = navController;
         zx_secureOverlayWindow.backgroundColor = [UIColor blackColor];
+        
         [zx_secureOverlayWindow makeKeyAndVisible];
 
         ZXUIInstalled = YES;
@@ -1171,10 +1157,17 @@ static void ZXInstallUIBeforeVisibility(UIWindow *window) {
 }
 
 static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        ZXInstallUIBeforeVisibility(self);
-    });
+    // SURGICAL FIX: Prevent dispatch_once deadlock
+    if (zx_is_hook_entered) {
+        if (orig_UIWindow_makeKeyAndVisible) {
+            ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
+        }
+        return;
+    }
+    
+    zx_is_hook_entered = YES;
+
+    ZXInstallUIBeforeVisibility(self);
 
     if (orig_UIWindow_makeKeyAndVisible) {
         ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
