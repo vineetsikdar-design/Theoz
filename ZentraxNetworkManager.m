@@ -1,4 +1,4 @@
-	//
+//
 //  ZentraxNetworkManager.m
 //  Zentrax VIP - Premium Execution Node
 //
@@ -245,31 +245,63 @@
 }
 
 - (void)updateServerTimeFromResponse:(NSDictionary *)response {
-    NSNumber *serverTime = nil;
-    id raw = response[@"server_time"];
-    if ([raw isKindOfClass:NSNumber.class]) {
-        serverTime = raw;
-    } else if ([raw isKindOfClass:NSString.class]) {
-        serverTime = @([(NSString *)raw doubleValue]);
-    }
+    if (![response isKindOfClass:NSDictionary.class]) return;
 
-    if (!serverTime) {
-        NSDictionary *server = response[@"server"];
-        if ([server isKindOfClass:NSDictionary.class]) {
-            id nested = server[@"time"];
-            if ([nested isKindOfClass:NSNumber.class]) {
-                serverTime = nested;
-            } else if ([nested isKindOfClass:NSString.class]) {
-                serverTime = @([(NSString *)nested doubleValue]);
+    NSTimeInterval serverTimestamp = 0.0;
+    id raw = response[@"server_time"];
+
+    if ([raw isKindOfClass:NSNumber.class]) {
+        serverTimestamp = [(NSNumber *)raw doubleValue];
+    } else if ([raw isKindOfClass:NSString.class]) {
+        NSString *value = [(NSString *)raw stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (value.length > 0) {
+            NSScanner *scanner = [NSScanner scannerWithString:value];
+            double numericValue = 0.0;
+            if ([scanner scanDouble:&numericValue] && scanner.isAtEnd) {
+                serverTimestamp = numericValue;
+            } else {
+                NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
+                formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime |
+                                           NSISO8601DateFormatWithFractionalSeconds;
+                NSDate *date = [formatter dateFromString:value];
+                if (!date) {
+                    formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime;
+                    date = [formatter dateFromString:value];
+                }
+                if (date) serverTimestamp = date.timeIntervalSince1970;
             }
         }
     }
 
-    if (!serverTime || serverTime.doubleValue <= 0.0) {
-        return;
+    if (serverTimestamp <= 0.0) {
+        NSDictionary *server = [response[@"server"] isKindOfClass:NSDictionary.class]
+            ? response[@"server"] : nil;
+        id nested = server[@"time"];
+        if ([nested isKindOfClass:NSNumber.class]) {
+            serverTimestamp = [(NSNumber *)nested doubleValue];
+        } else if ([nested isKindOfClass:NSString.class]) {
+            NSString *value = [(NSString *)nested stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            double numericValue = 0.0;
+            NSScanner *scanner = [NSScanner scannerWithString:value];
+            if ([scanner scanDouble:&numericValue] && scanner.isAtEnd) {
+                serverTimestamp = numericValue;
+            } else {
+                NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
+                formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime |
+                                           NSISO8601DateFormatWithFractionalSeconds;
+                NSDate *date = [formatter dateFromString:value];
+                if (!date) {
+                    formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime;
+                    date = [formatter dateFromString:value];
+                }
+                if (date) serverTimestamp = date.timeIntervalSince1970;
+            }
+        }
     }
 
-    NSTimeInterval offset = serverTime.doubleValue - [NSDate date].timeIntervalSince1970;
+    if (serverTimestamp <= 0.0) return;
+
+    NSTimeInterval offset = serverTimestamp - [NSDate date].timeIntervalSince1970;
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     [defaults setDouble:offset forKey:SERVER_OFFSET_KEY];
     [defaults setBool:YES forKey:SERVER_OFFSET_VALID_KEY];
@@ -308,16 +340,23 @@
     if ([normalized isEqualToString:@"DISABLED_KEY"]) return ZXNetworkErrorServer;
     if ([normalized isEqualToString:@"DEVICE_LIMIT"]) return ZXNetworkErrorDeviceLimit;
     if ([normalized isEqualToString:@"INVALID_SESSION"]) return ZXNetworkErrorInvalidSession;
-    if ([normalized isEqualToString:@"MAINTENANCE"]) return ZXNetworkErrorMaintenance;
+    if ([normalized isEqualToString:@"MAINTENANCE"] ||
+        [normalized isEqualToString:@"MAINTENANCE_MODE"]) return ZXNetworkErrorMaintenance;
     if ([normalized isEqualToString:@"VERSION_MISMATCH"] ||
         [normalized isEqualToString:@"INVALID_APP_VERSION"] ||
-        [normalized isEqualToString:@"APP_VERSION_REQUIRED"]) return ZXNetworkErrorVersionMismatch;
+        [normalized isEqualToString:@"APP_VERSION_REQUIRED"] ||
+        [normalized isEqualToString:@"UPDATE_REQUIRED"]) return ZXNetworkErrorVersionMismatch;
     if ([normalized isEqualToString:@"INCOMPATIBLE_DEVICE"] ||
         [normalized isEqualToString:@"DEVICE_NOT_SUPPORTED"] ||
-        [normalized isEqualToString:@"UNSUPPORTED_DEVICE"]) return ZXNetworkErrorCompatibility;
+        [normalized isEqualToString:@"UNSUPPORTED_DEVICE"] ||
+        [normalized isEqualToString:@"DEVICE_INCOMPATIBLE"]) return ZXNetworkErrorCompatibility;
     if ([normalized isEqualToString:@"RATE_LIMITED"] ||
-        [normalized isEqualToString:@"RATE_LIMIT"]) return ZXNetworkErrorRateLimited;
+        [normalized isEqualToString:@"RATE_LIMIT"] ||
+        [normalized isEqualToString:@"RATE_LIMIT_EXCEEDED"]) return ZXNetworkErrorRateLimited;
 
+    // These are valid server contract errors, but the public enum intentionally
+    // keeps them under the generic server bucket while preserving the original
+    // error_code/message in the response returned to the caller.
     return ZXNetworkErrorServer;
 }
 
@@ -745,7 +784,10 @@
             return;
         }
 
-        NSMutableDictionary *combined = [NSMutableDictionary dictionary];
+        // Preserve the complete server response so callers never lose
+        // server_state/license/target metadata while still exposing the
+        // legacy flattened payload fields expected by the filesystem layer.
+        NSMutableDictionary *combined = [NSMutableDictionary dictionaryWithDictionary:responseData ?: @{}];
         if (operationPayload) [combined addEntriesFromDictionary:operationPayload];
         combined[@"operation_id"] = operationID;
 
@@ -877,6 +919,8 @@
         @"module": moduleName,
         @"state": isOn ? @"ON" : @"OFF",
         @"operation_id": operationId,
+        @"result": @"SUCCESS",
+        @"client_state": isOn ? @"ON" : @"OFF",
         @"transaction_hash": [self fallbackTransactionHashForOperation:operationId state:isOn],
         @"hwid": [self getHardwareID]
     };
@@ -906,6 +950,8 @@
         @"function_id": functionId,
         @"state": isOn ? @"ON" : @"OFF",
         @"operation_id": operationId,
+        @"result": @"SUCCESS",
+        @"client_state": isOn ? @"ON" : @"OFF",
         @"transaction_hash": [self fallbackTransactionHashForOperation:operationId state:isOn],
         @"hwid": [self getHardwareID]
     };
