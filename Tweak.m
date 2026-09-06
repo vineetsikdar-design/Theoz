@@ -193,8 +193,8 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
          * The ledger records transactions/recovery state only; it does not
          * implement or alter any low-level privilege mechanism.
          */
-        [_stateStore open];
-        [_stateStore synchronize];
+        [_stateStore open:nil];
+        [_stateStore synchronize:nil];
         [_stateStore markUnresolvedRecordsForReconciliation];
 
         [[NSNotificationCenter defaultCenter] addObserver:self
@@ -211,13 +211,13 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
 - (void)zentraxApplicationWillResignActive:(NSNotification *)note {
     (void)note;
-    [self.stateStore synchronize];
+    [self.stateStore synchronize:nil];
 }
 
 - (void)zentraxApplicationWillTerminate:(NSNotification *)note {
     (void)note;
     [self.stateStore markUnresolvedRecordsForReconciliation];
-    [self.stateStore synchronize];
+    [self.stateStore synchronize:nil];
 }
 
 #pragma mark - UI / Thread Helpers
@@ -342,8 +342,8 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
      * dashboard. Unresolved entries remain visible to reconciliation logic
      * instead of being silently discarded.
      */
-    [self.stateStore synchronize];
-    [self.stateStore validateLedger];
+    [self.stateStore synchronize:nil];
+    [self.stateStore validateLedger:nil];
 
     [network verifySessionWithCompletion:^(BOOL isValid,
                                            NSDictionary * _Nullable responseData,
@@ -639,7 +639,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                   requiresReconciliation:YES
                                     error:nil];
                 [self.stateStore failOperationWithId:operationId
-                                               error:&fsError];
+                                               error:fsError];
                 [self releaseTargetOperation:target];
                 [self finishModuleFailure:@"Failed to restore the original target safely."
                                completion:completion];
@@ -793,7 +793,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                  toPath:backupPath
                                   error:&fsError]) {
                     [self.stateStore failOperationWithId:operationId
-                                                   error:&fsError];
+                                                   error:fsError];
                     [self releaseTargetOperation:target];
                     [self finishModuleFailure:
                         @"Could not preserve the original target safely."
@@ -846,7 +846,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
         if (!written) {
             [self.stateStore failOperationWithId:operationId
-                                           error:&fsError];
+                                           error:fsError];
             [self releaseTargetOperation:target];
             [self finishModuleFailure:
                 @"Failed to apply the requested module payload."
