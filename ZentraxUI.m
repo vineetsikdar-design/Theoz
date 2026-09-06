@@ -1222,7 +1222,6 @@ static NSInteger const ZXMaxPINAttempts = 5;
                     [[NSUserDefaults standardUserDefaults] synchronize];
                     self.authStatus.textColor = [ZXTheme success];
                     self.authStatus.text = @"Access granted • Loading secure workspace";
-                    [self showToast:@"Access granted" success:YES];
                     [self showDashboard];
                 } else {
                     [self presentAuthError:errorType message:errorMsg];
@@ -1890,7 +1889,21 @@ static NSInteger const ZXMaxPINAttempts = 5;
     [self transitionToPrimaryContainer:self.dashboardContainer];
     self.currentState = ZXAppStateDashboard;
     [self startHeartbeatMonitor];
-    [self refreshDashboardFromManagerIfAvailable];
+
+    /*
+     * Do not rebuild the dashboard synchronously inside the authentication
+     * completion.  The authenticated session is already stored by the network
+     * manager.  Let the controller finish its first layout pass, then consume
+     * the cached server configuration on the next main-queue turn.
+     */
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.currentState != ZXAppStateDashboard) return;
+        @try {
+            [self refreshDashboardFromManagerIfAvailable];
+        } @catch (NSException *exception) {
+            NSLog(@"[Zentrax VIP] Dashboard configuration exception: %@", exception);
+        }
+    });
 }
 
 - (void)showMaintenanceScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateMaintenance message:message]; }
