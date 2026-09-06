@@ -1,4 +1,4 @@
-	//
+//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -56,157 +56,20 @@
 - (void)startAtmosphere;
 - (void)stopAtmosphere;
 @end
-
 @implementation ZXAtmosphereView
-
 - (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
-    if (!self) return nil;
-
-    self.backgroundColor = [ZXTheme background];
-    self.clipsToBounds = YES;
-    self.userInteractionEnabled = NO;
-
-    _baseGradient = [CAGradientLayer layer];
-    _baseGradient.colors = @[
-        (id)[UIColor colorWithRed:0.025 green:0.012 blue:0.050 alpha:1].CGColor,
-        (id)[UIColor colorWithRed:0.070 green:0.020 blue:0.130 alpha:1].CGColor,
-        (id)[UIColor colorWithRed:0.018 green:0.010 blue:0.045 alpha:1].CGColor
-    ];
-    _baseGradient.startPoint = CGPointMake(0.0, 0.0);
-    _baseGradient.endPoint = CGPointMake(1.0, 1.0);
-    [self.layer addSublayer:_baseGradient];
-
-    // Soft radial light fields: no visible circle/bubble shapes.
-    _violetField = [CAGradientLayer layer];
-    _violetField.type = kCAGradientLayerRadial;
-    _violetField.colors = @[
-        (id)[[ZXTheme violet] colorWithAlphaComponent:0.11].CGColor,
-        (id)[[ZXTheme violet] colorWithAlphaComponent:0.035].CGColor,
-        (id)[UIColor clearColor].CGColor
-    ];
-    _violetField.locations = @[@0.0, @0.38, @1.0];
-    [self.layer addSublayer:_violetField];
-
-    _blueField = [CAGradientLayer layer];
-    _blueField.type = kCAGradientLayerRadial;
-    _blueField.colors = @[
-        (id)[[ZXTheme cyan] colorWithAlphaComponent:0.055].CGColor,
-        (id)[[ZXTheme indigo] colorWithAlphaComponent:0.020].CGColor,
-        (id)[UIColor clearColor].CGColor
-    ];
-    _blueField.locations = @[@0.0, @0.40, @1.0];
-    [self.layer addSublayer:_blueField];
-
-    _gridView = [[UIView alloc] initWithFrame:CGRectZero];
-    _gridView.backgroundColor = [UIColor colorWithPatternImage:[self gridImage]];
-    _gridView.alpha = 0.18;
-    [self addSubview:_gridView];
-
-    _gridSweep = [CAGradientLayer layer];
-    _gridSweep.colors = @[
-        (id)[UIColor clearColor].CGColor,
-        (id)[[ZXTheme lavender] colorWithAlphaComponent:0.035].CGColor,
-        (id)[UIColor clearColor].CGColor
-    ];
-    _gridSweep.startPoint = CGPointMake(0, 0);
-    _gridSweep.endPoint = CGPointMake(1, 0);
-    [self.layer addSublayer:_gridSweep];
-
-    _vignette = [CAGradientLayer layer];
-    _vignette.colors = @[
-        (id)[UIColor clearColor].CGColor,
-        (id)[[UIColor blackColor] colorWithAlphaComponent:0.30].CGColor
-    ];
-    _vignette.startPoint = CGPointMake(0.5, 0.35);
-    _vignette.endPoint = CGPointMake(0.5, 1.0);
-    [self.layer addSublayer:_vignette];
-
-    return self;
+    self=[super initWithFrame:frame]; if(!self)return nil; self.backgroundColor=[UIColor blackColor]; self.clipsToBounds=YES; self.userInteractionEnabled=NO;
+    _baseGradient=[CAGradientLayer layer]; _baseGradient.colors=@[(id)[UIColor colorWithRed:.002 green:.003 blue:.008 alpha:1].CGColor,(id)[UIColor colorWithRed:.006 green:.008 blue:.018 alpha:1].CGColor,(id)[UIColor colorWithRed:.002 green:.002 blue:.006 alpha:1].CGColor]; _baseGradient.startPoint=CGPointMake(.15,0); _baseGradient.endPoint=CGPointMake(.85,1); [self.layer addSublayer:_baseGradient];
+    _violetField=[CAGradientLayer layer]; _violetField.type=kCAGradientLayerRadial; _violetField.colors=@[(id)[UIColor colorWithRed:.34 green:.10 blue:.72 alpha:.075].CGColor,(id)[UIColor colorWithRed:.22 green:.06 blue:.52 alpha:.025].CGColor,(id)[UIColor clearColor].CGColor]; _violetField.locations=@[@0,@.34,@1]; [self.layer addSublayer:_violetField];
+    _blueField=[CAGradientLayer layer]; _blueField.type=kCAGradientLayerRadial; _blueField.colors=@[(id)[UIColor colorWithRed:.05 green:.32 blue:.82 alpha:.060].CGColor,(id)[UIColor colorWithRed:.04 green:.18 blue:.55 alpha:.020].CGColor,(id)[UIColor clearColor].CGColor]; _blueField.locations=@[@0,@.38,@1]; [self.layer addSublayer:_blueField];
+    _gridView=[[UIView alloc]initWithFrame:CGRectZero]; _gridView.backgroundColor=[UIColor colorWithPatternImage:[self gridImage]]; _gridView.alpha=.92; _gridView.layer.compositingFilter=@"screenBlendMode"; [self addSubview:_gridView];
+    _gridSweep=[CAGradientLayer layer]; _gridSweep.colors=@[(id)[UIColor clearColor].CGColor,(id)[UIColor colorWithRed:.20 green:.12 blue:.55 alpha:.022].CGColor,(id)[UIColor clearColor].CGColor]; _gridSweep.startPoint=CGPointMake(0,0); _gridSweep.endPoint=CGPointMake(1,1); [self.layer addSublayer:_gridSweep];
+    _vignette=[CAGradientLayer layer]; _vignette.colors=@[(id)[UIColor clearColor].CGColor,(id)[UIColor blackColor].CGColor]; _vignette.locations=@[@.52,@1]; _vignette.startPoint=CGPointMake(.5,.30); _vignette.endPoint=CGPointMake(.5,1); _vignette.opacity=.26; [self.layer addSublayer:_vignette]; return self;
 }
-
-- (UIImage *)gridImage {
-    CGSize size = CGSizeMake(48, 48);
-    UIGraphicsBeginImageContextWithOptions(size, NO, 0);
-    CGContextRef ctx = UIGraphicsGetCurrentContext();
-    CGContextSetStrokeColorWithColor(ctx, [[ZXTheme lavender] colorWithAlphaComponent:0.12].CGColor);
-    CGContextSetLineWidth(ctx, 0.55);
-    CGContextMoveToPoint(ctx, 0, 0);
-    CGContextAddLineToPoint(ctx, 48, 0);
-    CGContextMoveToPoint(ctx, 0, 0);
-    CGContextAddLineToPoint(ctx, 0, 48);
-    CGContextStrokePath(ctx);
-    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    return image;
-}
-
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    self.baseGradient.frame = self.bounds;
-    self.violetField.frame = CGRectMake(-self.bounds.size.width * 0.35,
-                                        -self.bounds.size.height * 0.12,
-                                        self.bounds.size.width * 0.95,
-                                        self.bounds.size.height * 0.72);
-    self.blueField.frame = CGRectMake(self.bounds.size.width * 0.35,
-                                      self.bounds.size.height * 0.42,
-                                      self.bounds.size.width * 0.90,
-                                      self.bounds.size.height * 0.70);
-    self.gridView.frame = CGRectMake(0, -48, self.bounds.size.width, self.bounds.size.height + 96);
-    self.gridSweep.frame = CGRectMake(-self.bounds.size.width, 0,
-                                      self.bounds.size.width * 2.0, self.bounds.size.height);
-    self.vignette.frame = self.bounds;
-}
-
-- (void)startAtmosphere {
-    [self stopAtmosphere];
-
-    CABasicAnimation *grid = [CABasicAnimation animationWithKeyPath:@"transform.translation.y"];
-    grid.fromValue = @(-48);
-    grid.toValue = @(48);
-    grid.duration = 11.0;
-    grid.repeatCount = HUGE_VALF;
-    grid.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-    [self.gridView.layer addAnimation:grid forKey:@"gridDrift"];
-
-    CABasicAnimation *sweep = [CABasicAnimation animationWithKeyPath:@"position.x"];
-    sweep.fromValue = @(-self.bounds.size.width);
-    sweep.toValue = @(self.bounds.size.width * 1.35);
-    sweep.duration = 13.0;
-    sweep.repeatCount = HUGE_VALF;
-    sweep.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [self.gridSweep addAnimation:sweep forKey:@"gridLight"];
-
-    CABasicAnimation *violetDrift = [CABasicAnimation animationWithKeyPath:@"position"];
-    violetDrift.fromValue = [NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.violetField.frame),
-                                                                   CGRectGetMidY(self.violetField.frame))];
-    violetDrift.toValue = [NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.violetField.frame) + 55.0,
-                                                                 CGRectGetMidY(self.violetField.frame) + 40.0)];
-    violetDrift.duration = 18.0;
-    violetDrift.autoreverses = YES;
-    violetDrift.repeatCount = HUGE_VALF;
-    violetDrift.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [self.violetField addAnimation:violetDrift forKey:@"violetDrift"];
-
-    CABasicAnimation *blueDrift = [CABasicAnimation animationWithKeyPath:@"position"];
-    blueDrift.fromValue = [NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.blueField.frame),
-                                                                 CGRectGetMidY(self.blueField.frame))];
-    blueDrift.toValue = [NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.blueField.frame) - 55.0,
-                                                               CGRectGetMidY(self.blueField.frame) - 35.0)];
-    blueDrift.duration = 21.0;
-    blueDrift.autoreverses = YES;
-    blueDrift.repeatCount = HUGE_VALF;
-    blueDrift.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [self.blueField addAnimation:blueDrift forKey:@"blueDrift"];
-}
-
-- (void)stopAtmosphere {
-    [self.gridView.layer removeAnimationForKey:@"gridDrift"];
-    [self.gridSweep removeAnimationForKey:@"gridLight"];
-    [self.violetField removeAllAnimations];
-    [self.blueField removeAllAnimations];
-    [self.layer removeAllAnimations];
-}
+- (UIImage *)gridImage { CGSize size=CGSizeMake(180,180); UIGraphicsBeginImageContextWithOptions(size,NO,0); CGContextRef ctx=UIGraphicsGetCurrentContext(); if(!ctx)return nil; uint32_t seed=0x5A17C3D1; for(NSInteger i=0;i<82;i++){seed=1664525u*seed+1013904223u; CGFloat x=(CGFloat)(seed%10000)/10000.*size.width; seed=1664525u*seed+1013904223u; CGFloat y=(CGFloat)(seed%10000)/10000.*size.height; seed=1664525u*seed+1013904223u; CGFloat v=(CGFloat)(seed%1000)/1000.; CGFloat r=v<.82?.45:(v<.97?.75:1.15); CGFloat a=v<.82?.34:(v<.97?.52:.82); CGContextSetFillColorWithColor(ctx,[UIColor colorWithWhite:1 alpha:a].CGColor); CGContextFillEllipseInRect(ctx,CGRectMake(x-r,y-r,r*2,r*2)); if(v>.975){CGContextSetStrokeColorWithColor(ctx,[UIColor colorWithRed:.35 green:.58 blue:1 alpha:.20].CGColor); CGContextSetLineWidth(ctx,.45); CGContextMoveToPoint(ctx,x-3,y); CGContextAddLineToPoint(ctx,x+3,y); CGContextMoveToPoint(ctx,x,y-3); CGContextAddLineToPoint(ctx,x,y+3); CGContextStrokePath(ctx);}} UIImage *image=UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return image; }
+- (void)layoutSubviews { [super layoutSubviews]; self.baseGradient.frame=self.bounds; self.violetField.frame=CGRectMake(-self.bounds.size.width*.20,-self.bounds.size.height*.05,self.bounds.size.width*.90,self.bounds.size.height*.62); self.blueField.frame=CGRectMake(self.bounds.size.width*.30,self.bounds.size.height*.38,self.bounds.size.width*.90,self.bounds.size.height*.64); self.gridView.frame=CGRectMake(0,-180,self.bounds.size.width,self.bounds.size.height+360); self.gridSweep.frame=CGRectInset(self.bounds,-self.bounds.size.width*.60,-self.bounds.size.height*.20); self.vignette.frame=self.bounds; }
+- (void)startAtmosphere { [self stopAtmosphere]; CABasicAnimation *stars=[CABasicAnimation animationWithKeyPath:@"transform.translation.y"]; stars.fromValue=@(-90.); stars.toValue=@90.; stars.duration=42; stars.repeatCount=HUGE_VALF; stars.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear]; [self.gridView.layer addAnimation:stars forKey:@"starDrift"]; CABasicAnimation *sweep=[CABasicAnimation animationWithKeyPath:@"opacity"]; sweep.fromValue=@.35; sweep.toValue=@.85; sweep.duration=11; sweep.autoreverses=YES; sweep.repeatCount=HUGE_VALF; [self.gridSweep addAnimation:sweep forKey:@"nebulaPulse"]; CABasicAnimation *v=[CABasicAnimation animationWithKeyPath:@"position"]; v.fromValue=[NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.violetField.frame),CGRectGetMidY(self.violetField.frame))]; v.toValue=[NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.violetField.frame)+35,CGRectGetMidY(self.violetField.frame)+28)]; v.duration=24; v.autoreverses=YES; v.repeatCount=HUGE_VALF; [self.violetField addAnimation:v forKey:@"violetDrift"]; CABasicAnimation *b=[CABasicAnimation animationWithKeyPath:@"position"]; b.fromValue=[NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.blueField.frame),CGRectGetMidY(self.blueField.frame))]; b.toValue=[NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.blueField.frame)-35,CGRectGetMidY(self.blueField.frame)-24)]; b.duration=28; b.autoreverses=YES; b.repeatCount=HUGE_VALF; [self.blueField addAnimation:b forKey:@"blueDrift"]; }
+- (void)stopAtmosphere { [self.gridView.layer removeAnimationForKey:@"starDrift"]; [self.gridSweep removeAnimationForKey:@"nebulaPulse"]; [self.violetField removeAllAnimations]; [self.blueField removeAllAnimations]; }
 @end
 
 #pragma mark - Small UI Helpers
