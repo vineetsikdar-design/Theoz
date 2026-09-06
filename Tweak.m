@@ -264,13 +264,114 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         case ZXNetworkErrorConnection:
             return ZXAuthErrorConnection;
         case ZXNetworkErrorMaintenance:
+            return ZXAuthErrorMaintenance;
         case ZXNetworkErrorVersionMismatch:
+            return ZXAuthErrorVersionMismatch;
         case ZXNetworkErrorCompatibility:
+            return ZXAuthErrorCompatibility;
         case ZXNetworkErrorRateLimited:
-            return ZXAuthErrorServer;
+            return ZXAuthErrorRateLimited;
         default:
             return ZXAuthErrorServer;
     }
+}
+
+#pragma mark - Server Response / UI Synchronization
+
+- (BOOL)responseContainsUsableDashboardConfiguration:(NSDictionary *)response {
+    if (![response isKindOfClass:NSDictionary.class]) return NO;
+
+    NSDictionary *configuration = nil;
+    id nested = response[@"configuration"] ?: response[@"config"] ?: response[@"dashboard_data"];
+    if ([nested isKindOfClass:NSDictionary.class]) {
+        configuration = nested;
+    } else {
+        configuration = response;
+    }
+
+    NSArray *categories = [configuration[@"categories"] isKindOfClass:NSArray.class]
+        ? configuration[@"categories"] : nil;
+    NSArray *modules = [configuration[@"modules"] isKindOfClass:NSArray.class]
+        ? configuration[@"modules"] : nil;
+    NSArray *functions = [configuration[@"functions"] isKindOfClass:NSArray.class]
+        ? configuration[@"functions"] : nil;
+
+    return categories.count > 0 || modules.count > 0 || functions.count > 0;
+}
+
+- (NSDictionary *)dashboardConfigurationFromServerResponse:(NSDictionary *)response {
+    if (![response isKindOfClass:NSDictionary.class]) return nil;
+
+    id nested = response[@"configuration"] ?: response[@"config"] ?: response[@"dashboard_data"];
+    if ([nested isKindOfClass:NSDictionary.class]) return nested;
+
+    if ([response[@"categories"] isKindOfClass:NSArray.class] ||
+        [response[@"modules"] isKindOfClass:NSArray.class] ||
+        [response[@"functions"] isKindOfClass:NSArray.class]) {
+        return response;
+    }
+
+    return nil;
+}
+
+- (NSDictionary *)licenseDictionaryFromServerResponse:(NSDictionary *)response {
+    if (![response isKindOfClass:NSDictionary.class]) return nil;
+
+    id license = response[@"license"];
+    if ([license isKindOfClass:NSDictionary.class]) return license;
+
+    id subscription = response[@"subscription"];
+    if ([subscription isKindOfClass:NSDictionary.class]) return subscription;
+
+    NSDictionary *configuration = [self dashboardConfigurationFromServerResponse:response];
+    if ([configuration[@"license"] isKindOfClass:NSDictionary.class]) return configuration[@"license"];
+    if ([configuration[@"subscription"] isKindOfClass:NSDictionary.class]) return configuration[@"subscription"];
+
+    return nil;
+}
+
+- (NSDictionary *)compatibilityDictionaryFromServerResponse:(NSDictionary *)response {
+    if (![response isKindOfClass:NSDictionary.class]) return nil;
+
+    id compatibility = response[@"compatibility"];
+    if ([compatibility isKindOfClass:NSDictionary.class]) return compatibility;
+
+    id deviceCompatibility = response[@"device_compatibility"];
+    if ([deviceCompatibility isKindOfClass:NSDictionary.class]) return deviceCompatibility;
+
+    return nil;
+}
+
+- (void)applyServerResponseToUI:(NSDictionary *)response
+                  allowDashboard:(BOOL)allowDashboard {
+    if (![response isKindOfClass:NSDictionary.class]) return;
+
+    [self completeOnMain:^{
+        if (!self.uiController) return;
+
+        NSDictionary *configuration = [self dashboardConfigurationFromServerResponse:response];
+        if (allowDashboard &&
+            configuration.count > 0 &&
+            [self responseContainsUsableDashboardConfiguration:response]) {
+            /* Never replace a populated dashboard with an empty/partial response. */
+            [self.uiController updateDashboardWithConfiguration:configuration];
+        }
+
+        NSDictionary *license = [self licenseDictionaryFromServerResponse:response];
+        if (license.count > 0) {
+            [self.uiController updateSubscriptionState:license];
+        }
+
+        NSDictionary *compatibility = [self compatibilityDictionaryFromServerResponse:response];
+        if (compatibility.count > 0) {
+            [self.uiController updateDeviceCompatibility:compatibility];
+        }
+
+        id banner = response[@"banner"] ?: response[@"notice"];
+        if ([banner isKindOfClass:NSDictionary.class]) {
+            [self.uiController updateServerBanner:banner];
+        }
+    }];
 }
 
 #pragma mark - Authentication
@@ -306,13 +407,13 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             }
 
             /*
-             * Authentication success must not be coupled to optional dashboard
-             * bookkeeping. The network manager has already validated the
-             * response, stored the session token and cached configuration.
-             * The UI will consume that cache after routing to the dashboard.
-             * Keeping this completion path minimal prevents malformed optional
-             * server payloads or a stale local ledger from killing a valid login.
+             * The login response is authoritative. Apply its license and any
+             * usable dashboard data immediately so the UI cannot briefly show
+             * UNACTIVATED/empty state while waiting for the first heartbeat.
+             * Optional fields are defensive: malformed/empty configuration is
+             * ignored instead of clearing an already populated dashboard.
              */
+            [self applyServerResponseToUI:responseData allowDashboard:YES];
             if (completion) completion(YES, ZXAuthErrorNone, nil);
         }];
     }];
@@ -348,15 +449,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 return;
             }
 
-            NSArray *modules = responseData[@"modules"];
-            if ([modules isKindOfClass:NSArray.class]) {
-                [self.uiController updateDashboardWithModules:modules];
-            }
-
-            NSDictionary *subscription = responseData[@"subscription"];
-            if ([subscription isKindOfClass:NSDictionary.class]) {
-                [self.uiController updateSubscriptionState:subscription];
-            }
+            [self applyServerResponseToUI:responseData allowDashboard:YES];
 
             if (completion) completion(YES);
         }];
@@ -959,6 +1052,45 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                              action:action
                      requestedState:isOn
                           completion:completion];
+    }];
+}
+
+#pragma mark - Device Compatibility
+
+- (void)zentraxDidRequestCompatibilityRecheckWithCompletion:(void(^)(BOOL success,
+                                                                       NSDictionary * _Nullable compatibility,
+                                                                       NSString * _Nullable errorMsg))completion {
+    if (!completion) return;
+
+    ZentraxNetworkManager *network = [ZentraxNetworkManager sharedManager];
+    [network checkDeviceCompatibilityWithCompletion:^(BOOL success,
+                                                      NSDictionary * _Nullable compatibility,
+                                                      ZXDeviceCompatibilityStatus status,
+                                                      NSString * _Nullable errorMsg) {
+        NSDictionary *safeCompatibility =
+            [compatibility isKindOfClass:NSDictionary.class] ? compatibility : @{};
+
+        [self completeOnMain:^{
+            if (success) {
+                [self.uiController updateDeviceCompatibility:safeCompatibility];
+                completion(YES, safeCompatibility, nil);
+                return;
+            }
+
+            /* Preserve the last known compatibility result when the network
+             * check is temporarily unavailable. Do not manufacture support. */
+            NSDictionary *cached = [network cachedCompatibilityData];
+            if (cached.count > 0) {
+                [self.uiController updateDeviceCompatibility:cached];
+            }
+
+            NSString *message = errorMsg.length
+                ? errorMsg
+                : (status == ZXDeviceCompatibilityStatusUnsupported
+                   ? @"This device is not supported."
+                   : @"Unable to verify device compatibility right now.");
+            completion(NO, safeCompatibility.count ? safeCompatibility : cached, message);
+        }];
     }];
 }
 
