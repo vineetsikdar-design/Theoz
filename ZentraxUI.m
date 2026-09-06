@@ -7,6 +7,7 @@
 //
 
 #import "ZentraxUI.h"
+#import "ZentraxNetworkManager.h"
 #import <QuartzCore/QuartzCore.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
