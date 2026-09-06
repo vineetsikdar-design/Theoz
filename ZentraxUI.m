@@ -2109,14 +2109,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     }
 }
 
-#pragma mark - Device Compatibility
-
-- (void)updateDeviceCompatibility:(NSDictionary *)compatibility {
-    if (![compatibility isKindOfClass:[NSDictionary class]]) return;
-    self.compatibilityData = compatibility;
-    if (self.settingsVisible) [self rebuildSettings];
-}
-
 - (void)showDeviceCompatibilityDetails {
     // Info directly visible in card now
 }
@@ -2141,6 +2133,18 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [self hideGlobalLoadingState];
         [self showGlobalErrorWithTitle:@"UNAVAILABLE" message:@"Compatibility service is not connected."];
     }
+}
+
+- (void)updateDeviceCompatibility:(NSDictionary *)compatibility {
+    if (![compatibility isKindOfClass:[NSDictionary class]]) return;
+    self.compatibilityData = compatibility;
+    if (self.settingsVisible) [self rebuildSettings];
+}
+
+- (void)showCompatibilityScreenWithData:(NSDictionary *)compatibility {
+    [self updateDeviceCompatibility:compatibility];
+    NSString *reason = compatibility[@"reason"] ?: compatibility[@"message"];
+    [self showStartupState:ZXStartupStateIncompatible message:reason];
 }
 
 #pragma mark - Global Modals & Loading
@@ -2258,70 +2262,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
 - (void)showNetworkError { [self showGlobalErrorWithTitle:@"CONNECTION ERROR" message:@"Network connection lost. Try again when the secure node is reachable."]; }
 - (void)showServerError { [self showGlobalErrorWithTitle:@"SERVER ERROR" message:@"The ZENTRAX server could not complete the request."]; }
 - (void)showRateLimitErrorWithSecondsRemaining:(NSInteger)seconds { [self showGlobalErrorWithTitle:@"RATE LIMITED" message:[NSString stringWithFormat:@"Request limit reached. Try again in %ld seconds.",(long)MAX(0,seconds)]]; }
-
-- (void)showLoginScreen {
-    if (self.safeModeEnabled) { [self showSafeModeLockScreen]; return; }
-    [self transitionToPrimaryContainer:self.authContainer];
-    self.currentState = ZXAppStateAuth;
-    NSString *saved = [[NSUserDefaults standardUserDefaults] stringForKey:ZXLastKey];
-    if (saved.length) self.keyInput.textField.text = saved;
-    [self stopHeartbeatMonitor];
-}
-
-- (void)showDashboard {
-    if (self.safeModeEnabled && self.safeModeState != ZXSafeModeStateUnlocked) { [self showSafeModeLockScreen]; return; }
-    [self transitionToPrimaryContainer:self.dashboardContainer];
-    self.currentState = ZXAppStateDashboard;
-    [self startHeartbeatMonitor];
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (self.currentState != ZXAppStateDashboard) return;
-        Class cls = NSClassFromString(@"ZentraxNetworkManager");
-        if (cls && [cls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
-            id manager = ((id (*)(id, SEL))objc_msgSend)((id)cls, NSSelectorFromString(@"sharedManager"));
-            SEL configSel = NSSelectorFromString(@"cachedConfiguration");
-            if ([manager respondsToSelector:configSel]) {
-                NSDictionary *config = ((NSDictionary *(*)(id, SEL))objc_msgSend)(manager, configSel);
-                if ([config isKindOfClass:[NSDictionary class]]) [self updateDashboardWithConfiguration:config];
-            }
-        }
-    });
-}
-
-- (void)showMaintenanceScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateMaintenance message:message]; }
-- (void)showUpdateRequiredScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateVersionMismatch message:message]; }
-- (void)showConnectionErrorScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateConnectionError message:message]; }
-
-- (void)handleLogout {
-    __weak typeof(self) weakSelf = self;
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:ZXLocalizedUI(@"SIGN OUT") message:ZXLocalizedUI(@"Your current secure session will be closed.") preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:ZXLocalizedUI(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:ZXLocalizedUI(@"Sign Out") style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
-        __strong typeof(weakSelf) self = weakSelf; if (!self) return;
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:ZXLastKey];
-        [[NSUserDefaults standardUserDefaults] synchronize];
-        if ([self.delegate respondsToSelector:@selector(zentraxDidRequestLogoutWithCompletion:)]) {
-            [self.delegate zentraxDidRequestLogoutWithCompletion:^{
-                dispatch_async(dispatch_get_main_queue(), ^{ [self showLoginScreen]; });
-            }];
-        } else {
-            [self showLoginScreen];
-        }
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (UIImage *)preferredLogoImage {
-    NSArray *names=@[@"ZentraxLogo",@"AppIcon60x60",@"AppIcon"];
-    for (NSString *n in names) { UIImage *i=[UIImage imageNamed:n]; if(i) return i; }
-    
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(120,120),YES,0);
-    [[UIColor blackColor] setFill]; UIRectFill(CGRectMake(0,0,120,120));
-    [[UIColor whiteColor] setStroke]; UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(20, 20, 80, 80) cornerRadius:16]; path.lineWidth = 4; [path stroke];
-    NSDictionary *attrs=@{NSFontAttributeName:[UIFont systemFontOfSize:50 weight:UIFontWeightHeavy],NSForegroundColorAttributeName:[UIColor whiteColor]};
-    [@"Z" drawInRect:CGRectMake(42,32,50,60) withAttributes:attrs];
-    UIImage *i=UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return i;
-}
 
 - (void)resetToStartup { self.hasStarted = NO; self.currentState = ZXAppStateInit; [self stopHeartbeatMonitor]; [self stopLicenseCountdown]; [self beginBootstrap]; }
 - (void)dismissPresentedUI { [self dismissViewControllerAnimated:YES completion:nil]; }
