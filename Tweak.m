@@ -981,127 +981,81 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
 @end
 
-#pragma mark - ================= ZENTRAX UI LAUNCH COORDINATOR =================
-static BOOL ZXUIInstalled=NO;
+#pragma mark - ================= ZENTRAX UI BOOTLOADER =================
 
-static UIWindow *ZXFindActiveWindow(void) {
-    UIApplication *app = UIApplication.sharedApplication;
-    if (!app) return nil;
-    for (UIScene *scene in app.connectedScenes) {
-        if (scene.activationState != UISceneActivationStateForegroundActive &&
-            scene.activationState != UISceneActivationStateForegroundInactive) continue;
-        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
-        UIWindowScene *ws = (UIWindowScene *)scene;
-        for (UIWindow *w in ws.windows) {
-            if (w.windowLevel == UIWindowLevelNormal && w.isKeyWindow) return w;
-        }
-        for (UIWindow *w in ws.windows) {
-            if (w.windowLevel == UIWindowLevelNormal && !w.hidden) return w;
-        }
-    }
-    for (UIWindow *w in app.windows) {
-        if (w.windowLevel == UIWindowLevelNormal && w.isKeyWindow) return w;
-    }
-    for (UIWindow *w in app.windows) {
-        if (w.windowLevel == UIWindowLevelNormal && !w.hidden) return w;
-    }
-    return nil;
-}
+static IMP orig_UIWindow_makeKeyAndVisible = NULL;
+static BOOL ZXUIInstalled = NO;
 
-static void ZXInstallUIIntoWindow(UIWindow *window) {
+static void ZXInstallUIBeforeVisibility(UIWindow *window) {
     if (ZXUIInstalled || !window) return;
     if (!NSThread.isMainThread) {
-        dispatch_async(dispatch_get_main_queue(), ^{ ZXInstallUIIntoWindow(window); });
+        dispatch_async(dispatch_get_main_queue(), ^{
+            ZXInstallUIBeforeVisibility(window);
+        });
         return;
     }
+
+    Class uiClass = NSClassFromString(@"ZentraxUI");
+    if (!uiClass) return;
 
     UIViewController *root = window.rootViewController;
     if ([root isKindOfClass:[UINavigationController class]]) {
         UIViewController *first = ((UINavigationController *)root).viewControllers.firstObject;
-        if ([first isKindOfClass:[ZentraxUI class]]) { ZXUIInstalled = YES; return; }
+        if ([first isKindOfClass:uiClass]) {
+            ZXUIInstalled = YES;
+            return;
+        }
     }
-    if ([root isKindOfClass:[ZentraxUI class]]) { ZXUIInstalled = YES; return; }
-
-    Class c = NSClassFromString(@"ZentraxUI");
-    if (!c) return;
-
-    // Never expose Filza's normal document UI while Zentrax is taking over.
-    BOOL wasHidden = window.hidden;
-    CGFloat oldAlpha = window.alpha;
-    window.alpha = 0.0;
+    if ([root isKindOfClass:uiClass]) {
+        ZXUIInstalled = YES;
+        return;
+    }
 
     @try {
+        /*
+         * This is intentionally the original interception point used by the
+         * working Filza integration.  Do NOT wait for UIWindowDidBecomeVisible
+         * or UIApplicationDidBecomeActive: by then Filza has already rendered
+         * its Documents dashboard.  The Zentrax controller must be installed
+         * while Filza is still inside makeKeyAndVisible.
+         */
         MCMFilzaStart();
-        ZentraxUI *vc = [[c alloc] init];
+
+        ZentraxUI *zentraxVC = [[uiClass alloc] init];
+        if (!zentraxVC) return;
+
         ZXCoreBridge *bridge = [ZXCoreBridge sharedBridge];
-        bridge.uiController = vc;
-        vc.delegate = bridge;
-        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
-        nav.navigationBarHidden = YES;
-        nav.modalPresentationStyle = UIModalPresentationFullScreen;
-        window.rootViewController = nav;
+        bridge.uiController = zentraxVC;
+        zentraxVC.delegate = bridge;
+
+        UINavigationController *navController =
+            [[UINavigationController alloc] initWithRootViewController:zentraxVC];
+        navController.navigationBarHidden = YES;
+        navController.modalPresentationStyle = UIModalPresentationFullScreen;
+
+        window.rootViewController = navController;
         ZXUIInstalled = YES;
     } @catch (NSException *exception) {
         NSLog(@"[Zentrax VIP] UI install exception: %@", exception);
         ZXUIInstalled = NO;
     }
+}
 
-    window.hidden = wasHidden;
-    window.alpha = oldAlpha > 0.0 ? oldAlpha : 1.0;
+static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        ZXInstallUIBeforeVisibility(self);
+    });
 
     /*
-     * Never call makeKeyAndVisible here. Filza owns its application/window
-     * lifecycle; forcing that method from a constructor-time takeover can
-     * re-enter the original Filza controller and cause both the dashboard
-     * flash and launch instability.
+     * Keep Filza's original visibility/lifecycle call.  The only thing being
+     * intercepted is the controller installed immediately before visibility.
+     * This avoids both the Filza dashboard flash and the lifecycle break caused
+     * by replacing the root from a later notification callback.
      */
-}
-
-static void ZXLaunchCoordinatorDidFinishLaunching(NSNotification *note) {
-    (void)note;
-    // No artificial delay: the previous 120 ms delay visibly exposed Filza.
-    UIWindow *w = ZXFindActiveWindow();
-    if (w) ZXInstallUIIntoWindow(w);
-}
-
-static void ZXRegisterLaunchCoordinator(void) {
-    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-    [center addObserverForName:UIApplicationDidFinishLaunchingNotification
-                         object:nil
-                          queue:[NSOperationQueue mainQueue]
-                     usingBlock:^(NSNotification *note) {
-        ZXLaunchCoordinatorDidFinishLaunching(note);
-    }];
-    [center addObserverForName:UIWindowDidBecomeVisibleNotification
-                         object:nil
-                          queue:[NSOperationQueue mainQueue]
-                     usingBlock:^(NSNotification *note) {
-        (void)note;
-        if (!ZXUIInstalled) {
-            UIWindow *w = ZXFindActiveWindow();
-            if (w) ZXInstallUIIntoWindow(w);
-        }
-    }];
-    [center addObserverForName:UIApplicationDidBecomeActiveNotification
-                         object:nil
-                          queue:[NSOperationQueue mainQueue]
-                     usingBlock:^(NSNotification *note) {
-        (void)note;
-        if (!ZXUIInstalled) {
-            UIWindow *w = ZXFindActiveWindow();
-            if (w) ZXInstallUIIntoWindow(w);
-        }
-    }];
-
-    /* Cover builds where the launch notification was emitted before the
-       constructor registered its observer, without introducing a visible
-       startup delay. */
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (!ZXUIInstalled) {
-            UIWindow *w = ZXFindActiveWindow();
-            if (w) ZXInstallUIIntoWindow(w);
-        }
-    });
+    if (orig_UIWindow_makeKeyAndVisible) {
+        ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
+    }
 }
 
 #pragma mark - ================= HOOK INSTALLATION =================
@@ -1154,10 +1108,17 @@ static void installSystemHooks(void) {
         Method m = class_getInstanceMethod(appItem, NSSelectorFromString(@"setAppProxy:"));
         if (m) { orig_setAppProxy = method_getImplementation(m); method_setImplementation(m, (IMP)hook_setAppProxy); }
     }
-    
+
+    Class windowClass = NSClassFromString(@"UIWindow");
+    if (windowClass) {
+        Method m = class_getInstanceMethod(windowClass, @selector(makeKeyAndVisible));
+        if (m) {
+            orig_UIWindow_makeKeyAndVisible = method_getImplementation(m);
+            method_setImplementation(m, (IMP)hook_UIWindow_makeKeyAndVisible);
+        }
+    }
 }
 
 __attribute__((constructor)) void ZentraxInit(void) {
     installSystemHooks();
-    ZXRegisterLaunchCoordinator();
 }
