@@ -1,4 +1,4 @@
-	//
+//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -113,7 +113,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         @"You can change this anytime from Settings.": @"你可以随时在设置中更改。", @"WELCOME TO ZENTRAX": @"欢迎使用 ZENTRAX",
         @"PREMIUM THEMES": @"高级主题", @"DONE": @"完成", @"RECHECK": @"重新检查", @"UNAVAILABLE": @"不可用",
         @"DISMISS": @"关闭", @"RETRY": @"重试", @"Close screen sharing app": @"关闭屏幕共享应用",
-        @"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information": @"屏幕共享应用可能被诈骗者用来录制屏幕并窃取钱包信息",
+        @"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet信息": @"屏幕共享应用可能被诈骗者用来录制屏幕并窃取钱包信息",
         @"AUTHENTICATE": @"验证", @"SECURE OPERATION": @"安全操作", @"Please wait…": @"请稍候…",
         @"Awaiting verification": @"等待验证", @"NOT VERIFIED": @"未验证", @"SUPPORTED": @"支持", @"UNSUPPORTED": @"不支持"
     };
@@ -710,7 +710,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
         return;
     }
     
-    // Always remember key in this premium version for user convenience
     NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
     [globalDefaults setObject:key forKey:ZXLastKey];
     [globalDefaults synchronize];
@@ -841,7 +840,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [_licenseCard.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
         [_licenseCard.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
         [_licenseCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:20],
-        [_licenseCard.heightAnchor constraintEqualToConstant:140] // Adjusted height
+        [_licenseCard.heightAnchor constraintEqualToConstant:140]
     ]];
 
     UILabel *licenseCaption = [self label:@"LICENSE CONTROL" size:9 weight:UIFontWeightBold color:[ZXTheme mutedText]];
@@ -861,6 +860,14 @@ static NSString *ZXLocalizedUI(NSString *text) {
     _expiryLabel = [self label:@"Awaiting first activation" size:11 weight:UIFontWeightMedium color:[ZXTheme secondaryText]];
     _expiryLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [_licenseCard addSubview:_expiryLabel];
+    
+    _keyRevealLabel = [self label:@"•••• •••• ••••" size:11 weight:UIFontWeightMedium color:[ZXTheme mutedText]];
+    _keyRevealLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [_licenseCard addSubview:_keyRevealLabel];
+
+    _keyEyeButton = [self iconButton:@"eye.slash.fill" size:32];
+    [_keyEyeButton addTarget:self action:@selector(toggleDashboardKey) forControlEvents:UIControlEventTouchUpInside];
+    [_licenseCard addSubview:_keyEyeButton];
 
     [NSLayoutConstraint activateConstraints:@[
         [licenseCaption.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:20],
@@ -873,6 +880,11 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [_expiryLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:20],
         [_expiryLabel.topAnchor constraintEqualToAnchor:_countdownLabel.bottomAnchor constant:4],
         [_expiryLabel.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-20],
+        [_keyRevealLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:20],
+        [_keyRevealLabel.bottomAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:-16],
+        [_keyRevealLabel.trailingAnchor constraintEqualToAnchor:_keyEyeButton.leadingAnchor constant:-8],
+        [_keyEyeButton.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-14],
+        [_keyEyeButton.centerYAnchor constraintEqualToAnchor:_keyRevealLabel.centerYAnchor]
     ]];
 
     UILabel *functionsTitle = [self label:@"SECURE FUNCTIONS" size:10 weight:UIFontWeightBold color:[ZXTheme mutedText]];
@@ -909,6 +921,14 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
     [self createEmptyStateView];
     [self applyCurrentLanguageToView:_dashboardContainer];
+}
+
+- (void)toggleDashboardKey {
+    self.keyRevealed = !self.keyRevealed;
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    NSString *key = [globalDefaults stringForKey:ZXLastKey];
+    self.keyRevealLabel.text = self.keyRevealed && key.length ? key : @"•••• •••• ••••";
+    [self.keyEyeButton setImage:[UIImage systemImageNamed:self.keyRevealed ? @"eye.fill" : @"eye.slash.fill"] forState:UIControlStateNormal];
 }
 
 - (void)createEmptyStateView {
@@ -954,7 +974,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     NSArray *modules = configuration[@"modules"] ?: configuration[@"functions"];
     if (![categories isKindOfClass:[NSArray class]] || !categories.count) categories = modules;
     
-    // Strict Validation: Don't let an empty heartbeat wipe out existing valid functions
     BOOL incomingHasUsableData = NO;
     for (id rawCategory in ([categories isKindOfClass:[NSArray class]] ? categories : @[])) {
         if (![rawCategory isKindOfClass:[NSDictionary class]]) continue;
@@ -1100,7 +1119,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     state.text = ZXLocalizedUI(@"PROCESSING");
 
     __weak typeof(self) weakSelf = self;
-    
     void (^finish)(BOOL, NSString *) = ^(BOOL success, NSString *msg) {
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) self = weakSelf;
@@ -1113,7 +1131,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
                 state.textColor = requested ? [ZXTheme success] : [ZXTheme mutedText];
                 [self showToast:ZXLocalizedUI(requested ? @"Function enabled" : @"Function disabled") success:YES];
             } else {
-                // IMPORTANT: Revert toggle safely without fake success
                 sender.on = !requested;
                 self.functionStates[fid] = @(!requested);
                 state.text = ZXLocalizedUI(!requested ? @"ACTIVE" : @"READY");
@@ -1485,6 +1502,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     _connectionLabel.text = ZXLocalizedUI(@"● OFFLINE"); _connectionLabel.textColor = [ZXTheme error];
     for (NSString *fid in self.functionControls) ((UIControl *)self.functionControls[fid]).userInteractionEnabled = NO;
     [self showGlobalErrorWithTitle:ZXLocalizedUI(@"SESSION ENDED") message:ZXLocalizedUI(@"Your secure session is no longer valid. Please authenticate again.")];
+    
     __weak typeof(self) weakSelf = self;
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestLogoutWithCompletion:)]) {
         [self.delegate zentraxDidRequestLogoutWithCompletion:^{ dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf showLoginScreen]; }); }];
