@@ -1,4 +1,4 @@
-	//
+		//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
@@ -988,26 +988,183 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
 @end
 
-#pragma mark - ================= UI HIJACK BOOTLOADER =================
+#pragma mark - ================= ZENTRAX LAUNCH COORDINATOR =================
 
-static IMP orig_UIWindow_makeKeyAndVisible = NULL;
-static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
+/*
+ * IMPORTANT:
+ *
+ * Zentrax must not replace UIWindow's makeKeyAndVisible implementation.
+ * Filza owns the application/window lifecycle, and globally replacing a
+ * UIKit lifecycle method makes Zentrax execute in the middle of Filza's
+ * own window bootstrap.  The previous implementation did exactly that.
+ *
+ * We instead wait until UIApplication has finished launching, then attach
+ * Zentrax to the already-created application window on the main queue.
+ * This leaves the original UIWindow implementation completely untouched.
+ */
+
+@interface ZXLaunchCoordinator : NSObject
++ (instancetype)sharedCoordinator;
+- (void)start;
+- (void)applicationDidFinishLaunching:(NSNotification *)notification;
+- (UIWindow *)targetWindow;
+- (void)installWhenWindowIsReadyWithAttempt:(NSInteger)attempt;
+@end
+
+@implementation ZXLaunchCoordinator
+
++ (instancetype)sharedCoordinator {
+    static ZXLaunchCoordinator *coordinator = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        coordinator = [[ZXLaunchCoordinator alloc] init];
+    });
+    return coordinator;
+}
+
+- (void)start {
+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+    [center addObserver:self
+               selector:@selector(applicationDidFinishLaunching:)
+                   name:UIApplicationDidFinishLaunchingNotification
+                 object:nil];
+
+    /*
+     * The constructor can execute after UIApplication has already posted the
+     * launch notification in some loading arrangements.  The main-queue
+     * fallback below therefore checks for the window independently.
+     */
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self installWhenWindowIsReadyWithAttempt:0];
+    });
+}
+
+- (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    (void)notification;
+    [self installWhenWindowIsReadyWithAttempt:0];
+}
+
+- (UIWindow *)targetWindow {
+    UIApplication *application = UIApplication.sharedApplication;
+
+    /* Prefer the key window from an active scene. */
+    if (@available(iOS 13.0, *)) {
+        for (UIScene *scene in application.connectedScenes) {
+            if (scene.activationState == UISceneActivationStateUnattached ||
+                scene.activationState == UISceneActivationStateBackground) {
+                continue;
+            }
+
+            if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+            UIWindowScene *windowScene = (UIWindowScene *)scene;
+
+            for (UIWindow *window in windowScene.windows) {
+                if (window.isKeyWindow && !window.hidden) {
+                    return window;
+                }
+            }
+
+            for (UIWindow *window in windowScene.windows) {
+                if (!window.hidden && window.windowLevel == UIWindowLevelNormal) {
+                    return window;
+                }
+            }
+        }
+    }
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    for (UIWindow *window in application.windows) {
+        if (window.isKeyWindow && !window.hidden) {
+            return window;
+        }
+    }
+
+    for (UIWindow *window in application.windows) {
+        if (!window.hidden && window.windowLevel == UIWindowLevelNormal) {
+            return window;
+        }
+    }
+#pragma clang diagnostic pop
+
+    return nil;
+}
+
+- (void)installWhenWindowIsReadyWithAttempt:(NSInteger)attempt {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self installWhenWindowIsReadyWithAttempt:attempt];
+        });
+        return;
+    }
+
+    /*
+     * The launch notification is normally enough.  The bounded retry exists
+     * only for the case where Filza creates its UIWindow immediately after
+     * the notification has been delivered.
+     */
+    UIWindow *window = [self targetWindow];
+    if (!window) {
+        if (attempt < 40) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                          (int64_t)(0.05 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                [self installWhenWindowIsReadyWithAttempt:attempt + 1];
+            });
+        } else {
+            NSLog(@"[Zentrax VIP] Launch window was not available after startup retries.");
+        }
+        return;
+    }
+
+    static dispatch_once_t installToken;
+    dispatch_once(&installToken, ^{
+        NSLog(@"[Zentrax VIP] Installing UI on the post-launch Filza window.");
+
+        /* MCM initialization is deliberately performed after application
+         * launch rather than from a UIKit lifecycle-method hook. */
         MCMFilzaStart();
+
         Class ZentraxUIClass = NSClassFromString(@"ZentraxUI");
-        if (ZentraxUIClass) {
-            ZentraxUI *zentraxVC = [[ZentraxUIClass alloc] init];
-            ZXCoreBridge *bridge = [ZXCoreBridge sharedBridge];
-            bridge.uiController = zentraxVC;
-            zentraxVC.delegate = bridge;
-            UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:zentraxVC];
-            navController.navigationBarHidden = YES;
-            self.rootViewController = navController;
+        if (!ZentraxUIClass) {
+            NSLog(@"[Zentrax VIP] ZentraxUI class is unavailable.");
+            return;
+        }
+
+        ZentraxUI *zentraxVC = [[ZentraxUIClass alloc] init];
+        if (!zentraxVC) {
+            NSLog(@"[Zentrax VIP] Failed to create ZentraxUI controller.");
+            return;
+        }
+
+        ZXCoreBridge *bridge = [ZXCoreBridge sharedBridge];
+        bridge.uiController = zentraxVC;
+        zentraxVC.delegate = bridge;
+
+        UINavigationController *navController =
+            [[UINavigationController alloc] initWithRootViewController:zentraxVC];
+        if (!navController) {
+            NSLog(@"[Zentrax VIP] Failed to create navigation controller.");
+            return;
+        }
+
+        navController.navigationBarHidden = YES;
+        navController.modalPresentationStyle = UIModalPresentationFullScreen;
+
+        /*
+         * The window is already owned and managed by Filza.  We only replace
+         * its root controller after launch; we never intercept or replace
+         * UIWindow's makeKeyAndVisible implementation.
+         */
+        window.rootViewController = navController;
+
+        if (!window.isKeyWindow || window.hidden) {
+            [window makeKeyAndVisible];
         }
     });
-    ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
 }
+
+@end
 
 #pragma mark - ================= HOOK INSTALLATION =================
 
@@ -1039,7 +1196,7 @@ static void installSystemHooks(void) {
                 (IMP)hook_showAlertWithTitle, "@@:@@@@@");
         }
     }
-    
+
     Class activationVC = NSClassFromString(@"NewActivationViewController");
     if (activationVC) {
         Method m = class_getInstanceMethod(activationVC, @selector(viewDidLoad));
@@ -1052,24 +1209,33 @@ static void installSystemHooks(void) {
     Class lsWorkspace = NSClassFromString(@"LSApplicationWorkspace");
     if (lsWorkspace) {
         Method m = class_getInstanceMethod(lsWorkspace, NSSelectorFromString(@"allApplications"));
-        if (m) { orig_allApplications = method_getImplementation(m); method_setImplementation(m, (IMP)hook_allApplications); }
+        if (m) {
+            orig_allApplications = method_getImplementation(m);
+            method_setImplementation(m, (IMP)hook_allApplications);
+        }
     }
+
     Class appItem = NSClassFromString(@"ApplicationItem");
     if (appItem) {
         Method m = class_getInstanceMethod(appItem, NSSelectorFromString(@"setAppProxy:"));
-        if (m) { orig_setAppProxy = method_getImplementation(m); method_setImplementation(m, (IMP)hook_setAppProxy); }
-    }
-    
-    Class windowClass = NSClassFromString(@"UIWindow");
-    if (windowClass) {
-        Method m = class_getInstanceMethod(windowClass, @selector(makeKeyAndVisible));
         if (m) {
-            orig_UIWindow_makeKeyAndVisible = method_getImplementation(m);
-            method_setImplementation(m, (IMP)hook_UIWindow_makeKeyAndVisible);
+            orig_setAppProxy = method_getImplementation(m);
+            method_setImplementation(m, (IMP)hook_setAppProxy);
         }
     }
+
+    /*
+     * DO NOT hook UIWindow::makeKeyAndVisible here.
+     * Filza's original UIKit window lifecycle must remain untouched.
+     */
 }
 
 __attribute__((constructor)) void ZentraxInit(void) {
     installSystemHooks();
+
+    /*
+     * Register the launch coordinator only.  No UI, MCM, StateStore or
+     * UIWindow work is performed from the dylib constructor.
+     */
+    [[ZXLaunchCoordinator sharedCoordinator] start];
 }
