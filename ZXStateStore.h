@@ -1,6 +1,6 @@
-//
+    //
 //  ZXStateStore.h
-//  Zentrax  VIP
+//  Zentrax VIP
 //
 //  Persistent local state / operation ledger.
 //  This layer stores only client-side execution state.
@@ -41,6 +41,14 @@ typedef NS_ENUM(NSInteger, ZXLedgerOperationState) {
     ZXLedgerOperationStateCommitted,
     ZXLedgerOperationStateFailed,
     ZXLedgerOperationStateNeedsReconciliation
+};
+
+#pragma mark - Module Operation Action
+
+typedef NS_ENUM(NSInteger, ZXModuleOperationAction) {
+    ZXModuleOperationActionUnknown = 0,
+    ZXModuleOperationActionOFF,
+    ZXModuleOperationActionON
 };
 
 #pragma mark - Target Ledger Record
@@ -86,7 +94,7 @@ typedef NS_ENUM(NSInteger, ZXLedgerOperationState) {
 @property (nonatomic, copy, nullable) NSString *operationId;
 
 /// Server-issued action associated with the pending operation.
-@property (nonatomic, copy, nullable) NSString *operationAction;
+@property (nonatomic, assign) ZXModuleOperationAction operationAction;
 
 /// License identifier associated with the ledger record.
 @property (nonatomic, copy, nullable) NSString *licenseId;
