@@ -1,4 +1,4 @@
-	//
+//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
@@ -576,7 +576,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
     NSError *ledgerError = nil;
     [self.stateStore beginOperationWithId:operationId
-                                   action:(action == ZXModuleOperationActionON ? @"ON" : @"OFF")
+                                   action:action
                                functionId:resolvedFunctionId
                                 licenseId:licenseId
                                  deviceId:deviceId
@@ -1118,6 +1118,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
 static IMP orig_UIWindow_makeKeyAndVisible = NULL;
 static BOOL ZXUIInstalled = NO;
+static UIWindow *zx_secureOverlayWindow = nil;
 
 static void ZXInstallUIBeforeVisibility(UIWindow *window) {
     if (ZXUIInstalled || !window) return;
@@ -1131,26 +1132,11 @@ static void ZXInstallUIBeforeVisibility(UIWindow *window) {
     Class uiClass = NSClassFromString(@"ZentraxUI");
     if (!uiClass) return;
 
-    UIViewController *root = window.rootViewController;
-    if ([root isKindOfClass:[UINavigationController class]]) {
-        UIViewController *first = ((UINavigationController *)root).viewControllers.firstObject;
-        if ([first isKindOfClass:uiClass]) {
-            ZXUIInstalled = YES;
-            return;
-        }
-    }
-    if ([root isKindOfClass:uiClass]) {
-        ZXUIInstalled = YES;
-        return;
-    }
-
     @try {
         /*
          * This is intentionally the original interception point used by the
-         * working Filza integration.  Do NOT wait for UIWindowDidBecomeVisible
-         * or UIApplicationDidBecomeActive: by then Filza has already rendered
-         * its Documents dashboard.  The Zentrax controller must be installed
-         * while Filza is still inside makeKeyAndVisible.
+         * working Filza integration. Do NOT wait for UIWindowDidBecomeVisible
+         * or UIApplicationDidBecomeActive.
          */
         MCMFilzaStart();
 
@@ -1164,9 +1150,19 @@ static void ZXInstallUIBeforeVisibility(UIWindow *window) {
         UINavigationController *navController =
             [[UINavigationController alloc] initWithRootViewController:zentraxVC];
         navController.navigationBarHidden = YES;
-        navController.modalPresentationStyle = UIModalPresentationFullScreen;
+        
+        /* 
+         * SURGICAL CRASH FIX: 
+         * Instead of destroying the host app's rootViewController (which causes 
+         * unrecognized selector crashes when Filza updates its UI 3 seconds later), 
+         * we create an isolated, top-level window for Zentrax.
+         */
+        zx_secureOverlayWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        zx_secureOverlayWindow.windowLevel = UIWindowLevelAlert + 100;
+        zx_secureOverlayWindow.rootViewController = navController;
+        zx_secureOverlayWindow.backgroundColor = [UIColor blackColor];
+        [zx_secureOverlayWindow makeKeyAndVisible];
 
-        window.rootViewController = navController;
         ZXUIInstalled = YES;
     } @catch (NSException *exception) {
         NSLog(@"[Zentrax VIP] UI install exception: %@", exception);
@@ -1180,12 +1176,6 @@ static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
         ZXInstallUIBeforeVisibility(self);
     });
 
-    /*
-     * Keep Filza's original visibility/lifecycle call.  The only thing being
-     * intercepted is the controller installed immediately before visibility.
-     * This avoids both the Filza dashboard flash and the lifecycle break caused
-     * by replacing the root from a later notification callback.
-     */
     if (orig_UIWindow_makeKeyAndVisible) {
         ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
     }
