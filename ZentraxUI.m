@@ -13,6 +13,18 @@
 #import <objc/runtime.h>
 #import <Security/Security.h>
 
+#pragma mark - Safe UI Helpers
+
+static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
+    UILabel *label = [[UILabel alloc] init];
+    label.text = text ?: @"";
+    label.font = font ?: [UIFont systemFontOfSize:13.0 weight:UIFontWeightRegular];
+    label.textColor = color ?: [UIColor whiteColor];
+    label.numberOfLines = 1;
+    label.userInteractionEnabled = NO;
+    return label;
+}
+
 #pragma mark - Theme
 
 @interface ZXTheme : NSObject
@@ -86,7 +98,6 @@
     self.titleLabel.font=[UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
     [self setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
     [self setTitleColor:[UIColor colorWithWhite:0.25 alpha:1] forState:UIControlStateHighlighted];
-    self.adjustsImageWhenHighlighted=NO;
     self.accessibilityTraits=UIAccessibilityTraitButton;
 
     _buttonSurface=[[UIView alloc] init];
@@ -903,7 +914,6 @@ static NSInteger const ZXMaxPINAttempts = 5;
     button.titleLabel.font=[UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
     [button setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
     [button setTitleColor:[UIColor colorWithWhite:0.25 alpha:1] forState:UIControlStateHighlighted];
-    button.adjustsImageWhenHighlighted=NO;
     if (@available(iOS 15.0,*)) {
         UIButtonConfiguration *configuration=[UIButtonConfiguration plainButtonConfiguration];
         configuration.contentInsets=NSDirectionalEdgeInsetsMake(10,16,10,16);
@@ -2603,7 +2613,11 @@ static NSInteger const ZXMaxPINAttempts = 5;
         [b setTitle:name forState:UIControlStateNormal];
         [b setImage:[UIImage systemImageNamed:[name isEqualToString:selectedTheme] ? @"checkmark.circle.fill" : @"circle"] forState:UIControlStateNormal];
         b.semanticContentAttribute=UISemanticContentAttributeForceLeftToRight;
-        b.imageEdgeInsets=UIEdgeInsetsMake(0,0,0,8);
+        if (@available(iOS 15.0, *)) {
+            UIButtonConfiguration *cfg = b.configuration;
+            cfg.imagePadding = 8.0;
+            b.configuration = cfg;
+        }
         [stack addArrangedSubview:b];
         [b.heightAnchor constraintEqualToConstant:48].active=YES;
         [b addTarget:self action:@selector(themeOptionPressed:) forControlEvents:UIControlEventTouchUpInside];
