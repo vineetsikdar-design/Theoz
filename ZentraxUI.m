@@ -1,4 +1,4 @@
-	//
+//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -20,6 +20,16 @@ static NSString * const ZXLanguageKey = @"in.zentrax.global.language";
 static NSString * const ZXThemeKey = @"in.zentrax.global.theme";
 static NSString * const ZXLastKey = @"in.zentrax.global.lastkey";
 static NSInteger const ZXMaxPINAttempts = 5;
+
+#pragma mark - App State Enum
+
+typedef NS_ENUM(NSInteger, ZXAppState) {
+    ZXAppStateInit = 0,
+    ZXAppStateSplash,
+    ZXAppStateAuth,
+    ZXAppStateDashboard,
+    ZXAppStateStartupBlock
+};
 
 #pragma mark - Safe UI Helpers
 
@@ -425,7 +435,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [self applyInitialSafeModeState];
     [self setAllPrimaryContainersHidden:YES];
     
-    // Keyboard observation for Auth Screen
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
 }
@@ -696,7 +705,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
         return;
     }
     
-    // Always remember key in this premium version for user convenience
     [[NSUserDefaults standardUserDefaults] setObject:key forKey:ZXLastKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
 
@@ -814,7 +822,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [_licenseCard.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
         [_licenseCard.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
         [_licenseCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:20],
-        [_licenseCard.heightAnchor constraintEqualToConstant:140] // Adjusted height
+        [_licenseCard.heightAnchor constraintEqualToConstant:140]
     ]];
 
     UILabel *licenseCaption = [self label:@"LICENSE CONTROL" size:9 weight:UIFontWeightBold color:[ZXTheme mutedText]];
@@ -927,7 +935,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     NSArray *modules = configuration[@"modules"] ?: configuration[@"functions"];
     if (![categories isKindOfClass:[NSArray class]] || !categories.count) categories = modules;
     
-    // Strict Validation: Don't let an empty heartbeat wipe out existing valid functions
     BOOL incomingHasUsableData = NO;
     for (id rawCategory in ([categories isKindOfClass:[NSArray class]] ? categories : @[])) {
         if (![rawCategory isKindOfClass:[NSDictionary class]]) continue;
@@ -1085,7 +1092,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
                 state.textColor = requested ? [ZXTheme success] : [ZXTheme mutedText];
                 [self showToast:ZXLocalizedUI(requested ? @"Function enabled" : @"Function disabled") success:YES];
             } else {
-                // IMPORTANT: Revert toggle safely without fake success
                 sender.on = !requested;
                 self.functionStates[fid] = @(!requested);
                 state.text = ZXLocalizedUI(!requested ? @"ACTIVE" : @"READY");
@@ -1104,7 +1110,32 @@ static NSString *ZXLocalizedUI(NSString *text) {
     }
 }
 
-#pragma mark - License Countdown
+- (void)updateFunctionState:(NSString *)functionId state:(BOOL)isOn {
+    if (!functionId.length) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.functionStates[functionId] = @(ZXIsTruthyValue(@(isOn)));
+        UISwitch *toggle = (UISwitch *)self.functionControls[functionId];
+        if ([toggle isKindOfClass:[UISwitch class]]) [toggle setOn:isOn animated:YES];
+        UILabel *label = self.functionStateLabels[functionId];
+        label.text = ZXLocalizedUI(isOn ? @"ACTIVE" : @"READY");
+        label.textColor = isOn ? [ZXTheme success] : [ZXTheme mutedText];
+    });
+}
+
+- (void)updateFunctionStates:(NSDictionary<NSString *,NSNumber *> *)states {
+    if (![states isKindOfClass:[NSDictionary class]]) return;
+    for (NSString *fid in states) {
+        id value = states[fid];
+        if (![value respondsToSelector:@selector(boolValue)]) continue;
+        [self updateFunctionState:fid state:[value boolValue]];
+    }
+}
+
+- (void)updateServerBanner:(NSDictionary *)banner {
+    // Basic banner handling; further updates based on user preference can be integrated.
+}
+
+#pragma mark - Subscription / Time
 
 - (void)updateSubscriptionState:(NSDictionary *)subData {
     if (![subData isKindOfClass:[NSDictionary class]]) return;
@@ -1306,6 +1337,10 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [_startupBlockAction setTitle:ZXLocalizedUI(action) forState:UIControlStateNormal];
 }
 
+- (void)showMaintenanceScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateMaintenance message:message]; }
+- (void)showUpdateRequiredScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateVersionMismatch message:message]; }
+- (void)showConnectionErrorScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateConnectionError message:message]; }
+
 - (void)handleBootstrapState:(ZXStartupState)state message:(NSString *)message {
     self.startupState = state;
     if (state == ZXStartupStateReady) {
@@ -1393,7 +1428,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
             [self handleBootstrapState:state message:message];
         });
     };
-    // Safe dynamic call
+    
     void (*func)(id, SEL, id) = (void(*)(id, SEL, id))objc_msgSend;
     func(manager, bootstrap, completion);
 }
@@ -1407,7 +1442,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
     _connectionLabel.text = ZXLocalizedUI(@"● SECURE");
     _connectionLabel.textColor = [ZXTheme success];
 }
+
 - (void)stopHeartbeatMonitor { [self.heartbeatTimer invalidate]; self.heartbeatTimer = nil; }
+
 - (void)heartbeatTick {
     if (self.currentState != ZXAppStateDashboard) return;
     if (![self.delegate respondsToSelector:@selector(zentraxDidRequestSessionVerificationWithCompletion:)]) return;
@@ -1661,10 +1698,14 @@ static NSString *ZXLocalizedUI(NSString *text) {
     return card;
 }
 
+- (void)showSettingsSection:(NSString *)sectionIdentifier {
+    [self showSettings];
+}
+
 - (void)showSettings {
     if (self.safeModeEnabled && self.safeModeState != ZXSafeModeStateUnlocked) { [self showSafeModeLockScreen]; return; }
     self.settingsVisible = YES;
-    [self setupSettingsScreen]; // Full rebuild for theme/language
+    [self setupSettingsScreen];
     [self transitionToPrimaryContainer:self.settingsContainer];
 }
 - (void)closeSettings { self.settingsVisible = NO; [self showDashboard]; }
@@ -1684,16 +1725,17 @@ static NSString *ZXLocalizedUI(NSString *text) {
     if (self.settingsVisible) [self rebuildSettings];
 }
 
-// Fixed to use Universal App Group Defaults instead of Sandboxed Keychain
 - (BOOL)saveGlobalPIN:(NSString *)pin {
     NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
     [globalDefaults setObject:pin forKey:ZXSafeModePasscodeAccount];
     return [globalDefaults synchronize];
 }
+
 - (NSString *)getGlobalPIN {
     NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
     return [globalDefaults stringForKey:ZXSafeModePasscodeAccount];
 }
+
 - (void)deleteGlobalPIN {
     NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
     [globalDefaults removeObjectForKey:ZXSafeModePasscodeAccount];
@@ -1707,11 +1749,30 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [self updateSafeModeState:ZXSafeModeStateOff];
         [self showSafeModeLockScreen];
     } else {
-        sender.on = YES; // Force back ON until verified
+        sender.on = YES;
         self.safeModeCreatingPasscode = NO;
         self.safeModeDisabling = YES;
         [self showSafeModeLockScreen];
     }
+}
+
+- (void)showSafeModeSettings {
+    if (self.safeModeEnabled) { [self showSafeModeLockScreen]; return; }
+    self.safeModeCreatingPasscode = YES;
+    self.pendingSafeModePasscode = nil;
+    [self updateSafeModeState:ZXSafeModeStateOff];
+    [self showSafeModeLockScreen];
+}
+
+- (void)lockSafeMode {
+    if (!self.safeModeEnabled) return;
+    [self updateSafeModeState:ZXSafeModeStateLocked];
+    [self showSafeModeLockScreen];
+}
+
+- (void)unlockSafeMode {
+    if (!self.safeModeEnabled) return;
+    [self updateSafeModeState:ZXSafeModeStateUnlocked];
 }
 
 - (void)setupSafeModeLock {
@@ -1763,7 +1824,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [box.heightAnchor constraintEqualToConstant:16].active = YES;
     }
 
-    // Native Hidden Input
     _safePINInput = [[UITextField alloc] init];
     _safePINInput.keyboardType = UIKeyboardTypeNumberPad;
     _safePINInput.secureTextEntry = YES;
@@ -2020,8 +2080,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [alert addAction:[UIAlertAction actionWithTitle:theme style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             [[NSUserDefaults standardUserDefaults] setObject:theme forKey:ZXThemeKey];
             [[NSUserDefaults standardUserDefaults] synchronize];
-            // Since colors are static upon initialization in this simple setup,
-            // we re-initialize the settings screen to apply the new theme to cards.
             [self setupSettingsScreen];
         }]];
     }
@@ -2044,6 +2102,12 @@ static NSString *ZXLocalizedUI(NSString *text) {
         }
         [self applyCurrentLanguageToView:subview];
     }
+}
+
+- (void)showCompatibilityScreenWithData:(NSDictionary *)compatibility {
+    [self updateDeviceCompatibility:compatibility];
+    NSString *reason = compatibility[@"reason"] ?: compatibility[@"message"];
+    [self showStartupState:ZXStartupStateIncompatible message:reason];
 }
 
 #pragma mark - Global Modals & Loading
@@ -2162,6 +2226,35 @@ static NSString *ZXLocalizedUI(NSString *text) {
 - (void)showServerError { [self showGlobalErrorWithTitle:@"SERVER ERROR" message:@"The ZENTRAX server could not complete the request."]; }
 - (void)showRateLimitErrorWithSecondsRemaining:(NSInteger)seconds { [self showGlobalErrorWithTitle:@"RATE LIMITED" message:[NSString stringWithFormat:@"Request limit reached. Try again in %ld seconds.",(long)MAX(0,seconds)]]; }
 
+- (void)showLoginScreen {
+    if (self.safeModeEnabled) { [self showSafeModeLockScreen]; return; }
+    [self transitionToPrimaryContainer:self.authContainer];
+    self.currentState = ZXAppStateAuth;
+    NSString *saved = [[NSUserDefaults standardUserDefaults] stringForKey:ZXLastKey];
+    if (saved.length) self.keyInput.textField.text = saved;
+    [self stopHeartbeatMonitor];
+}
+
+- (void)showDashboard {
+    if (self.safeModeEnabled && self.safeModeState != ZXSafeModeStateUnlocked) { [self showSafeModeLockScreen]; return; }
+    [self transitionToPrimaryContainer:self.dashboardContainer];
+    self.currentState = ZXAppStateDashboard;
+    [self startHeartbeatMonitor];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.currentState != ZXAppStateDashboard) return;
+        Class cls = NSClassFromString(@"ZentraxNetworkManager");
+        if (cls && [cls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
+            id manager = ((id (*)(id, SEL))objc_msgSend)((id)cls, NSSelectorFromString(@"sharedManager"));
+            SEL configSel = NSSelectorFromString(@"cachedConfiguration");
+            if ([manager respondsToSelector:configSel]) {
+                NSDictionary *config = ((NSDictionary *(*)(id, SEL))objc_msgSend)(manager, configSel);
+                if ([config isKindOfClass:[NSDictionary class]]) [self updateDashboardWithConfiguration:config];
+            }
+        }
+    });
+}
+
 - (void)handleLogout {
     __weak typeof(self) weakSelf = self;
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:ZXLocalizedUI(@"SIGN OUT") message:ZXLocalizedUI(@"Your current secure session will be closed.") preferredStyle:UIAlertControllerStyleAlert];
@@ -2179,47 +2272,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
         }
     }]];
     [self presentViewController:alert animated:YES completion:nil];
-}
-
-#pragma mark - Other Methods
-
-- (UIImage *)preferredLogoImage {
-    NSArray *names=@[@"ZentraxLogo",@"AppIcon60x60",@"AppIcon"];
-    for (NSString *n in names) { UIImage *i=[UIImage imageNamed:n]; if(i) return i; }
-    
-    // Minimal geometric logo if image is missing
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(120,120),YES,0);
-    [[UIColor blackColor] setFill]; UIRectFill(CGRectMake(0,0,120,120));
-    [[UIColor whiteColor] setStroke]; UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(20, 20, 80, 80) cornerRadius:16]; path.lineWidth = 4; [path stroke];
-    NSDictionary *attrs=@{NSFontAttributeName:[UIFont systemFontOfSize:50 weight:UIFontWeightHeavy],NSForegroundColorAttributeName:[UIColor whiteColor]};
-    [@"Z" drawInRect:CGRectMake(42,32,50,60) withAttributes:attrs];
-    UIImage *i=UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return i;
-}
-
-- (void)requestDeviceCompatibilityRecheck {
-    [self showGlobalLoadingState:@"CHECKING DEVICE"];
-    if ([self.delegate respondsToSelector:@selector(zentraxDidRequestCompatibilityRecheckWithCompletion:)]) {
-        __weak typeof(self) weakSelf = self;
-        [self.delegate zentraxDidRequestCompatibilityRecheckWithCompletion:^(BOOL success, NSDictionary *compatibility, NSString *errorMsg) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __strong typeof(weakSelf) self = weakSelf; if (!self) return;
-                [self hideGlobalLoadingState];
-                if (success) {
-                    [self updateDeviceCompatibility:compatibility ?: @{}];
-                    [self showToast:ZXLocalizedUI(@"Compatibility Verified") success:YES];
-                } else {
-                    [self showGlobalErrorWithTitle:ZXLocalizedUI(@"CHECK FAILED") message:errorMsg ?: ZXLocalizedUI(@"Unable to verify device.")];
-                }
-            });
-        }];
-    } else {
-        [self hideGlobalLoadingState];
-        [self showGlobalErrorWithTitle:@"UNAVAILABLE" message:@"Compatibility service is not connected."];
-    }
-}
-
-- (void)showDeviceCompatibilityDetails {
-    // Only basic alert required, card shows all needed details clearly now.
 }
 
 - (void)resetToStartup { self.hasStarted = NO; self.currentState = ZXAppStateInit; [self stopHeartbeatMonitor]; [self stopLicenseCountdown]; [self beginBootstrap]; }
