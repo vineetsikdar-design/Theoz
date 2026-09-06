@@ -1,4 +1,4 @@
-		//
+	//
 //  ZXStateStore.m
 //  ZENTRAX
 //
@@ -383,35 +383,15 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
 - (void)buildStoragePaths
 {
-    NSFileManager *fileManager = [NSFileManager defaultManager];
+    // Tweak environment fix: Use a universal shared path instead of an app-specific sandbox directory
+    // This ensures state is globally synchronized between SpringBoard and target applications.
+    NSString *sharedDirectory = @"/var/mobile/Documents/Zentrax";
 
-    NSArray<NSURL *> *urls =
-        [fileManager URLsForDirectory:NSApplicationSupportDirectory
-                            inDomains:NSUserDomainMask];
+    self.storageDirectory = sharedDirectory;
 
-    NSURL *baseURL = urls.firstObject;
+    self.storageFilePath = [sharedDirectory stringByAppendingPathComponent:ZXStateStoreFileName];
 
-    if (!baseURL) {
-        baseURL =
-            [NSURL fileURLWithPath:
-                NSTemporaryDirectory()
-                isDirectory:YES];
-    }
-
-    NSURL *directoryURL =
-        [baseURL URLByAppendingPathComponent:ZXStateStoreDirectoryName
-                                 isDirectory:YES];
-
-    self.storageDirectory = directoryURL.path;
-
-    self.storageFilePath =
-        [[directoryURL URLByAppendingPathComponent:ZXStateStoreFileName]
-            path];
-
-    self.checkpointFilePath =
-        [[directoryURL URLByAppendingPathComponent:
-            ZXStateStoreCheckpointFileName]
-            path];
+    self.checkpointFilePath = [sharedDirectory stringByAppendingPathComponent:ZXStateStoreCheckpointFileName];
 }
 
 - (BOOL)ensureStorageDirectory:(NSError **)error
