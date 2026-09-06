@@ -1,4 +1,4 @@
-	//
+//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -1164,7 +1164,8 @@ static NSInteger const ZXMaxPINAttempts = 5;
     ];
     __block NSInteger index = 0;
     __weak typeof(self) weakSelf = self;
-    void (^next)(void) = ^{
+    __block void (^next)(void);
+    next = ^{
         __strong typeof(weakSelf) self = weakSelf;
         if (!self || index >= steps.count) {
             if (completion) completion();
@@ -1358,15 +1359,14 @@ static NSInteger const ZXMaxPINAttempts = 5;
 - (void)presentAuthError:(ZXAuthError)errorType message:(NSString *)message {
     NSString *title = @"ACCESS DENIED";
     NSString *fallback = message.length ? message : @"The server rejected this authentication request.";
-    NSString *icon = @"xmark.shield.fill";
     switch (errorType) {
-        case ZXAuthErrorConnection: title = @"CONNECTION ERROR"; icon = @"wifi.exclamationmark"; break;
-        case ZXAuthErrorServer: title = @"SERVER ERROR"; icon = @"server.rack"; break;
-        case ZXAuthErrorMaintenance: title = @"MAINTENANCE"; icon = @"wrench.and.screwdriver.fill"; break;
-        case ZXAuthErrorVersionMismatch: title = @"UPDATE REQUIRED"; icon = @"arrow.down.app.fill"; break;
-        case ZXAuthErrorCompatibility: title = @"DEVICE UNSUPPORTED"; icon = @"iphone.slash"; break;
-        case ZXAuthErrorRateLimited: title = @"TOO MANY REQUESTS"; icon = @"timer"; break;
-        case ZXAuthErrorExpiredKey: title = @"LICENSE EXPIRED"; icon = @"clock.badge.xmark"; break;
+        case ZXAuthErrorConnection: title = @"CONNECTION ERROR"; break;
+        case ZXAuthErrorServer: title = @"SERVER ERROR"; break;
+        case ZXAuthErrorMaintenance: title = @"MAINTENANCE"; break;
+        case ZXAuthErrorVersionMismatch: title = @"UPDATE REQUIRED"; break;
+        case ZXAuthErrorCompatibility: title = @"DEVICE UNSUPPORTED"; break;
+        case ZXAuthErrorRateLimited: title = @"TOO MANY REQUESTS"; break;
+        case ZXAuthErrorExpiredKey: title = @"LICENSE EXPIRED"; break;
         case ZXAuthErrorRevokedKey: title = @"ACCESS REVOKED"; break;
         case ZXAuthErrorDeviceLimit: title = @"DEVICE LIMIT"; icon = @"iphone.gen3.badge.exclamationmark"; break;
         default: break;
@@ -1939,13 +1939,12 @@ static NSInteger const ZXMaxPINAttempts = 5;
     self.startupBlockContainer.hidden = NO;
     self.blockedState = state;
     NSString *title = @"SECURITY GATE";
-    NSString *icon = @"lock.shield.fill";
     NSString *action = @"RETRY";
     switch (state) {
-        case ZXStartupStateMaintenance: title = @"MAINTENANCE"; icon = @"wrench.and.screwdriver.fill"; action = @"CHECK AGAIN"; break;
-        case ZXStartupStateVersionMismatch: title = @"UPDATE REQUIRED"; icon = @"arrow.down.app.fill"; action = @"CHECK AGAIN"; break;
-        case ZXStartupStateIncompatible: title = @"DEVICE UNSUPPORTED"; icon = @"iphone.slash"; action = @"RECHECK DEVICE"; break;
-        case ZXStartupStateConnectionError: title = @"CONNECTION LOST"; icon = @"wifi.exclamationmark"; action = @"RETRY CONNECTION"; break;
+        case ZXStartupStateMaintenance: title = @"MAINTENANCE"; action = @"CHECK AGAIN"; break;
+        case ZXStartupStateVersionMismatch: title = @"UPDATE REQUIRED"; action = @"CHECK AGAIN"; break;
+        case ZXStartupStateIncompatible: title = @"DEVICE UNSUPPORTED"; action = @"RECHECK DEVICE"; break;
+        case ZXStartupStateConnectionError: title = @"CONNECTION LOST"; action = @"RETRY CONNECTION"; break;
         default: break;
     }
     _startupBlockTitle.text = title;
@@ -2184,7 +2183,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
 }
 
 - (void)showSettings { [self showSettingsSection:nil]; }
-- (void)showSettingsSection:(NSString *)sectionIdentifier {
+- (void)showSettingsSection:(NSString * _Nullable)sectionIdentifier {
     if (self.safeModeEnabled && self.safeModeState != ZXSafeModeStateUnlocked) { [self showSafeModeLockScreen]; return; }
     self.settingsVisible = YES;
     [self rebuildSettings];
@@ -2260,7 +2259,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
     [NSLayoutConstraint activateConstraints:@[
         [logo.centerXAnchor constraintEqualToAnchor:_safeLockContainer.centerXAnchor], [logo.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:92], [logo.widthAnchor constraintEqualToConstant:58], [logo.heightAnchor constraintEqualToConstant:58],
-        [_safeLockTitle.centerYAnchor constraintEqualToAnchor:_safeLockContainer.centerYAnchor multiplier:0.66], [_safeLockTitle.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24], [_safeLockTitle.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
+        [NSLayoutConstraint constraintWithItem:_safeLockTitle attribute:NSLayoutAttributeCenterY relatedBy:NSLayoutRelationEqual toItem:_safeLockContainer attribute:NSLayoutAttributeCenterY multiplier:0.66 constant:0.0], [_safeLockTitle.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24], [_safeLockTitle.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
         [_safeLockSubtitle.topAnchor constraintEqualToAnchor:_safeLockTitle.bottomAnchor constant:1], [_safeLockSubtitle.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24], [_safeLockSubtitle.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
         [_safePinError.topAnchor constraintEqualToAnchor:_safeLockSubtitle.bottomAnchor constant:1], [_safePinError.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24], [_safePinError.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
         [_pinBoxes.topAnchor constraintEqualToAnchor:_safePinError.bottomAnchor constant:18], [_pinBoxes.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:50], [_pinBoxes.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-50],
