@@ -1,4 +1,4 @@
-//
+	//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -9,6 +9,7 @@
 #import "ZentraxUI.h"
 #import "ZentraxNetworkManager.h"
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
 
 #pragma mark - Constants & Keys
 
@@ -709,6 +710,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         return;
     }
     
+    // Always remember key in this premium version for user convenience
     NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
     [globalDefaults setObject:key forKey:ZXLastKey];
     [globalDefaults synchronize];
@@ -1111,6 +1113,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
                 state.textColor = requested ? [ZXTheme success] : [ZXTheme mutedText];
                 [self showToast:ZXLocalizedUI(requested ? @"Function enabled" : @"Function disabled") success:YES];
             } else {
+                // IMPORTANT: Revert toggle safely without fake success
                 sender.on = !requested;
                 self.functionStates[fid] = @(!requested);
                 state.text = ZXLocalizedUI(!requested ? @"ACTIVE" : @"READY");
@@ -1482,7 +1485,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     _connectionLabel.text = ZXLocalizedUI(@"● OFFLINE"); _connectionLabel.textColor = [ZXTheme error];
     for (NSString *fid in self.functionControls) ((UIControl *)self.functionControls[fid]).userInteractionEnabled = NO;
     [self showGlobalErrorWithTitle:ZXLocalizedUI(@"SESSION ENDED") message:ZXLocalizedUI(@"Your secure session is no longer valid. Please authenticate again.")];
-    
     __weak typeof(self) weakSelf = self;
     if ([self.delegate respondsToSelector:@selector(zentraxDidRequestLogoutWithCompletion:)]) {
         [self.delegate zentraxDidRequestLogoutWithCompletion:^{ dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf showLoginScreen]; }); }];
@@ -2347,18 +2349,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
         }
     }]];
     [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (UIImage *)preferredLogoImage {
-    NSArray *names=@[@"ZentraxLogo",@"AppIcon60x60",@"AppIcon"];
-    for (NSString *n in names) { UIImage *i=[UIImage imageNamed:n]; if(i) return i; }
-    
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(120,120),YES,0);
-    [[UIColor blackColor] setFill]; UIRectFill(CGRectMake(0,0,120,120));
-    [[UIColor whiteColor] setStroke]; UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(20, 20, 80, 80) cornerRadius:16]; path.lineWidth = 4; [path stroke];
-    NSDictionary *attrs=@{NSFontAttributeName:[UIFont systemFontOfSize:50 weight:UIFontWeightHeavy],NSForegroundColorAttributeName:[UIColor whiteColor]};
-    [@"Z" drawInRect:CGRectMake(42,32,50,60) withAttributes:attrs];
-    UIImage *i=UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return i;
 }
 
 - (void)resetToStartup { self.hasStarted = NO; self.currentState = ZXAppStateInit; [self stopHeartbeatMonitor]; [self stopLicenseCountdown]; [self beginBootstrap]; }
