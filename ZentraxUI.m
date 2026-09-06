@@ -1,4 +1,4 @@
-	//
+//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -23,6 +23,81 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
     label.numberOfLines = 1;
     label.userInteractionEnabled = NO;
     return label;
+}
+
+#pragma mark - Localization
+
+static NSString *ZXCurrentLanguage(void) {
+    NSString *language = [[NSUserDefaults standardUserDefaults] stringForKey:@"Zentrax.Language"];
+    return language.length ? language : @"English";
+}
+
+static NSString *ZXLocalizedUI(NSString *text) {
+    if (![text isKindOfClass:[NSString class]] || !text.length) return text ?: @"";
+    NSString *language = ZXCurrentLanguage();
+    if ([language isEqualToString:@"English"]) return text;
+
+    NSDictionary *vi = @{
+        @"Settings": @"Cài đặt", @"Safe UI Mode": @"Chế độ UI an toàn",
+        @"Protected lock screen is enabled": @"Màn hình khóa bảo vệ đang bật",
+        @"Add a private six-digit lock screen": @"Thêm màn hình khóa riêng 6 chữ số",
+        @"DEVICE STATUS": @"TRẠNG THÁI THIẾT BỊ", @"PREFERENCES": @"TÙY CHỌN",
+        @"ACCOUNT": @"TÀI KHOẢN", @"Language": @"Ngôn ngữ", @"Appearance": @"Giao diện",
+        @"Sign Out": @"Đăng xuất", @"Close the current secure session": @"Đóng phiên bảo mật hiện tại",
+        @"LICENSE CONTROL": @"QUẢN LÝ GIẤY PHÉP", @"SECURE FUNCTIONS": @"CHỨC NĂNG BẢO MẬT",
+        @"Secure node connected.": @"Nút bảo mật đã kết nối.", @"Awaiting first activation": @"Đang chờ kích hoạt lần đầu",
+        @"Lifetime server entitlement": @"Quyền sử dụng vĩnh viễn từ máy chủ",
+        @"No functions available": @"Không có chức năng khả dụng",
+        @"Your server configuration will appear here when functions are assigned to this license.": @"Cấu hình máy chủ sẽ xuất hiện ở đây khi chức năng được gán cho giấy phép này.",
+        @"Enter passcode": @"Nhập mật mã", @"Create Passcode": @"Tạo mật mã",
+        @"Create a 6-digit private passcode": @"Tạo mật mã riêng gồm 6 chữ số",
+        @"Confirm Passcode": @"Xác nhận mật mã", @"Enter the same 6-digit passcode again": @"Nhập lại mật mã 6 chữ số",
+        @"Private space unlocked": @"Không gian riêng đã mở khóa",
+        @"Choose your language": @"Chọn ngôn ngữ", @"You can change this anytime from Settings.": @"Bạn có thể thay đổi bất cứ lúc nào trong Cài đặt.",
+        @"WELCOME TO ZENTRAX": @"CHÀO MỪNG ĐẾN VỚI ZENTRAX",
+        @"PREMIUM THEMES": @"CHỦ ĐỀ CAO CẤP", @"DONE": @"XONG", @"RECHECK": @"KIỂM TRA LẠI",
+        @"UNAVAILABLE": @"KHÔNG KHẢ DỤNG", @"DISMISS": @"ĐÓNG", @"RETRY": @"THỬ LẠI",
+        @"Close screen sharing app": @"Đóng ứng dụng chia sẻ màn hình",
+        @"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information": @"Ứng dụng chia sẻ màn hình có thể bị kẻ gian sử dụng để ghi lại màn hình và đánh cắp thông tin ví của bạn",
+        @"AUTHENTICATE": @"XÁC THỰC", @"SECURE OPERATION": @"THAO TÁC BẢO MẬT", @"Please wait…": @"Vui lòng chờ…"
+    };
+    NSDictionary *zh = @{
+        @"Settings": @"设置", @"Safe UI Mode": @"安全界面模式",
+        @"Protected lock screen is enabled": @"受保护的锁定屏幕已启用", @"Add a private six-digit lock screen": @"添加私密六位锁屏",
+        @"DEVICE STATUS": @"设备状态", @"PREFERENCES": @"偏好设置", @"ACCOUNT": @"账户",
+        @"Language": @"语言", @"Appearance": @"外观", @"Sign Out": @"退出登录",
+        @"Close the current secure session": @"关闭当前安全会话", @"LICENSE CONTROL": @"许可证控制",
+        @"SECURE FUNCTIONS": @"安全功能", @"Secure node connected.": @"安全节点已连接。",
+        @"Awaiting first activation": @"等待首次激活", @"Lifetime server entitlement": @"服务器永久授权",
+        @"No functions available": @"暂无可用功能",
+        @"Your server configuration will appear here when functions are assigned to this license.": @"为此许可证分配功能后，服务器配置将显示在这里。",
+        @"Enter passcode": @"输入密码", @"Create Passcode": @"创建密码", @"Create a 6-digit private passcode": @"创建六位私密密码",
+        @"Confirm Passcode": @"确认密码", @"Enter the same 6-digit passcode again": @"再次输入相同的六位密码",
+        @"Private space unlocked": @"私密空间已解锁", @"Choose your language": @"选择语言",
+        @"You can change this anytime from Settings.": @"你可以随时在设置中更改。", @"WELCOME TO ZENTRAX": @"欢迎使用 ZENTRAX",
+        @"PREMIUM THEMES": @"高级主题", @"DONE": @"完成", @"RECHECK": @"重新检查", @"UNAVAILABLE": @"不可用",
+        @"DISMISS": @"关闭", @"RETRY": @"重试", @"Close screen sharing app": @"关闭屏幕共享应用",
+        @"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information": @"屏幕共享应用可能被诈骗者用来录制屏幕并窃取钱包信息",
+        @"AUTHENTICATE": @"验证", @"SECURE OPERATION": @"安全操作", @"Please wait…": @"请稍候…"
+    };
+    NSString *localized = [language isEqualToString:@"Tiếng Việt"] ? vi[text] : ([language isEqualToString:@"简体中文"] ? zh[text] : nil);
+    if (!localized.length) {
+        NSDictionary *commonVI=@{ @"ACTIVE":@"ĐANG BẬT", @"READY":@"SẴN SÀNG", @"UNACTIVATED":@"CHƯA KÍCH HOẠT", @"EXPIRED":@"ĐÃ HẾT HẠN", @"REVOKED":@"ĐÃ THU HỒI", @"DISABLED":@"ĐÃ TẮT", @"UNKNOWN":@"KHÔNG XÁC ĐỊNH", @"PROCESSING":@"ĐANG XỬ LÝ", @"PERMANENT":@"VĨNH VIỄN", @"NOT STARTED":@"CHƯA BẮT ĐẦU", @"● SECURE":@"● BẢO MẬT", @"● OFFLINE":@"● NGOẠI TUYẾN", @"AUTHENTICATE":@"XÁC THỰC", @"Access granted • Loading secure workspace":@"Đã cấp quyền • Đang tải không gian bảo mật", @"Connecting…":@"Đang kết nối…" };
+        NSDictionary *commonZH=@{ @"ACTIVE":@"已启用", @"READY":@"就绪", @"UNACTIVATED":@"未激活", @"EXPIRED":@"已过期", @"REVOKED":@"已撤销", @"DISABLED":@"已禁用", @"UNKNOWN":@"未知", @"PROCESSING":@"处理中", @"PERMANENT":@"永久", @"NOT STARTED":@"未开始", @"● SECURE":@"● 安全", @"● OFFLINE":@"● 离线", @"AUTHENTICATE":@"验证", @"Access granted • Loading secure workspace":@"已授权 • 正在加载安全工作区", @"Connecting…":@"正在连接…" };
+        localized = [language isEqualToString:@"Tiếng Việt"] ? commonVI[text] : ([language isEqualToString:@"简体中文"] ? commonZH[text] : nil);
+    }
+    return localized.length ? localized : text;
+}
+
+static BOOL ZXIsTruthyValue(id value) {
+    if (!value || value == [NSNull null]) return NO;
+    if ([value isKindOfClass:[NSNumber class]]) return [value boolValue];
+    if ([value isKindOfClass:[NSString class]]) {
+        NSString *s = [(NSString *)value lowercaseString];
+        if ([s isEqualToString:@"1"] || [s isEqualToString:@"true"] || [s isEqualToString:@"yes"] || [s isEqualToString:@"on"] || [s isEqualToString:@"active"] || [s isEqualToString:@"enabled"]) return YES;
+        if ([s isEqualToString:@"0"] || [s isEqualToString:@"false"] || [s isEqualToString:@"no"] || [s isEqualToString:@"off"] || [s isEqualToString:@"inactive"] || [s isEqualToString:@"disabled"] || [s isEqualToString:@"ready"]) return NO;
+    }
+    return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : NO;
 }
 
 #pragma mark - Theme
@@ -723,6 +798,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
 @property(nonatomic,strong) UIStackView *pinBoxes;
 @property(nonatomic,strong) NSMutableString *enteredPIN;
 @property(nonatomic,strong) UIView *keypadView;
+@property(nonatomic,strong) UITextField *safePINInput;
 @property(nonatomic,strong) UILabel *safeModeFooter;
 @property(nonatomic,strong) UIButton *safeLockBackButton;
 @property(nonatomic,strong) UILabel *safePinError;
@@ -854,7 +930,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
 - (UILabel *)label:(NSString *)text size:(CGFloat)size weight:(UIFontWeight)weight color:(UIColor *)color {
     UILabel *l = [[UILabel alloc] init];
-    l.text = text;
+    l.text = ZXLocalizedUI(text);
     l.font = [ZXTheme body:size weight:weight];
     l.textColor = color;
     l.numberOfLines = 0;
@@ -965,6 +1041,8 @@ static NSInteger const ZXMaxPINAttempts = 5;
     _splashDetail.textAlignment = NSTextAlignmentCenter;
     _splashDetail.translatesAutoresizingMaskIntoConstraints = NO;
     [_splashContainer addSubview:_splashDetail];
+    rail.hidden = YES;
+    _splashPercent.hidden = YES;
 
     [NSLayoutConstraint activateConstraints:@[
         [_splashIcon.centerXAnchor constraintEqualToAnchor:_splashContainer.centerXAnchor],
@@ -988,7 +1066,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
         [_splashPercent.topAnchor constraintEqualToAnchor:rail.bottomAnchor constant:9],
         [_splashPercent.trailingAnchor constraintEqualToAnchor:rail.trailingAnchor],
         [_splashPercent.widthAnchor constraintEqualToConstant:42],
-        [_splashDetail.topAnchor constraintEqualToAnchor:_splashPercent.bottomAnchor constant:7],
+        [_splashDetail.topAnchor constraintEqualToAnchor:_splashStatus.bottomAnchor constant:18],
         [_splashDetail.leadingAnchor constraintEqualToAnchor:_splashContainer.leadingAnchor constant:30],
         [_splashDetail.trailingAnchor constraintEqualToAnchor:_splashContainer.trailingAnchor constant:-30]
     ]];
@@ -1015,9 +1093,9 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
     NSArray *step = steps[index];
     CGFloat fraction = [step[0] doubleValue];
-    self.splashStatus.text = step[1];
-    self.splashDetail.text = step[2];
-    self.splashPercent.text = [NSString stringWithFormat:@"%ld%%", (long)llround(fraction * 100.0)];
+    self.splashStatus.text = ZXLocalizedUI(step[1]);
+    self.splashDetail.text = ZXLocalizedUI(step[2]);
+    self.splashPercent.text = @"";
 
     __weak typeof(self) weakSelf = self;
     [UIView animateWithDuration:0.22
@@ -1026,7 +1104,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
                      animations:^{
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
-        self.splashFill.transform = CGAffineTransformMakeScale(MAX(0.001, fraction), 1.0);
+        self.splashFill.transform = CGAffineTransformIdentity;
     }
                      completion:^(BOOL finished) {
         __strong typeof(weakSelf) self = weakSelf;
@@ -1101,7 +1179,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
     [rememberRow addSubview:remember];
 
     _loginBtn = [[ZXPremiumButton alloc] init];
-    [_loginBtn setTitle:@"AUTHENTICATE" forState:UIControlStateNormal];
+    [_loginBtn setTitle:ZXLocalizedUI(@"AUTHENTICATE") forState:UIControlStateNormal];
     _loginBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [_loginBtn addTarget:self action:@selector(handleLogin) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:_loginBtn];
@@ -1193,7 +1271,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
                     else [[NSUserDefaults standardUserDefaults] removeObjectForKey:ZXLastKey];
                     [[NSUserDefaults standardUserDefaults] synchronize];
                     self.authStatus.textColor = [ZXTheme success];
-                    self.authStatus.text = @"Access granted • Loading secure workspace";
+                    self.authStatus.text = ZXLocalizedUI(@"Access granted • Loading secure workspace");
                     [self showDashboard];
                 } else {
                     [self presentAuthError:errorType message:errorMsg];
@@ -1449,12 +1527,20 @@ static NSInteger const ZXMaxPINAttempts = 5;
         dispatch_async(dispatch_get_main_queue(), ^{ [self updateDashboardWithConfiguration:configuration]; });
         return;
     }
-    self.dashboardConfiguration = configuration ?: @{};
     NSArray *categories = configuration[@"categories"];
     NSArray *modules = configuration[@"modules"] ?: configuration[@"functions"];
-    if (![categories isKindOfClass:[NSArray class]] || !categories.count) {
-        categories = modules;
+    if (![categories isKindOfClass:[NSArray class]] || !categories.count) categories = modules;
+    BOOL incomingHasUsableData = NO;
+    for (id rawCategory in ([categories isKindOfClass:[NSArray class]] ? categories : @[])) {
+        if (![rawCategory isKindOfClass:[NSDictionary class]]) continue;
+        NSArray *functions = rawCategory[@"functions"];
+        if ([functions isKindOfClass:[NSArray class]] && functions.count) { incomingHasUsableData = YES; break; }
+        if (rawCategory[@"id"] || rawCategory[@"function_id"] || rawCategory[@"name"]) { incomingHasUsableData = YES; break; }
     }
+    // Never erase a working dashboard because a heartbeat/bootstrap response
+    // temporarily contains an empty or partial module list.
+    if (!incomingHasUsableData && self.functionDefinitions.count > 0) return;
+    self.dashboardConfiguration = configuration ?: @{};
 
     for (UIView *v in [self.modulesStack.arrangedSubviews copy]) {
         [self.modulesStack removeArrangedSubview:v];
@@ -1490,13 +1576,9 @@ static NSInteger const ZXMaxPINAttempts = 5;
             id serverCurrentState = function[@"current_state"];
             id serverState = function[@"state"];
             BOOL on = NO;
-            if (serverCurrentState && serverCurrentState != [NSNull null] && [serverCurrentState respondsToSelector:@selector(boolValue)]) {
-                on = [serverCurrentState boolValue];
-            } else if (serverState && serverState != [NSNull null] && [serverState respondsToSelector:@selector(boolValue)]) {
-                on = [serverState boolValue];
-            } else {
-                on = [self.functionStates[fid] boolValue];
-            }
+            if (serverCurrentState != nil && serverCurrentState != [NSNull null]) on = ZXIsTruthyValue(serverCurrentState);
+            else if (serverState != nil && serverState != [NSNull null]) on = ZXIsTruthyValue(serverState);
+            else on = [self.functionStates[fid] boolValue];
             self.functionStates[fid]=@(on);
             UIView *card=[self functionCardForDefinition:function functionId:fid isOn:on];
             [_modulesStack addArrangedSubview:card];
@@ -1594,7 +1676,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
     sender.userInteractionEnabled = NO;
     UILabel *state = self.functionStateLabels[fid];
     state.textColor = [ZXTheme warning];
-    state.text = @"PROCESSING";
+    state.text = ZXLocalizedUI(@"PROCESSING");
     [ZXTheme track:state spacing:1.0];
 
     __weak typeof(self) weakSelf = self;
@@ -1630,7 +1712,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
 - (void)updateFunctionState:(NSString *)functionId state:(BOOL)isOn {
     if (!functionId.length) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.functionStates[functionId] = @(isOn);
+        self.functionStates[functionId] = @(ZXIsTruthyValue(@(isOn)));
         UISwitch *toggle = (UISwitch *)self.functionControls[functionId];
         if ([toggle isKindOfClass:[UISwitch class]]) [toggle setOn:isOn animated:YES];
         UILabel *label = self.functionStateLabels[functionId];
@@ -1652,7 +1734,9 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
 - (void)updateSubscriptionState:(NSDictionary *)subData {
     if (![subData isKindOfClass:[NSDictionary class]]) return;
-    NSString *status = [[NSString stringWithFormat:@"%@", subData[@"status"] ?: @"unknown"] lowercaseString];
+    NSString *status = [[NSString stringWithFormat:@"%@", ([subData[@"status"] isKindOfClass:[NSString class]] ? subData[@"status"] : @"unknown")] lowercaseString];
+    BOOL incomingHasActivationEvidence = ([subData[@"activated_at"] isKindOfClass:[NSString class]] || [subData[@"activated_at"] isKindOfClass:[NSNumber class]] || [subData[@"expires_at"] isKindOfClass:[NSString class]] || [subData[@"expires_at"] isKindOfClass:[NSNumber class]] || [subData[@"is_permanent"] boolValue]);
+    if ([status isEqualToString:@"unactivated"] && self.licenseStatus == ZXLicenseUIStatusActive && !incomingHasActivationEvidence) return;
     ZXLicenseUIStatus uiStatus = ZXLicenseUIStatusUnknown;
     if ([status isEqualToString:@"unactivated"]) uiStatus = ZXLicenseUIStatusUnactivated;
     else if ([status isEqualToString:@"active"]) uiStatus = ZXLicenseUIStatusActive;
@@ -1671,26 +1755,26 @@ static NSInteger const ZXMaxPINAttempts = 5;
     self.activatedAt = activatedAt;
     self.expiresAt = expiresAt;
     self.licensePermanent = isPermanent;
-    NSString *text = @"UNKNOWN";
+    NSString *text = ZXLocalizedUI(@"UNKNOWN");
     UIColor *color = [ZXTheme mutedText];
     switch (status) {
-        case ZXLicenseUIStatusUnactivated: text = @"UNACTIVATED"; color = [ZXTheme warning]; break;
-        case ZXLicenseUIStatusActive: text = @"ACTIVE"; color = [ZXTheme success]; break;
-        case ZXLicenseUIStatusExpired: text = @"EXPIRED"; color = [ZXTheme error]; break;
-        case ZXLicenseUIStatusRevoked: text = @"REVOKED"; color = [ZXTheme error]; break;
-        case ZXLicenseUIStatusDisabled: text = @"DISABLED"; color = [ZXTheme error]; break;
+        case ZXLicenseUIStatusUnactivated: text = ZXLocalizedUI(@"UNACTIVATED"); color = [ZXTheme warning]; break;
+        case ZXLicenseUIStatusActive: text = ZXLocalizedUI(@"ACTIVE"); color = [ZXTheme success]; break;
+        case ZXLicenseUIStatusExpired: text = ZXLocalizedUI(@"EXPIRED"); color = [ZXTheme error]; break;
+        case ZXLicenseUIStatusRevoked: text = ZXLocalizedUI(@"REVOKED"); color = [ZXTheme error]; break;
+        case ZXLicenseUIStatusDisabled: text = ZXLocalizedUI(@"DISABLED"); color = [ZXTheme error]; break;
         default: break;
     }
     _licenseStatusLabel.text = text;
     _licenseStatusLabel.textColor = color;
     if (isPermanent) {
-        _countdownLabel.text = @"PERMANENT";
-        _expiryLabel.text = @"Lifetime server entitlement";
+        _countdownLabel.text = ZXLocalizedUI(@"PERMANENT");
+        _expiryLabel.text = ZXLocalizedUI(@"Lifetime server entitlement");
     } else if (expiresAt) {
         [self startLicenseCountdown];
         [self refreshLicenseCountdown];
     } else if (status == ZXLicenseUIStatusUnactivated) {
-        _countdownLabel.text = @"NOT STARTED";
+        _countdownLabel.text = ZXLocalizedUI(@"NOT STARTED");
         _expiryLabel.text = @"Timer starts on first successful activation";
     }
 }
@@ -1748,15 +1832,15 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
 - (void)refreshLicenseCountdown {
     if (self.licensePermanent) {
-        _countdownLabel.text = @"PERMANENT";
+        _countdownLabel.text = ZXLocalizedUI(@"PERMANENT");
         return;
     }
     if (!self.expiresAt) return;
     NSTimeInterval remaining = [self.expiresAt timeIntervalSinceDate:[self estimatedServerNow]];
     if (remaining <= 0) {
-        _countdownLabel.text = @"EXPIRED";
+        _countdownLabel.text = ZXLocalizedUI(@"EXPIRED");
         _expiryLabel.text = @"Server entitlement has ended";
-        _licenseStatusLabel.text = @"EXPIRED";
+        _licenseStatusLabel.text = ZXLocalizedUI(@"EXPIRED");
         _licenseStatusLabel.textColor = [ZXTheme error];
         [self stopLicenseCountdown];
         return;
@@ -1810,7 +1894,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
     icon.tintColor = [ZXTheme primaryText]; icon.contentMode = UIViewContentModeScaleAspectFit; icon.translatesAutoresizingMaskIntoConstraints = NO; [card addSubview:icon];
     _startupBlockTitle = [self label:@"SECURITY GATE" size:22 weight:UIFontWeightBlack color:[ZXTheme primaryText]]; _startupBlockTitle.textAlignment = NSTextAlignmentCenter; _startupBlockTitle.translatesAutoresizingMaskIntoConstraints = NO; [card addSubview:_startupBlockTitle];
     _startupBlockMessage = [self label:@"" size:13 weight:UIFontWeightRegular color:[ZXTheme secondaryText]]; _startupBlockMessage.textAlignment = NSTextAlignmentCenter; _startupBlockMessage.translatesAutoresizingMaskIntoConstraints = NO; [card addSubview:_startupBlockMessage];
-    _startupBlockAction = [UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:_startupBlockAction]; [_startupBlockAction setTitle:@"RETRY" forState:UIControlStateNormal]; _startupBlockAction.translatesAutoresizingMaskIntoConstraints = NO; [_startupBlockAction addTarget:self action:@selector(startupBlockRetry) forControlEvents:UIControlEventTouchUpInside]; [card addSubview:_startupBlockAction];
+    _startupBlockAction = [UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:_startupBlockAction]; [_startupBlockAction setTitle:ZXLocalizedUI(@"RETRY") forState:UIControlStateNormal]; _startupBlockAction.translatesAutoresizingMaskIntoConstraints = NO; [_startupBlockAction addTarget:self action:@selector(startupBlockRetry) forControlEvents:UIControlEventTouchUpInside]; [card addSubview:_startupBlockAction];
     [NSLayoutConstraint activateConstraints:@[
         [card.leadingAnchor constraintEqualToAnchor:_startupBlockContainer.leadingAnchor constant:28], [card.trailingAnchor constraintEqualToAnchor:_startupBlockContainer.trailingAnchor constant:-28], [card.centerYAnchor constraintEqualToAnchor:_startupBlockContainer.centerYAnchor],
         [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:30], [icon.centerXAnchor constraintEqualToAnchor:card.centerXAnchor], [icon.widthAnchor constraintEqualToConstant:48], [icon.heightAnchor constraintEqualToConstant:48],
@@ -2043,7 +2127,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
     [self stopHeartbeatMonitor];
     self.heartbeatTimer = [NSTimer scheduledTimerWithTimeInterval:20.0 target:self selector:@selector(heartbeatTick) userInfo:nil repeats:YES];
     [[NSRunLoop mainRunLoop] addTimer:self.heartbeatTimer forMode:NSRunLoopCommonModes];
-    _connectionLabel.text = @"● SECURE";
+    _connectionLabel.text = ZXLocalizedUI(@"● SECURE");
     _connectionLabel.textColor = [ZXTheme success];
 }
 
@@ -2057,14 +2141,14 @@ static NSInteger const ZXMaxPINAttempts = 5;
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) self = weakSelf; if (!self) return;
             if (!valid) [self handleRevokedSessionEnvironment];
-            else { self.connectionLabel.text = @"● SECURE"; self.connectionLabel.textColor = [ZXTheme success]; }
+            else { self.connectionLabel.text = ZXLocalizedUI(@"● SECURE"); self.connectionLabel.textColor = [ZXTheme success]; }
         });
     }];
 }
 
 - (void)handleRevokedSessionEnvironment {
     [self stopHeartbeatMonitor];
-    _connectionLabel.text = @"● OFFLINE"; _connectionLabel.textColor = [ZXTheme error];
+    _connectionLabel.text = ZXLocalizedUI(@"● OFFLINE"); _connectionLabel.textColor = [ZXTheme error];
     for (NSString *fid in self.functionControls) ((UIControl *)self.functionControls[fid]).userInteractionEnabled = NO;
     [self showGlobalErrorWithTitle:@"SESSION ENDED" message:@"Your secure session is no longer valid. Please authenticate again."];
     __weak typeof(self) weakSelf = self;
@@ -2120,9 +2204,10 @@ static NSInteger const ZXMaxPINAttempts = 5;
     [ZXTheme track:eyebrow spacing:1.5]; eyebrow.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:eyebrow];
     NSString *device=[NSString stringWithFormat:@"%@",self.compatibilityData[@"device_name"] ?: self.compatibilityData[@"device"] ?: UIDevice.currentDevice.model ?: @"Unknown device"];
     NSString *ios=[NSString stringWithFormat:@"iOS %@",self.compatibilityData[@"ios_version"] ?: UIDevice.currentDevice.systemVersion ?: @"—"];
-    NSString *status=[[NSString stringWithFormat:@"%@",self.compatibilityData[@"status"] ?: @"unknown"] lowercaseString];
-    BOOL supported=[status isEqualToString:@"supported"];
-    BOOL unsupported=[status isEqualToString:@"unsupported"];
+    NSString *statusValue=[self.compatibilityData[@"status"] isKindOfClass:[NSString class]] ? self.compatibilityData[@"status"] : @"unknown";
+    NSString *status=[statusValue lowercaseString];
+    BOOL supported=[status isEqualToString:@"supported"] || [status isEqualToString:@"compatible"] || [status isEqualToString:@"ok"];
+    BOOL unsupported=[status isEqualToString:@"unsupported"] || [status isEqualToString:@"incompatible"];
     NSString *statusText=supported?@"SUPPORTED":(unsupported?@"UNSUPPORTED":@"NOT VERIFIED");
     UIColor *statusColor=supported?[ZXTheme success]:(unsupported?[ZXTheme error]:[ZXTheme warning]);
     UILabel *name=[self label:device size:17 weight:UIFontWeightSemibold color:[ZXTheme primaryText]]; name.translatesAutoresizingMaskIntoConstraints=NO; name.numberOfLines=2; [card addSubview:name];
@@ -2235,7 +2320,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
 - (void)setupSafeModeLock {
     _safeLockContainer = [[UIView alloc] init];
     _safeLockContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    _safeLockContainer.backgroundColor = [ZXTheme background];
+    _safeLockContainer.backgroundColor = [UIColor blackColor];
     [self.view addSubview:_safeLockContainer];
     [NSLayoutConstraint activateConstraints:@[
         [_safeLockContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -2244,26 +2329,25 @@ static NSInteger const ZXMaxPINAttempts = 5;
         [_safeLockContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 
-    _safeLockBackButton = [self iconButton:@"chevron.left" size:34];
+    _safeLockBackButton = [self iconButton:@"chevron.left" size:32];
     _safeLockBackButton.backgroundColor = [ZXTheme surfaceRaised];
-    _safeLockBackButton.layer.cornerRadius = 12;
+    _safeLockBackButton.layer.cornerRadius = 11;
     _safeLockBackButton.hidden = YES;
     [_safeLockBackButton addTarget:self action:@selector(cancelSafeModeCreation) forControlEvents:UIControlEventTouchUpInside];
     [_safeLockContainer addSubview:_safeLockBackButton];
     [NSLayoutConstraint activateConstraints:@[
-        [_safeLockBackButton.leadingAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.leadingAnchor constant:20],
+        [_safeLockBackButton.leadingAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.leadingAnchor constant:18],
         [_safeLockBackButton.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:8],
         [_safeLockBackButton.widthAnchor constraintEqualToConstant:38],
         [_safeLockBackButton.heightAnchor constraintEqualToConstant:38]
     ]];
 
-    // Safe Mode is intentionally unbranded: no logo and no biometric UI.
-    _safeLockTitle = [self label:@"Enter passcode" size:28 weight:UIFontWeightSemibold color:[ZXTheme primaryText]];
+    _safeLockTitle = [self label:@"Enter passcode" size:27 weight:UIFontWeightSemibold color:[ZXTheme primaryText]];
     _safeLockTitle.textAlignment = NSTextAlignmentCenter;
     _safeLockTitle.translatesAutoresizingMaskIntoConstraints = NO;
     [_safeLockContainer addSubview:_safeLockTitle];
 
-    _safeLockSubtitle = [self label:@"" size:13 weight:UIFontWeightRegular color:[ZXTheme secondaryText]];
+    _safeLockSubtitle = [self label:@"Enter passcode" size:13 weight:UIFontWeightRegular color:[ZXTheme secondaryText]];
     _safeLockSubtitle.textAlignment = NSTextAlignmentCenter;
     _safeLockSubtitle.numberOfLines = 2;
     _safeLockSubtitle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -2276,34 +2360,38 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
     _pinBoxes = [[UIStackView alloc] init];
     _pinBoxes.axis = UILayoutConstraintAxisHorizontal;
-    _pinBoxes.spacing = 10;
+    _pinBoxes.spacing = 8;
     _pinBoxes.distribution = UIStackViewDistributionFillEqually;
     _pinBoxes.translatesAutoresizingMaskIntoConstraints = NO;
     [_safeLockContainer addSubview:_pinBoxes];
     for (NSInteger i = 0; i < 6; i++) {
         UIView *box = [[UIView alloc] init];
-        box.layer.cornerRadius = 17;
+        box.layer.cornerRadius = 12;
         box.layer.borderWidth = 1.0;
-        box.layer.borderColor = [UIColor colorWithWhite:0.20 alpha:1.0].CGColor;
-        box.backgroundColor = [UIColor colorWithWhite:0.035 alpha:1.0];
+        box.layer.borderColor = [UIColor colorWithWhite:0.22 alpha:1.0].CGColor;
+        box.backgroundColor = [UIColor colorWithWhite:0.045 alpha:1.0];
         box.tag = 7000 + i;
         [_pinBoxes addArrangedSubview:box];
-        [box.heightAnchor constraintEqualToConstant:58].active = YES;
+        [box.heightAnchor constraintEqualToConstant:46].active = YES;
     }
 
-    _keypadView = [[UIView alloc] init];
-    _keypadView.backgroundColor = [UIColor colorWithWhite:0.045 alpha:1.0];
-    _keypadView.layer.cornerRadius = 34;
-    _keypadView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
-    _keypadView.layer.borderWidth = 1.0;
-    _keypadView.layer.borderColor = [UIColor colorWithWhite:0.15 alpha:1.0].CGColor;
-    _keypadView.clipsToBounds = YES;
-    _keypadView.translatesAutoresizingMaskIntoConstraints = NO;
-    [_safeLockContainer addSubview:_keypadView];
-    [self buildSafeKeypad];
+    // Real iOS number pad. No custom keypad is used for Safe UI Mode.
+    _safePINInput = [[UITextField alloc] init];
+    _safePINInput.keyboardType = UIKeyboardTypeNumberPad;
+    _safePINInput.textContentType = UITextContentTypeOneTimeCode;
+    _safePINInput.secureTextEntry = YES;
+    _safePINInput.textColor = UIColor.clearColor;
+    _safePINInput.tintColor = UIColor.clearColor;
+    _safePINInput.backgroundColor = UIColor.clearColor;
+    _safePINInput.clearsOnBeginEditing = NO;
+    _safePINInput.autocorrectionType = UITextAutocorrectionTypeNo;
+    _safePINInput.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    _safePINInput.translatesAutoresizingMaskIntoConstraints = NO;
+    [_safePINInput addTarget:self action:@selector(safePINInputChanged:) forControlEvents:UIControlEventEditingChanged];
+    [_safeLockContainer addSubview:_safePINInput];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_safeLockTitle.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:84],
+        [_safeLockTitle.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:88],
         [_safeLockTitle.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24],
         [_safeLockTitle.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
         [_safeLockSubtitle.topAnchor constraintEqualToAnchor:_safeLockTitle.bottomAnchor constant:7],
@@ -2313,61 +2401,48 @@ static NSInteger const ZXMaxPINAttempts = 5;
         [_safePinError.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:24],
         [_safePinError.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-24],
         [_pinBoxes.topAnchor constraintEqualToAnchor:_safePinError.bottomAnchor constant:18],
-        [_pinBoxes.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:48],
-        [_pinBoxes.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-48],
-        [_keypadView.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor],
-        [_keypadView.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor],
-        [_keypadView.bottomAnchor constraintEqualToAnchor:_safeLockContainer.bottomAnchor],
-        [_keypadView.topAnchor constraintGreaterThanOrEqualToAnchor:_pinBoxes.bottomAnchor constant:26],
-        [_keypadView.heightAnchor constraintEqualToConstant:402]
+        [_pinBoxes.centerXAnchor constraintEqualToAnchor:_safeLockContainer.centerXAnchor],
+        [_pinBoxes.widthAnchor constraintLessThanOrEqualToConstant:252],
+        [_pinBoxes.leadingAnchor constraintGreaterThanOrEqualToAnchor:_safeLockContainer.leadingAnchor constant:54],
+        [_pinBoxes.trailingAnchor constraintLessThanOrEqualToAnchor:_safeLockContainer.trailingAnchor constant:-54],
+        [_safePINInput.centerXAnchor constraintEqualToAnchor:_safeLockContainer.centerXAnchor],
+        [_safePINInput.topAnchor constraintEqualToAnchor:_pinBoxes.bottomAnchor constant:8],
+        [_safePINInput.widthAnchor constraintEqualToConstant:2],
+        [_safePINInput.heightAnchor constraintEqualToConstant:2],
+        [_safePINInput.bottomAnchor constraintLessThanOrEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.bottomAnchor constant:-4]
     ]];
-}
-- (void)buildSafeKeypad {
-    NSArray *titles = @[@"1",@"2",@"3",@"4",@"5",@"6",@"7",@"8",@"9",@"",@"0",@"⌫"];
-    UIStackView *rows = [[UIStackView alloc] init];
-    rows.axis = UILayoutConstraintAxisVertical;
-    rows.spacing = 12;
-    rows.distribution = UIStackViewDistributionFillEqually;
-    rows.translatesAutoresizingMaskIntoConstraints = NO;
-    [_keypadView addSubview:rows];
-    [NSLayoutConstraint activateConstraints:@[[rows.leadingAnchor constraintEqualToAnchor:_keypadView.leadingAnchor constant:24],[rows.trailingAnchor constraintEqualToAnchor:_keypadView.trailingAnchor constant:-24],[rows.topAnchor constraintEqualToAnchor:_keypadView.topAnchor constant:22],[rows.bottomAnchor constraintEqualToAnchor:_keypadView.bottomAnchor constant:-22]]];
-
-    for (NSInteger rowIndex=0; rowIndex<4; rowIndex++) {
-        UIStackView *row = [[UIStackView alloc] init];
-        row.axis = UILayoutConstraintAxisHorizontal;
-        row.spacing = 12;
-        row.distribution = UIStackViewDistributionFillEqually;
-        [rows addArrangedSubview:row];
-        for (NSInteger col=0; col<3; col++) {
-            NSInteger idx=rowIndex*3+col;
-            UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem];
-            NSString *title=titles[idx];
-            [button setTitle:title forState:UIControlStateNormal];
-            button.titleLabel.font=[ZXTheme body:(idx==11?23:27) weight:UIFontWeightMedium];
-            [button setTitleColor:[ZXTheme primaryText] forState:UIControlStateNormal];
-            button.backgroundColor=[UIColor colorWithWhite:0.085 alpha:1];
-            button.layer.cornerRadius=20;
-            button.layer.borderWidth=1;
-            button.layer.borderColor=[UIColor colorWithWhite:0.16 alpha:1].CGColor;
-            button.tag=8000+idx;
-            button.translatesAutoresizingMaskIntoConstraints=NO;
-            if (idx==9) { button.alpha=0; button.userInteractionEnabled=NO; }
-            else [button addTarget:self action:@selector(safeKeypadPressed:) forControlEvents:UIControlEventTouchUpInside];
-            [row addArrangedSubview:button];
-        }
-    }
 }
 
 - (void)showSafeModeLockScreen {
     self.enteredPIN.string = @"";
+    self.safePINInput.text = @"";
     self.safeModeAttemptsRemaining = ZXMaxPINAttempts;
     self.safePinError.text = @"";
     [self updatePINBoxes];
-    self.safeLockTitle.text = self.safeModeCreatingPasscode ? @"Create Passcode" : @"Enter passcode";
-    self.safeLockSubtitle.text = self.safeModeCreatingPasscode ? @"Create a 6-digit private passcode" : @"Enter passcode";
+    self.safeLockTitle.text = self.safeModeCreatingPasscode ? ZXLocalizedUI(@"Create Passcode") : ZXLocalizedUI(@"Enter passcode");
+    self.safeLockSubtitle.text = self.safeModeCreatingPasscode ? ZXLocalizedUI(@"Create a 6-digit private passcode") : ZXLocalizedUI(@"Enter passcode");
     self.safeLockBackButton.hidden = !self.safeModeCreatingPasscode;
     [self transitionToPrimaryContainer:self.safeLockContainer];
     self.currentState = ZXAppStateStartupBlock;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!self.safeLockContainer.hidden) [self.safePINInput becomeFirstResponder];
+    });
+}
+
+- (void)safePINInputChanged:(UITextField *)textField {
+    NSString *raw = textField.text ?: @"";
+    NSMutableString *digits = [NSMutableString stringWithCapacity:6];
+    for (NSUInteger i = 0; i < raw.length && digits.length < 6; i++) {
+        unichar c = [raw characterAtIndex:i];
+        if (c >= '0' && c <= '9') [digits appendFormat:@"%C", c];
+    }
+    textField.text = digits;
+    self.enteredPIN.string = digits;
+    [self updatePINBoxes];
+    if (digits.length == 6) {
+        [textField resignFirstResponder];
+        [self processEnteredPIN];
+    }
 }
 
 - (BOOL)safeModeCreatingPasscode { return _safeModeCreatingPasscode; }
@@ -2394,28 +2469,13 @@ static NSInteger const ZXMaxPINAttempts = 5;
     }
 }
 
-- (void)safeKeypadPressed:(UIButton *)button {
-    NSInteger idx = button.tag - 8000;
-    if (idx == 11) {
-        if (self.enteredPIN.length) [self.enteredPIN deleteCharactersInRange:NSMakeRange(self.enteredPIN.length-1,1)];
-        [self updatePINBoxes]; return;
-    }
-    if (idx == 9 || self.enteredPIN.length >= 6) return;
-    NSString *digit = [NSString stringWithFormat:@"%ld", (long)(idx+1)];
-    if (idx == 10) digit = @"0";
-    [self.enteredPIN appendString:digit];
-    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
-    [self updatePINBoxes];
-    if (self.enteredPIN.length == 6) [self processEnteredPIN];
-}
-
 - (void)processEnteredPIN {
     if (self.safeModeCreatingPasscode) {
         if (!self.pendingSafeModePasscode.length) {
             self.pendingSafeModePasscode = [self.enteredPIN copy];
             self.enteredPIN.string = @"";
-            self.safeLockTitle.text = @"Confirm Passcode";
-            self.safeLockSubtitle.text = @"Enter the same 6-digit passcode again";
+            self.safeLockTitle.text = ZXLocalizedUI(@"Confirm Passcode");
+            self.safeLockSubtitle.text = ZXLocalizedUI(@"Enter the same 6-digit passcode again");
             [self updatePINBoxes];
             return;
         }
@@ -2423,8 +2483,10 @@ static NSInteger const ZXMaxPINAttempts = 5;
             self.safePinError.text = @"Passcodes do not match. Try again.";
             self.pendingSafeModePasscode = nil;
             self.enteredPIN.string = @"";
+            self.safePINInput.text = @"";
             [self updatePINBoxes];
             [self shakePINBoxes];
+            dispatch_async(dispatch_get_main_queue(), ^{ [self.safePINInput becomeFirstResponder]; });
             return;
         }
         if (![self keychainStorePIN:self.enteredPIN]) {
@@ -2454,8 +2516,10 @@ static NSInteger const ZXMaxPINAttempts = 5;
     self.safeModeAttemptsRemaining = MAX(0, self.safeModeAttemptsRemaining - 1);
     self.safePinError.text = self.safeModeAttemptsRemaining > 0 ? [NSString stringWithFormat:@"Incorrect passcode • %ld attempts remaining", (long)self.safeModeAttemptsRemaining] : @"Incorrect passcode";
     self.enteredPIN.string = @"";
+    self.safePINInput.text = @"";
     [self updatePINBoxes];
     [self shakePINBoxes];
+    dispatch_async(dispatch_get_main_queue(), ^{ [self.safePINInput becomeFirstResponder]; });
 }
 
 - (void)shakePINBoxes {
@@ -2497,8 +2561,8 @@ static NSInteger const ZXMaxPINAttempts = 5;
     self.safeModeEnabled = YES;
     self.safeModeState = ZXSafeModeStateLocked;
     [self showSafeModeLockScreen];
-    self.safeLockTitle.text = @"Disable Safe UI Mode";
-    self.safeLockSubtitle.text = @"Enter your current passcode";
+    self.safeLockTitle.text = ZXLocalizedUI(@"Safe UI Mode");
+    self.safeLockSubtitle.text = ZXLocalizedUI(@"Enter passcode");
     __weak typeof(self) weakSelf = self;
     objc_setAssociatedObject(self.safeLockContainer, @selector(beginDisableSafeModeVerification), ^{ [weakSelf actuallyDisableSafeMode]; }, OBJC_ASSOCIATION_COPY_NONATOMIC);
 }
@@ -2530,13 +2594,20 @@ static NSInteger const ZXMaxPINAttempts = 5;
 }
 
 - (void)showDeviceCompatibilityDetails {
-    NSString *device = [NSString stringWithFormat:@"%@", self.compatibilityData[@"device_name"] ?: self.compatibilityData[@"device"] ?: UIDevice.currentDevice.model];
-    NSString *ios = [NSString stringWithFormat:@"%@", self.compatibilityData[@"ios_version"] ?: UIDevice.currentDevice.systemVersion];
-    NSString *arch = [NSString stringWithFormat:@"%@", self.compatibilityData[@"architecture"] ?: @"—"];
-    NSString *app = [NSString stringWithFormat:@"%@", self.compatibilityData[@"app_version"] ?: ([[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"—")];
-    NSString *required = [NSString stringWithFormat:@"%@", self.compatibilityData[@"required_ios_version"] ?: @"—"];
-    NSString *status = [NSString stringWithFormat:@"%@", self.compatibilityData[@"status"] ?: @"UNKNOWN"];
-    NSString *reason = [NSString stringWithFormat:@"%@", self.compatibilityData[@"reason"] ?: @"No additional restriction reported."];
+    id deviceValue=self.compatibilityData[@"device_name"] ?: self.compatibilityData[@"device"];
+    id iosValue=self.compatibilityData[@"ios_version"];
+    id archValue=self.compatibilityData[@"architecture"];
+    id appValue=self.compatibilityData[@"app_version"];
+    id requiredValue=self.compatibilityData[@"required_ios_version"];
+    id statusValue=self.compatibilityData[@"status"];
+    id reasonValue=self.compatibilityData[@"reason"];
+    NSString *device=([deviceValue isKindOfClass:[NSString class]] && [(NSString *)deviceValue length]) ? deviceValue : UIDevice.currentDevice.model;
+    NSString *ios=([iosValue isKindOfClass:[NSString class]] && [(NSString *)iosValue length]) ? [NSString stringWithFormat:@"iOS %@",iosValue] : [NSString stringWithFormat:@"iOS %@",UIDevice.currentDevice.systemVersion ?: @"—"];
+    NSString *arch=([archValue isKindOfClass:[NSString class]] && [(NSString *)archValue length]) ? archValue : @"—";
+    NSString *app=([appValue isKindOfClass:[NSString class]] && [(NSString *)appValue length]) ? appValue : ([[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"—");
+    NSString *required=([requiredValue isKindOfClass:[NSString class]] && [(NSString *)requiredValue length]) ? requiredValue : @"Not specified";
+    NSString *status=([statusValue isKindOfClass:[NSString class]] && [(NSString *)statusValue length]) ? [statusValue uppercaseString] : @"NOT VERIFIED";
+    NSString *reason=([reasonValue isKindOfClass:[NSString class]] && [(NSString *)reasonValue length]) ? reasonValue : @"Compatibility information is currently unavailable.";
     NSString *message = [NSString stringWithFormat:@"Device   %@\n\niOS      %@\n\nArch     %@\n\nApp      %@\n\nRequired %@\n\nStatus   %@\n\n%@",device,ios,arch,app,required,status,reason];
     [self showCustomConfirmationWithTitle:@"DEVICE COMPATIBILITY" message:message confirmTitle:@"RECHECK" completion:^{ [self requestDeviceCompatibilityRecheck]; }];
 }
@@ -2604,7 +2675,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
         UIView *card=[self card]; [overlay addSubview:card];
         UILabel *t=[self label:title.uppercaseString size:16 weight:UIFontWeightBold color:[ZXTheme primaryText]]; [ZXTheme track:t spacing:1.0]; t.textAlignment=NSTextAlignmentCenter; t.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:t];
         UILabel *m=[self label:message ?: @"" size:12 weight:UIFontWeightRegular color:[ZXTheme secondaryText]]; m.textAlignment=NSTextAlignmentCenter; m.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:m];
-        UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:b]; [b setTitle:confirmTitle ?: @"DISMISS" forState:UIControlStateNormal]; b.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:b];
+        UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:b]; [b setTitle:ZXLocalizedUI(confirmTitle ?: @"DISMISS") forState:UIControlStateNormal]; b.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:b];
         UIButton *x=[UIButton buttonWithType:UIButtonTypeSystem]; [x setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal]; x.tintColor=[ZXTheme mutedText]; x.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:x];
         objc_setAssociatedObject(b,@selector(showCustomConfirmationWithTitle:message:confirmTitle:completion:),overlay,OBJC_ASSOCIATION_RETAIN_NONATOMIC); objc_setAssociatedObject(b,@selector(showCustomConfirmationWithTitle:message:confirmTitle:completion:),completion,OBJC_ASSOCIATION_COPY_NONATOMIC);
         // Store both overlay and callback in a tiny holder to avoid selector-specific global state.
@@ -2673,7 +2744,30 @@ static NSInteger const ZXMaxPINAttempts = 5;
     [[NSUserDefaults standardUserDefaults] setObject:language forKey:ZXLanguageKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
     UIView *overlay=self.languageOverlay; self.languageOverlay=nil;
-    [UIView animateWithDuration:0.22 animations:^{overlay.alpha=0;} completion:^(BOOL f){[overlay removeFromSuperview];[self showLoginScreen];}];
+    [UIView animateWithDuration:0.22 animations:^{overlay.alpha=0;} completion:^(BOOL f){
+        [overlay removeFromSuperview];
+        [self applyCurrentLanguageToView:self.view];
+        if (self.settingsVisible) [self rebuildSettings];
+        else [self showLoginScreen];
+    }];
+}
+
+- (void)applyCurrentLanguageToView:(UIView *)view {
+    if (!view) return;
+    if (view == self.languageOverlay) return;
+    for (UIView *subview in [view.subviews copy]) {
+        if ([subview isKindOfClass:[UILabel class]]) {
+            UILabel *label = (UILabel *)subview;
+            NSString *translated = ZXLocalizedUI(label.text);
+            if (translated.length) label.text = translated;
+        } else if ([subview isKindOfClass:[UIButton class]]) {
+            UIButton *button = (UIButton *)subview;
+            NSString *title = [button titleForState:UIControlStateNormal];
+            NSString *translated = ZXLocalizedUI(title);
+            if (translated.length) [button setTitle:translated forState:UIControlStateNormal];
+        }
+        [self applyCurrentLanguageToView:subview];
+    }
 }
 
 - (void)showLanguagePicker { [self showLanguageSelection]; }
@@ -2700,7 +2794,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
         [b.heightAnchor constraintEqualToConstant:48].active=YES;
         [b addTarget:self action:@selector(themeOptionPressed:) forControlEvents:UIControlEventTouchUpInside];
     }
-    UIButton *close=[UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:close]; [close setTitle:@"DONE" forState:UIControlStateNormal]; close.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:close]; [close addTarget:self action:@selector(closeThemeOverlay:) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *close=[UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:close]; [close setTitle:ZXLocalizedUI(@"DONE") forState:UIControlStateNormal]; close.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:close]; [close addTarget:self action:@selector(closeThemeOverlay:) forControlEvents:UIControlEventTouchUpInside];
     [NSLayoutConstraint activateConstraints:@[[card.centerXAnchor constraintEqualToAnchor:overlay.centerXAnchor],[card.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],[card.leadingAnchor constraintEqualToAnchor:overlay.leadingAnchor constant:25],[card.trailingAnchor constraintEqualToAnchor:overlay.trailingAnchor constant:-25],[title.topAnchor constraintEqualToAnchor:card.topAnchor constant:25],[title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],[title.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],[sub.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:8],[sub.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],[sub.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],[stack.topAnchor constraintEqualToAnchor:sub.bottomAnchor constant:18],[stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],[stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],[close.topAnchor constraintEqualToAnchor:stack.bottomAnchor constant:14],[close.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],[close.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],[close.heightAnchor constraintEqualToConstant:48],[close.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20]]];
 }
 - (void)themeOptionPressed:(UIButton *)button {
@@ -2729,7 +2823,8 @@ static NSInteger const ZXMaxPINAttempts = 5;
 - (void)appWillResignActive:(NSNotification *)note { if (self.safeModeEnabled) [self lockSafeMode]; }
 - (void)appDidBecomeActive:(NSNotification *)note { [self updatePrivacyCaptureState]; }
 - (void)handleScreenshotNotification:(NSNotification *)note {
-    [self showPrivacyOverlayForReason:nil];
+    // A screenshot notification is not live screen sharing. Do not block the UI for a normal screenshot.
+    (void)note;
 }
 - (void)updatePrivacyCaptureState {
     BOOL captured = [UIScreen mainScreen].isCaptured;
