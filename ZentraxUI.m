@@ -1,4 +1,4 @@
-//
+	//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -2058,23 +2058,66 @@ static NSInteger const ZXMaxPINAttempts = 5;
         return;
     }
     __weak typeof(self) weakSelf = self;
-    void (^completion)(BOOL, NSDictionary *, NSInteger, NSString *) = ^(BOOL success, NSDictionary *response, NSInteger errorType, NSString *errorMsg) {
-        __strong typeof(weakSelf) self = weakSelf; if (!self) return;
-        ZXStartupState state = ZXStartupStateReady;
-        NSString *message = errorMsg;
-        NSString *code = [[NSString stringWithFormat:@"%@", response[@"error_code"] ?: response[@"code"] ?: @""] uppercaseString];
-        if (!success) {
-            if ([code containsString:@"MAINTENANCE"]) state = ZXStartupStateMaintenance;
-            else if ([code containsString:@"VERSION"] || [code containsString:@"UPDATE"]) state = ZXStartupStateVersionMismatch;
-            else if ([code containsString:@"COMPAT"] || [code containsString:@"DEVICE_NOT_SUPPORTED"] || [code containsString:@"INCOMPATIBLE"]) state = ZXStartupStateIncompatible;
-            else state = ZXStartupStateConnectionError;
+
+    /*
+     * ZXBootstrapCompletion has FIVE parameters:
+     *   success, response, bootstrapState, errorType, errorMessage
+     *
+     * The previous implementation declared only FOUR parameters and therefore
+     * interpreted errorType as an NSString *.  When bootstrap failed, that
+     * integer was later used as a message object, which could dereference an
+     * invalid pointer and terminate the app immediately while the splash was
+     * still at 0%.
+     *
+     * Keep the callback strongly typed so this cannot silently regress.
+     */
+    ZXBootstrapCompletion completion = ^(BOOL success,
+                                         NSDictionary * _Nullable response,
+                                         ZXBootstrapState bootstrapState,
+                                         ZXNetworkErrorType errorType,
+                                         NSString * _Nullable errorMsg) {
+        (void)errorType;
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+
+        ZXStartupState state = ZXStartupStateConnectionError;
+        switch (bootstrapState) {
+            case ZXBootstrapStateReady:
+                state = ZXStartupStateReady;
+                break;
+            case ZXBootstrapStateMaintenance:
+                state = ZXStartupStateMaintenance;
+                break;
+            case ZXBootstrapStateVersionMismatch:
+                state = ZXStartupStateVersionMismatch;
+                break;
+            case ZXBootstrapStateIncompatible:
+                state = ZXStartupStateIncompatible;
+                break;
+            case ZXBootstrapStateConnectionError:
+                state = ZXStartupStateConnectionError;
+                break;
+            case ZXBootstrapStateUnknown:
+            default:
+                state = success ? ZXStartupStateReady : ZXStartupStateConnectionError;
+                break;
         }
+
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (response.count) [self consumeBootstrapPayload:response];
-            [self handleBootstrapState:state message:message ?: response[@"message"]];
+            if (response.count) {
+                [self consumeBootstrapPayload:response];
+            }
+            NSString *message = [errorMsg isKindOfClass:[NSString class]]
+                ? errorMsg
+                : ([response[@"message"] isKindOfClass:[NSString class]]
+                    ? response[@"message"]
+                    : nil);
+            [self handleBootstrapState:state message:message];
         });
     };
-    ((void (*)(id, SEL, id))objc_msgSend)(manager, bootstrap, completion);
+
+    /* Use the declared API rather than an untyped objc_msgSend block call. */
+    [(ZentraxNetworkManager *)manager bootstrapWithCompletion:completion];
 }
 
 - (void)consumeBootstrapPayload:(NSDictionary *)payload {
