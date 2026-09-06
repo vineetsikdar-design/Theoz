@@ -16,19 +16,19 @@
 #pragma mark - Theme
 
 @interface ZXTheme : NSObject
-+ (UIColor *)background; + (UIColor *)surface; + (UIColor *)surfaceRaised; + (UIColor *)surfaceInset; + (UIColor *)border; + (UIColor *)borderStrong; + (UIColor *)violet; + (UIColor *)indigo; + (UIColor *)cyan; + (UIColor *)lavender; + (UIColor *)primaryText; + (UIColor *)secondaryText; + (UIColor *)mutedText; + (UIColor *)success; + (UIColor *)warning; + (UIColor *)error; + (UIFont *)display:(CGFloat)size; + (UIFont *)heading:(CGFloat)size; + (UIFont *)body:(CGFloat)size weight:(UIFontWeight)weight; + (UIFont *)mono:(CGFloat)size weight:(UIFontWeight)weight; + (void)track:(UILabel *)label spacing:(CGFloat)spacing; + (CAGradientLayer *)gradient; + (void)styleCard:(UIView *)view radius:(CGFloat)radius;
++ (UIColor *)background; + (UIColor *)surface; + (UIColor *)surfaceRaised; + (UIColor *)surfaceInset; + (UIColor *)border; + (UIColor *)borderStrong; + (UIColor *)violet; + (UIColor *)indigo; + (UIColor *)cyan; + (UIColor *)lavender; + (UIColor *)primaryText; + (UIColor *)secondaryText; + (UIColor *)mutedText; + (UIColor *)success; + (UIColor *)warning; + (UIColor *)error; + (UIFont *)display:(CGFloat)size; + (UIFont *)heading:(CGFloat)size; + (UIFont *)body:(CGFloat)size weight:(UIFontWeight)weight; + (UIFont *)mono:(CGFloat)size weight:(UIFontWeight)weight; + (void)track:(UILabel *)label spacing:(CGFloat)spacing; + (void)styleCard:(UIView *)view radius:(CGFloat)radius;
 @end
 @implementation ZXTheme
-+ (UIColor *)background { return [UIColor colorWithWhite:0.012 alpha:1]; }
-+ (UIColor *)surface { return [UIColor colorWithWhite:0.055 alpha:0.99]; }
-+ (UIColor *)surfaceRaised { return [UIColor colorWithWhite:0.095 alpha:1]; }
-+ (UIColor *)surfaceInset { return [UIColor colorWithWhite:0.025 alpha:1]; }
-+ (UIColor *)border { return [UIColor colorWithWhite:0.23 alpha:0.75]; }
-+ (UIColor *)borderStrong { return [UIColor colorWithWhite:0.72 alpha:0.85]; }
-+ (UIColor *)violet { return [UIColor colorWithWhite:0.95 alpha:1]; }
++ (UIColor *)background { return [UIColor blackColor]; }
++ (UIColor *)surface { return [UIColor colorWithWhite:0.055 alpha:1.0]; }
++ (UIColor *)surfaceRaised { return [UIColor colorWithWhite:0.105 alpha:1.0]; }
++ (UIColor *)surfaceInset { return [UIColor colorWithWhite:0.018 alpha:1.0]; }
++ (UIColor *)border { return [UIColor colorWithWhite:0.20 alpha:0.90]; }
++ (UIColor *)borderStrong { return [UIColor colorWithWhite:0.78 alpha:0.95]; }
++ (UIColor *)violet { return [UIColor colorWithWhite:0.94 alpha:1]; }
 + (UIColor *)indigo { return [UIColor colorWithWhite:0.16 alpha:1]; }
 + (UIColor *)cyan { return [UIColor colorWithWhite:0.82 alpha:1]; }
-+ (UIColor *)lavender { return [UIColor colorWithWhite:0.74 alpha:1]; }
++ (UIColor *)lavender { return [UIColor colorWithWhite:0.72 alpha:1]; }
 + (UIColor *)primaryText { return [UIColor colorWithWhite:0.985 alpha:1]; }
 + (UIColor *)secondaryText { return [UIColor colorWithWhite:0.67 alpha:1]; }
 + (UIColor *)mutedText { return [UIColor colorWithWhite:0.40 alpha:1]; }
@@ -40,96 +40,73 @@
 + (UIFont *)body:(CGFloat)size weight:(UIFontWeight)weight { return [UIFont systemFontOfSize:size weight:weight]; }
 + (UIFont *)mono:(CGFloat)size weight:(UIFontWeight)weight { return [UIFont monospacedSystemFontOfSize:size weight:weight]; }
 + (void)track:(UILabel *)label spacing:(CGFloat)spacing { if (!label.text.length) return; label.attributedText=[[NSAttributedString alloc] initWithString:label.text attributes:@{NSKernAttributeName:@(spacing)}]; }
-+ (CAGradientLayer *)gradient { CAGradientLayer *g=[CAGradientLayer layer]; g.colors=@[(id)[UIColor colorWithWhite:0.06 alpha:1].CGColor,(id)[UIColor colorWithWhite:0.22 alpha:1].CGColor,(id)[UIColor colorWithWhite:0.07 alpha:1].CGColor]; g.startPoint=CGPointMake(0,0); g.endPoint=CGPointMake(1,1); return g; }
-+ (void)styleCard:(UIView *)view radius:(CGFloat)radius { view.backgroundColor=[self surface]; view.layer.cornerRadius=radius; view.layer.borderWidth=1; view.layer.borderColor=[self border].CGColor; view.layer.shadowColor=[UIColor blackColor].CGColor; view.layer.shadowOpacity=0.55; view.layer.shadowRadius=24; view.layer.shadowOffset=CGSizeMake(0,12); }
++ (void)styleCard:(UIView *)view radius:(CGFloat)radius { view.backgroundColor=[self surface]; view.layer.cornerRadius=radius; view.layer.borderWidth=1; view.layer.borderColor=[self border].CGColor; view.layer.shadowColor=[UIColor blackColor].CGColor; view.layer.shadowOpacity=0.32; view.layer.shadowRadius=18; view.layer.shadowOffset=CGSizeMake(0,8); }
 @end
 
 #pragma mark - Ambient Background
 
 @interface ZXAtmosphereView : UIView
-@property(nonatomic,strong) CAGradientLayer *baseGradient;
-@property(nonatomic,strong) UIView *gridView;
-@property(nonatomic,strong) CAGradientLayer *gridSweep;
-@property(nonatomic,strong) CAGradientLayer *violetField;
-@property(nonatomic,strong) CAGradientLayer *blueField;
-@property(nonatomic,strong) CAGradientLayer *vignette;
 - (void)startAtmosphere;
 - (void)stopAtmosphere;
 @end
+
 @implementation ZXAtmosphereView
 - (instancetype)initWithFrame:(CGRect)frame {
-    self=[super initWithFrame:frame]; if(!self)return nil; self.backgroundColor=[UIColor blackColor]; self.clipsToBounds=YES; self.userInteractionEnabled=NO;
-    _baseGradient=[CAGradientLayer layer]; _baseGradient.colors=@[(id)[UIColor colorWithRed:.002 green:.003 blue:.008 alpha:1].CGColor,(id)[UIColor colorWithRed:.006 green:.008 blue:.018 alpha:1].CGColor,(id)[UIColor colorWithRed:.002 green:.002 blue:.006 alpha:1].CGColor]; _baseGradient.startPoint=CGPointMake(.15,0); _baseGradient.endPoint=CGPointMake(.85,1); [self.layer addSublayer:_baseGradient];
-    _violetField=[CAGradientLayer layer]; _violetField.type=kCAGradientLayerRadial; _violetField.colors=@[(id)[UIColor colorWithRed:.34 green:.10 blue:.72 alpha:.075].CGColor,(id)[UIColor colorWithRed:.22 green:.06 blue:.52 alpha:.025].CGColor,(id)[UIColor clearColor].CGColor]; _violetField.locations=@[@0,@.34,@1]; [self.layer addSublayer:_violetField];
-    _blueField=[CAGradientLayer layer]; _blueField.type=kCAGradientLayerRadial; _blueField.colors=@[(id)[UIColor colorWithRed:.05 green:.32 blue:.82 alpha:.060].CGColor,(id)[UIColor colorWithRed:.04 green:.18 blue:.55 alpha:.020].CGColor,(id)[UIColor clearColor].CGColor]; _blueField.locations=@[@0,@.38,@1]; [self.layer addSublayer:_blueField];
-    _gridView=[[UIView alloc]initWithFrame:CGRectZero]; _gridView.backgroundColor=[UIColor colorWithPatternImage:[self gridImage]]; _gridView.alpha=.92; _gridView.layer.compositingFilter=@"screenBlendMode"; [self addSubview:_gridView];
-    _gridSweep=[CAGradientLayer layer]; _gridSweep.colors=@[(id)[UIColor clearColor].CGColor,(id)[UIColor colorWithRed:.20 green:.12 blue:.55 alpha:.022].CGColor,(id)[UIColor clearColor].CGColor]; _gridSweep.startPoint=CGPointMake(0,0); _gridSweep.endPoint=CGPointMake(1,1); [self.layer addSublayer:_gridSweep];
-    _vignette=[CAGradientLayer layer]; _vignette.colors=@[(id)[UIColor clearColor].CGColor,(id)[UIColor blackColor].CGColor]; _vignette.locations=@[@.52,@1]; _vignette.startPoint=CGPointMake(.5,.30); _vignette.endPoint=CGPointMake(.5,1); _vignette.opacity=.26; [self.layer addSublayer:_vignette]; return self;
+    self=[super initWithFrame:frame];
+    if (!self) return nil;
+    self.backgroundColor=[UIColor blackColor];
+    self.opaque=YES;
+    self.clipsToBounds=YES;
+    self.userInteractionEnabled=NO;
+    return self;
 }
-- (UIImage *)gridImage { CGSize size=CGSizeMake(180,180); UIGraphicsBeginImageContextWithOptions(size,NO,0); CGContextRef ctx=UIGraphicsGetCurrentContext(); if(!ctx)return nil; uint32_t seed=0x5A17C3D1; for(NSInteger i=0;i<82;i++){seed=1664525u*seed+1013904223u; CGFloat x=(CGFloat)(seed%10000)/10000.*size.width; seed=1664525u*seed+1013904223u; CGFloat y=(CGFloat)(seed%10000)/10000.*size.height; seed=1664525u*seed+1013904223u; CGFloat v=(CGFloat)(seed%1000)/1000.; CGFloat r=v<.82?.45:(v<.97?.75:1.15); CGFloat a=v<.82?.34:(v<.97?.52:.82); CGContextSetFillColorWithColor(ctx,[UIColor colorWithWhite:1 alpha:a].CGColor); CGContextFillEllipseInRect(ctx,CGRectMake(x-r,y-r,r*2,r*2)); if(v>.975){CGContextSetStrokeColorWithColor(ctx,[UIColor colorWithRed:.35 green:.58 blue:1 alpha:.20].CGColor); CGContextSetLineWidth(ctx,.45); CGContextMoveToPoint(ctx,x-3,y); CGContextAddLineToPoint(ctx,x+3,y); CGContextMoveToPoint(ctx,x,y-3); CGContextAddLineToPoint(ctx,x,y+3); CGContextStrokePath(ctx);}} UIImage *image=UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return image; }
-- (void)layoutSubviews { [super layoutSubviews]; self.baseGradient.frame=self.bounds; self.violetField.frame=CGRectMake(-self.bounds.size.width*.20,-self.bounds.size.height*.05,self.bounds.size.width*.90,self.bounds.size.height*.62); self.blueField.frame=CGRectMake(self.bounds.size.width*.30,self.bounds.size.height*.38,self.bounds.size.width*.90,self.bounds.size.height*.64); self.gridView.frame=CGRectMake(0,-180,self.bounds.size.width,self.bounds.size.height+360); self.gridSweep.frame=CGRectInset(self.bounds,-self.bounds.size.width*.60,-self.bounds.size.height*.20); self.vignette.frame=self.bounds; }
-- (void)startAtmosphere { [self stopAtmosphere]; CABasicAnimation *stars=[CABasicAnimation animationWithKeyPath:@"transform.translation.y"]; stars.fromValue=@(-90.); stars.toValue=@90.; stars.duration=42; stars.repeatCount=HUGE_VALF; stars.timingFunction=[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear]; [self.gridView.layer addAnimation:stars forKey:@"starDrift"]; CABasicAnimation *sweep=[CABasicAnimation animationWithKeyPath:@"opacity"]; sweep.fromValue=@.35; sweep.toValue=@.85; sweep.duration=11; sweep.autoreverses=YES; sweep.repeatCount=HUGE_VALF; [self.gridSweep addAnimation:sweep forKey:@"nebulaPulse"]; CABasicAnimation *v=[CABasicAnimation animationWithKeyPath:@"position"]; v.fromValue=[NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.violetField.frame),CGRectGetMidY(self.violetField.frame))]; v.toValue=[NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.violetField.frame)+35,CGRectGetMidY(self.violetField.frame)+28)]; v.duration=24; v.autoreverses=YES; v.repeatCount=HUGE_VALF; [self.violetField addAnimation:v forKey:@"violetDrift"]; CABasicAnimation *b=[CABasicAnimation animationWithKeyPath:@"position"]; b.fromValue=[NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.blueField.frame),CGRectGetMidY(self.blueField.frame))]; b.toValue=[NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(self.blueField.frame)-35,CGRectGetMidY(self.blueField.frame)-24)]; b.duration=28; b.autoreverses=YES; b.repeatCount=HUGE_VALF; [self.blueField addAnimation:b forKey:@"blueDrift"]; }
-- (void)stopAtmosphere { [self.gridView.layer removeAnimationForKey:@"starDrift"]; [self.gridSweep removeAnimationForKey:@"nebulaPulse"]; [self.violetField removeAllAnimations]; [self.blueField removeAllAnimations]; }
+- (void)layoutSubviews { [super layoutSubviews]; }
+- (void)startAtmosphere { /* Pure black static background by design. */ }
+- (void)stopAtmosphere { /* No background animation. */ }
 @end
-
-#pragma mark - Small UI Helpers
-
-static UIView *ZXLine(void) {
-    UIView *line = [[UIView alloc] init];
-    line.backgroundColor = [[ZXTheme lavender] colorWithAlphaComponent:0.14];
-    return line;
-}
-
-static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
-    UILabel *label = [[UILabel alloc] init];
-    label.text = text;
-    label.font = font;
-    label.textColor = color;
-    return label;
-}
 
 #pragma mark - Premium Button
 
 @interface ZXPremiumButton : UIButton
 @property(nonatomic,strong) UIView *buttonSurface;
-@property(nonatomic,strong) CAGradientLayer *gradientLayer;
 @property(nonatomic,strong) UIActivityIndicatorView *spinner;
 @property(nonatomic,strong) NSString *savedTitle;
 - (void)setLoading:(BOOL)loading;
 @end
 
 @implementation ZXPremiumButton
-
 - (instancetype)init {
-    self = [super initWithFrame:CGRectZero];
+    self=[super initWithFrame:CGRectZero];
     if (!self) return nil;
+    self.backgroundColor=[UIColor colorWithWhite:0.95 alpha:1.0];
+    self.layer.cornerRadius=16.0;
+    self.layer.borderWidth=1.0;
+    self.layer.borderColor=[UIColor colorWithWhite:1.0 alpha:0.20].CGColor;
+    self.clipsToBounds=NO;
+    self.titleLabel.font=[UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+    [self setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+    [self setTitleColor:[UIColor colorWithWhite:0.25 alpha:1] forState:UIControlStateHighlighted];
+    self.adjustsImageWhenHighlighted=NO;
+    self.accessibilityTraits=UIAccessibilityTraitButton;
 
-    self.layer.cornerRadius = 15;
-    self.clipsToBounds = NO;
-    self.titleLabel.font = [ZXTheme heading:14];
-    [self setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-
-    _buttonSurface = [[UIView alloc] init];
-    _buttonSurface.userInteractionEnabled = NO;
-    _buttonSurface.layer.cornerRadius = 15;
-    _buttonSurface.clipsToBounds = YES;
-    _buttonSurface.translatesAutoresizingMaskIntoConstraints = NO;
+    _buttonSurface=[[UIView alloc] init];
+    _buttonSurface.userInteractionEnabled=NO;
+    _buttonSurface.backgroundColor=[UIColor colorWithWhite:0.95 alpha:1.0];
+    _buttonSurface.layer.cornerRadius=16.0;
+    _buttonSurface.clipsToBounds=YES;
+    _buttonSurface.translatesAutoresizingMaskIntoConstraints=NO;
     [self addSubview:_buttonSurface];
 
-    _gradientLayer = [ZXTheme gradient];
-    [_buttonSurface.layer insertSublayer:_gradientLayer atIndex:0];
+    self.layer.shadowColor=[UIColor blackColor].CGColor;
+    self.layer.shadowOpacity=0.28;
+    self.layer.shadowRadius=14.0;
+    self.layer.shadowOffset=CGSizeMake(0,7);
 
-    self.layer.shadowColor = [ZXTheme violet].CGColor;
-    self.layer.shadowOpacity = 0.28;
-    self.layer.shadowRadius = 16;
-    self.layer.shadowOffset = CGSizeMake(0, 7);
-
-    _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
-    _spinner.color = [UIColor whiteColor];
-    _spinner.hidesWhenStopped = YES;
-    _spinner.translatesAutoresizingMaskIntoConstraints = NO;
+    _spinner=[[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    _spinner.color=[UIColor blackColor];
+    _spinner.hidesWhenStopped=YES;
+    _spinner.translatesAutoresizingMaskIntoConstraints=NO;
     [self addSubview:_spinner];
-
     [NSLayoutConstraint activateConstraints:@[
         [_buttonSurface.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [_buttonSurface.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
@@ -138,53 +115,30 @@ static UILabel *ZXLabel(NSString *text, UIFont *font, UIColor *color) {
         [_spinner.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
         [_spinner.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
     ]];
-
-    [self bringSubviewToFront:self.titleLabel];
-    [self bringSubviewToFront:self.spinner];
-
     [self addTarget:self action:@selector(zxTouchDown) forControlEvents:UIControlEventTouchDown];
-    [self addTarget:self action:@selector(zxTouchUp) forControlEvents:UIControlEventTouchUpInside |
-     UIControlEventTouchUpOutside | UIControlEventTouchCancel];
-
+    [self addTarget:self action:@selector(zxTouchUp) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel];
     return self;
 }
-
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    self.gradientLayer.frame = self.buttonSurface.bounds;
-    [self bringSubviewToFront:self.titleLabel];
-    [self bringSubviewToFront:self.spinner];
-}
-
+- (void)layoutSubviews { [super layoutSubviews]; [self bringSubviewToFront:self.titleLabel]; [self bringSubviewToFront:self.spinner]; }
 - (void)zxTouchDown {
     [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
-    [UIView animateWithDuration:0.16 animations:^{
-        self.transform = CGAffineTransformMakeScale(0.975, 0.975);
-        self.layer.shadowOpacity = 0.42;
-    }];
+    [UIView animateWithDuration:0.12 delay:0 options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionAllowUserInteraction animations:^{ self.transform=CGAffineTransformMakeScale(0.982,0.982); self.layer.shadowOpacity=0.16; } completion:nil];
 }
-
 - (void)zxTouchUp {
-    [UIView animateWithDuration:0.35 delay:0
-         usingSpringWithDamping:0.78 initialSpringVelocity:0.4
-                       options:UIViewAnimationOptionAllowUserInteraction
-                    animations:^{
-        self.transform = CGAffineTransformIdentity;
-        self.layer.shadowOpacity = 0.28;
-    } completion:nil];
+    [UIView animateWithDuration:0.28 delay:0 usingSpringWithDamping:0.82 initialSpringVelocity:0.25 options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionAllowUserInteraction animations:^{ self.transform=CGAffineTransformIdentity; self.layer.shadowOpacity=0.28; } completion:nil];
 }
-
 - (void)setLoading:(BOOL)loading {
-    self.userInteractionEnabled = !loading;
+    self.userInteractionEnabled=!loading;
     if (loading) {
-        self.savedTitle = [self titleForState:UIControlStateNormal];
+        self.savedTitle=[self titleForState:UIControlStateNormal];
         [self setTitle:@"" forState:UIControlStateNormal];
         [_spinner startAnimating];
-        self.buttonSurface.alpha = 0.72;
+        self.alpha=0.72;
     } else {
         [self setTitle:self.savedTitle ?: @"" forState:UIControlStateNormal];
         [_spinner stopAnimating];
-        self.buttonSurface.alpha = 1.0;
+        self.alpha=1.0;
+        self.transform=CGAffineTransformIdentity;
     }
 }
 @end
@@ -842,8 +796,9 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [ZXTheme background];
+    self.view.backgroundColor = [UIColor blackColor];
     self.view.tintColor = [ZXTheme primaryText];
+    self.view.opaque = YES;
     self.currentState = ZXAppStateInit;
 
     _atmosphereView = [[ZXAtmosphereView alloc] initWithFrame:self.view.bounds];
@@ -897,6 +852,16 @@ static NSInteger const ZXMaxPINAttempts = 5;
     self.safeLockContainer.hidden = hidden;
 }
 
+- (void)transitionToPrimaryContainer:(UIView *)target {
+    if (!target) return;
+    NSArray *containers=@[self.splashContainer ?: [UIView new],self.authContainer ?: [UIView new],self.dashboardContainer ?: [UIView new],self.settingsContainer ?: [UIView new],self.startupBlockContainer ?: [UIView new],self.safeLockContainer ?: [UIView new]];
+    for (UIView *container in containers) if (container!=target) { container.hidden=YES; container.alpha=1.0; container.transform=CGAffineTransformIdentity; }
+    target.hidden=NO;
+    target.alpha=0.0;
+    target.transform=CGAffineTransformMakeTranslation(0,7.0);
+    [UIView animateWithDuration:0.24 delay:0 usingSpringWithDamping:0.94 initialSpringVelocity:0.15 options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionAllowUserInteraction animations:^{ target.alpha=1.0; target.transform=CGAffineTransformIdentity; } completion:nil];
+}
+
 - (UIView *)card {
     UIView *v = [[UIView alloc] init];
     [ZXTheme styleCard:v radius:22.0];
@@ -927,27 +892,42 @@ static NSInteger const ZXMaxPINAttempts = 5;
 }
 
 - (void)styleSecondaryButton:(UIButton *)button {
-    button.backgroundColor = [ZXTheme surfaceRaised];
-    button.layer.cornerRadius = 14;
-    button.layer.borderWidth = 1;
-    button.layer.borderColor = [ZXTheme border].CGColor;
-    button.titleLabel.font = [ZXTheme heading:13];
-    [button setTitleColor:[ZXTheme primaryText] forState:UIControlStateNormal];
-    if (@available(iOS 15.0, *)) {
-        UIButtonConfiguration *configuration = [UIButtonConfiguration plainButtonConfiguration];
-        configuration.contentInsets = NSDirectionalEdgeInsetsMake(13, 18, 13, 18);
-        configuration.baseForegroundColor = [ZXTheme primaryText];
-        configuration.background.backgroundColor = [ZXTheme surfaceRaised];
-        configuration.background.strokeColor = [ZXTheme border];
-        configuration.background.strokeWidth = 1.0;
-        configuration.background.cornerRadius = 14.0;
-        configuration.titleTextAttributesTransformer = ^NSDictionary *(NSDictionary *attributes) {
-            NSMutableDictionary *updated = [attributes mutableCopy];
-            updated[NSFontAttributeName] = [ZXTheme heading:13];
+    button.backgroundColor=[UIColor colorWithWhite:0.95 alpha:1.0];
+    button.layer.cornerRadius=14.0;
+    button.layer.borderWidth=1.0;
+    button.layer.borderColor=[UIColor colorWithWhite:1.0 alpha:0.18].CGColor;
+    button.layer.shadowColor=[UIColor blackColor].CGColor;
+    button.layer.shadowOpacity=0.20;
+    button.layer.shadowRadius=10.0;
+    button.layer.shadowOffset=CGSizeMake(0,5);
+    button.titleLabel.font=[UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    [button setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+    [button setTitleColor:[UIColor colorWithWhite:0.25 alpha:1] forState:UIControlStateHighlighted];
+    button.adjustsImageWhenHighlighted=NO;
+    if (@available(iOS 15.0,*)) {
+        UIButtonConfiguration *configuration=[UIButtonConfiguration plainButtonConfiguration];
+        configuration.contentInsets=NSDirectionalEdgeInsetsMake(10,16,10,16);
+        configuration.baseForegroundColor=[UIColor blackColor];
+        configuration.background.backgroundColor=[UIColor colorWithWhite:0.95 alpha:1.0];
+        configuration.background.strokeColor=[UIColor colorWithWhite:1.0 alpha:0.18];
+        configuration.background.strokeWidth=1.0;
+        configuration.background.cornerRadius=14.0;
+        configuration.titleTextAttributesTransformer=^NSDictionary *(NSDictionary *attributes){
+            NSMutableDictionary *updated=[attributes mutableCopy];
+            updated[NSFontAttributeName]=[UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
             return updated;
         };
-        button.configuration = configuration;
+        button.configuration=configuration;
     }
+    [button addTarget:self action:@selector(zxSecondaryTouchDown:) forControlEvents:UIControlEventTouchDown];
+    [button addTarget:self action:@selector(zxSecondaryTouchUp:) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel];
+}
+- (void)zxSecondaryTouchDown:(UIButton *)button {
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    [UIView animateWithDuration:0.12 animations:^{ button.transform=CGAffineTransformMakeScale(0.985,0.985); button.alpha=0.92; }];
+}
+- (void)zxSecondaryTouchUp:(UIButton *)button {
+    [UIView animateWithDuration:0.28 delay:0 usingSpringWithDamping:0.84 initialSpringVelocity:0.25 options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionAllowUserInteraction animations:^{ button.transform=CGAffineTransformIdentity; button.alpha=1.0; } completion:nil];
 }
 
 #pragma mark - Splash
@@ -1483,6 +1463,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
 }
 
 - (void)updateDashboardWithConfiguration:(NSDictionary *)configuration {
+    if (![configuration isKindOfClass:[NSDictionary class]]) configuration=@{};
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{ [self updateDashboardWithConfiguration:configuration]; });
         return;
@@ -1504,28 +1485,32 @@ static NSInteger const ZXMaxPINAttempts = 5;
     [self.functionStateLabels removeAllObjects];
 
     BOOL hasFunctions = NO;
-    for (NSDictionary *category in categories) {
-        NSArray *functions = category[@"functions"];
-        NSString *categoryName = category[@"name"] ?: category[@"title"];
-        if (![functions isKindOfClass:[NSArray class]]) {
-            functions = @[category];
-            categoryName = nil;
-        }
+    if (![categories isKindOfClass:[NSArray class]]) categories=@[];
+    for (id rawCategory in categories) {
+        if (![rawCategory isKindOfClass:[NSDictionary class]]) continue;
+        NSDictionary *category=(NSDictionary *)rawCategory;
+        NSArray *functions=category[@"functions"];
+        NSString *categoryName=[category[@"name"] isKindOfClass:[NSString class]] ? category[@"name"] : ([category[@"title"] isKindOfClass:[NSString class]] ? category[@"title"] : nil);
+        if (![functions isKindOfClass:[NSArray class]]) { functions=@[category]; categoryName=nil; }
         if (categoryName.length) {
-            UILabel *cat = [self label:categoryName.uppercaseString size:9 weight:UIFontWeightBold color:[ZXTheme mutedText]];
+            UILabel *cat=[self label:categoryName.uppercaseString size:9 weight:UIFontWeightBold color:[ZXTheme mutedText]];
             [ZXTheme track:cat spacing:1.5];
             [_modulesStack addArrangedSubview:cat];
         }
-        for (NSDictionary *function in functions) {
-            NSString *fid = [NSString stringWithFormat:@"%@", function[@"id"] ?: function[@"function_id"] ?: function[@"name"] ?: @""];
+        for (id rawFunction in functions) {
+            if (![rawFunction isKindOfClass:[NSDictionary class]]) continue;
+            NSDictionary *function=(NSDictionary *)rawFunction;
+            id rawID=function[@"id"] ?: function[@"function_id"] ?: function[@"name"];
+            if (![rawID isKindOfClass:[NSString class]] && ![rawID isKindOfClass:[NSNumber class]]) continue;
+            NSString *fid=[NSString stringWithFormat:@"%@",rawID];
             if (!fid.length) continue;
-            hasFunctions = YES;
+            hasFunctions=YES;
             [self.functionDefinitions setObject:function forKey:fid];
-            BOOL on = [function[@"current_state"] boolValue] || [function[@"state"] boolValue] || [self.functionStates[fid] boolValue];
-            self.functionStates[fid] = @(on);
-            UIView *card = [self functionCardForDefinition:function functionId:fid isOn:on];
+            BOOL on=[function[@"current_state"] boolValue] || [function[@"state"] boolValue] || [self.functionStates[fid] boolValue];
+            self.functionStates[fid]=@(on);
+            UIView *card=[self functionCardForDefinition:function functionId:fid isOn:on];
             [_modulesStack addArrangedSubview:card];
-            self.functionCards[fid] = card;
+            self.functionCards[fid]=card;
         }
     }
     if (!hasFunctions) {
@@ -1641,7 +1626,12 @@ static NSInteger const ZXMaxPINAttempts = 5;
 }
 
 - (void)updateFunctionStates:(NSDictionary<NSString *,NSNumber *> *)states {
-    for (NSString *fid in states) [self updateFunctionState:fid state:[states[fid] boolValue]];
+    if (![states isKindOfClass:[NSDictionary class]]) return;
+    for (NSString *fid in states) {
+        id value=states[fid];
+        if (![value respondsToSelector:@selector(boolValue)]) continue;
+        [self updateFunctionState:fid state:[value boolValue]];
+    }
 }
 
 #pragma mark - Subscription / Time
@@ -1820,13 +1810,10 @@ static NSInteger const ZXMaxPINAttempts = 5;
     self.startupState = state;
     if (state == ZXStartupStateReady) return;
     if (state == ZXStartupStateBootstrapping) {
-        [self setAllPrimaryContainersHidden:YES];
-        self.splashContainer.hidden = NO;
-        self.splashContainer.alpha = 1;
+        [self transitionToPrimaryContainer:self.splashContainer];
         return;
     }
-    [self setAllPrimaryContainersHidden:YES];
-    self.startupBlockContainer.hidden = NO;
+    [self transitionToPrimaryContainer:self.startupBlockContainer];
     self.blockedState = state;
     NSString *title = @"SECURITY GATE";
     NSString *action = @"RETRY";
@@ -1881,8 +1868,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
 - (void)showLoginScreen {
     if (self.safeModeEnabled) { [self showSafeModeLockScreen]; return; }
-    [self setAllPrimaryContainersHidden:YES];
-    self.authContainer.hidden = NO;
+    [self transitionToPrimaryContainer:self.authContainer];
     self.currentState = ZXAppStateAuth;
     NSString *saved = [[NSUserDefaults standardUserDefaults] stringForKey:ZXLastKey];
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"Zentrax.RememberMe"] && saved.length) self.keyInput.textField.text = saved;
@@ -1891,8 +1877,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
 - (void)showDashboard {
     if (self.safeModeEnabled && self.safeModeState != ZXSafeModeStateUnlocked) { [self showSafeModeLockScreen]; return; }
-    [self setAllPrimaryContainersHidden:YES];
-    self.dashboardContainer.hidden = NO;
+    [self transitionToPrimaryContainer:self.dashboardContainer];
     self.currentState = ZXAppStateDashboard;
     [self startHeartbeatMonitor];
     [self refreshDashboardFromManagerIfAvailable];
@@ -1901,7 +1886,13 @@ static NSInteger const ZXMaxPINAttempts = 5;
 - (void)showMaintenanceScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateMaintenance message:message]; }
 - (void)showUpdateRequiredScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateVersionMismatch message:message]; }
 - (void)showConnectionErrorScreenWithMessage:(NSString *)message { [self showStartupState:ZXStartupStateConnectionError message:message]; }
-- (void)showCompatibilityScreenWithData:(NSDictionary *)compatibility { [self updateDeviceCompatibility:compatibility]; [self showStartupState:ZXStartupStateIncompatible message:compatibility[@"reason"] ?: compatibility[@"message"]]; }
+- (void)showCompatibilityScreenWithData:(NSDictionary *)compatibility {
+    NSDictionary *safe=[compatibility isKindOfClass:[NSDictionary class]] ? compatibility : @{};
+    [self updateDeviceCompatibility:safe];
+    id reason=safe[@"reason"] ?: safe[@"message"];
+    NSString *message=[reason isKindOfClass:[NSString class]] ? reason : nil;
+    [self showStartupState:ZXStartupStateIncompatible message:message];
+}
 
 #pragma mark - Bootstrap Bridge
 
@@ -1916,6 +1907,10 @@ static NSInteger const ZXMaxPINAttempts = 5;
         return;
     }
     id manager = ((id (*)(id, SEL))objc_msgSend)((id)cls, NSSelectorFromString(@"sharedManager"));
+    if (!manager || ![manager isKindOfClass:[ZentraxNetworkManager class]]) {
+        [self handleBootstrapState:ZXStartupStateConnectionError message:@"Secure network manager is unavailable."];
+        return;
+    }
     SEL bootstrap = NSSelectorFromString(@"bootstrapWithCompletion:");
     if (!manager || ![manager respondsToSelector:bootstrap]) {
         [self handleBootstrapState:ZXStartupStateReady message:nil];
@@ -1971,11 +1966,11 @@ static NSInteger const ZXMaxPINAttempts = 5;
             if (response.count) {
                 [self consumeBootstrapPayload:response];
             }
-            NSString *message = [errorMsg isKindOfClass:[NSString class]]
-                ? errorMsg
-                : ([response[@"message"] isKindOfClass:[NSString class]]
-                    ? response[@"message"]
-                    : nil);
+            NSString *message=[errorMsg isKindOfClass:[NSString class]] ? errorMsg : nil;
+            if (!message.length && [response isKindOfClass:[NSDictionary class]]) {
+                id responseMessage=((NSDictionary *)response)[@"message"];
+                if ([responseMessage isKindOfClass:[NSString class]]) message=responseMessage;
+            }
             [self handleBootstrapState:state message:message];
         });
     };
@@ -1986,10 +1981,14 @@ static NSInteger const ZXMaxPINAttempts = 5;
 
 - (void)consumeBootstrapPayload:(NSDictionary *)payload {
     if (![payload isKindOfClass:[NSDictionary class]]) return;
-    id serverTime = payload[@"server_time"] ?: payload[@"server_iso"] ?: payload[@"server"][@"time"];
-    NSDate *d = [self dateFromServerValue:serverTime];
+    id serverTime=payload[@"server_time"] ?: payload[@"server_iso"];
+    if (!serverTime) {
+        id server=payload[@"server"];
+        if ([server isKindOfClass:[NSDictionary class]]) serverTime=((NSDictionary *)server)[@"time"] ?: ((NSDictionary *)server)[@"iso"];
+    }
+    NSDate *d=[self dateFromServerValue:serverTime];
     if (d) [self updateServerTime:d];
-    NSDictionary *config = payload[@"configuration"] ?: payload[@"config"];
+    NSDictionary *config = payload[@"configuration"] ?: payload[@"config"] ?: payload[@"dashboard_data"];
     if ([config isKindOfClass:[NSDictionary class]]) [self updateDashboardWithConfiguration:config];
     NSDictionary *license = payload[@"license"];
     if ([license isKindOfClass:[NSDictionary class]]) [self updateSubscriptionState:license];
@@ -2086,6 +2085,37 @@ static NSInteger const ZXMaxPINAttempts = 5;
     return row;
 }
 
+- (UIView *)deviceInfoCard {
+    UIView *card=[self card];
+    card.layer.cornerRadius=20.0;
+    UILabel *eyebrow=[self label:@"DEVICE STATUS" size:9 weight:UIFontWeightBold color:[ZXTheme mutedText]];
+    [ZXTheme track:eyebrow spacing:1.5]; eyebrow.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:eyebrow];
+    NSString *device=[NSString stringWithFormat:@"%@",self.compatibilityData[@"device_name"] ?: self.compatibilityData[@"device"] ?: UIDevice.currentDevice.model ?: @"Unknown device"];
+    NSString *ios=[NSString stringWithFormat:@"iOS %@",self.compatibilityData[@"ios_version"] ?: UIDevice.currentDevice.systemVersion ?: @"—"];
+    NSString *status=[[NSString stringWithFormat:@"%@",self.compatibilityData[@"status"] ?: @"unknown"] lowercaseString];
+    BOOL supported=[status isEqualToString:@"supported"];
+    BOOL unsupported=[status isEqualToString:@"unsupported"];
+    NSString *statusText=supported?@"SUPPORTED":(unsupported?@"UNSUPPORTED":@"NOT VERIFIED");
+    UIColor *statusColor=supported?[ZXTheme success]:(unsupported?[ZXTheme error]:[ZXTheme warning]);
+    UILabel *name=[self label:device size:17 weight:UIFontWeightSemibold color:[ZXTheme primaryText]]; name.translatesAutoresizingMaskIntoConstraints=NO; name.numberOfLines=2; [card addSubview:name];
+    UILabel *version=[self label:ios size:11 weight:UIFontWeightMedium color:[ZXTheme secondaryText]]; version.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:version];
+    UIView *pill=[[UIView alloc] init]; pill.backgroundColor=[statusColor colorWithAlphaComponent:0.12]; pill.layer.cornerRadius=9; pill.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:pill];
+    UILabel *pillText=[self label:statusText size:9 weight:UIFontWeightBold color:statusColor]; [ZXTheme track:pillText spacing:1.0]; pillText.translatesAutoresizingMaskIntoConstraints=NO; [pill addSubview:pillText];
+    UILabel *details=[self label:[self compatibilitySubtitle] size:10 weight:UIFontWeightRegular color:[ZXTheme mutedText]]; details.translatesAutoresizingMaskIntoConstraints=NO; details.numberOfLines=2; [card addSubview:details];
+    UIButton *open=[self iconButton:@"chevron.right" size:28]; open.tintColor=[ZXTheme mutedText]; [open addTarget:self action:@selector(showDeviceCompatibilityDetails) forControlEvents:UIControlEventTouchUpInside]; [card addSubview:open];
+    [NSLayoutConstraint activateConstraints:@[
+        [card.heightAnchor constraintGreaterThanOrEqualToConstant:122],
+        [eyebrow.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],[eyebrow.topAnchor constraintEqualToAnchor:card.topAnchor constant:15],
+        [name.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],[name.topAnchor constraintEqualToAnchor:eyebrow.bottomAnchor constant:7],[name.trailingAnchor constraintLessThanOrEqualToAnchor:pill.leadingAnchor constant:-10],
+        [version.leadingAnchor constraintEqualToAnchor:name.leadingAnchor],[version.topAnchor constraintEqualToAnchor:name.bottomAnchor constant:3],
+        [pill.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16],[pill.topAnchor constraintEqualToAnchor:card.topAnchor constant:15],[pill.heightAnchor constraintEqualToConstant:28],
+        [pillText.leadingAnchor constraintEqualToAnchor:pill.leadingAnchor constant:10],[pillText.trailingAnchor constraintEqualToAnchor:pill.trailingAnchor constant:-10],[pillText.centerYAnchor constraintEqualToAnchor:pill.centerYAnchor],
+        [details.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],[details.trailingAnchor constraintEqualToAnchor:open.leadingAnchor constant:-6],[details.topAnchor constraintEqualToAnchor:version.bottomAnchor constant:9],[details.bottomAnchor constraintLessThanOrEqualToAnchor:card.bottomAnchor constant:-15],
+        [open.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-12],[open.centerYAnchor constraintEqualToAnchor:details.centerYAnchor]
+    ]];
+    return card;
+}
+
 - (void)rebuildSettings {
     for (UIView *v in [self.settingsStack.arrangedSubviews copy]) { [self.settingsStack removeArrangedSubview:v]; [v removeFromSuperview]; }
     [self.settingsStack addArrangedSubview:[self settingsSectionLabel:@"SECURITY"]];
@@ -2094,13 +2124,14 @@ static NSInteger const ZXMaxPINAttempts = 5;
     [self.settingsStack addArrangedSubview:self.safeModeCard];
 
     [self.settingsStack addArrangedSubview:[self settingsSectionLabel:@"DEVICE"]];
-    self.compatibilityCard = [self settingsRow:@"Device Compatibility" subtitle:[self compatibilitySubtitle] icon:@"iphone.gen3" action:@selector(showDeviceCompatibilityDetails) accessory:nil];
+    self.compatibilityCard = [self deviceInfoCard];
     [self.settingsStack addArrangedSubview:self.compatibilityCard];
 
     [self.settingsStack addArrangedSubview:[self settingsSectionLabel:@"PREFERENCES"]];
     NSString *language = [[NSUserDefaults standardUserDefaults] stringForKey:ZXLanguageKey] ?: @"English";
     [self.settingsStack addArrangedSubview:[self settingsRow:@"Language" subtitle:language icon:@"globe" action:@selector(showLanguagePicker) accessory:nil]];
-    [self.settingsStack addArrangedSubview:[self settingsRow:@"Appearance" subtitle:@"ZENTRAX Obsidian — pure black premium interface" icon:@"circle.lefthalf.filled" action:@selector(showThemeInfo) accessory:nil]];
+    NSString *selectedTheme=[[NSUserDefaults standardUserDefaults] stringForKey:ZXThemeKey] ?: @"Obsidian Black";
+    [self.settingsStack addArrangedSubview:[self settingsRow:@"Appearance" subtitle:[NSString stringWithFormat:@"%@ • Pure black premium interface",selectedTheme] icon:@"circle.lefthalf.filled" action:@selector(showThemeInfo) accessory:nil]];
 
     [self.settingsStack addArrangedSubview:[self settingsSectionLabel:@"ACCOUNT"]];
     [self.settingsStack addArrangedSubview:[self settingsRow:@"Sign Out" subtitle:@"Close the current secure session" icon:@"rectangle.portrait.and.arrow.right" action:@selector(handleLogout) accessory:nil]];
@@ -2120,13 +2151,15 @@ static NSInteger const ZXMaxPINAttempts = 5;
     if (self.safeModeEnabled && self.safeModeState != ZXSafeModeStateUnlocked) { [self showSafeModeLockScreen]; return; }
     self.settingsVisible = YES;
     [self rebuildSettings];
-    [self setAllPrimaryContainersHidden:YES]; self.settingsContainer.hidden = NO;
+    [self transitionToPrimaryContainer:self.settingsContainer];
 }
 - (void)closeSettings { self.settingsVisible = NO; [self showDashboard]; }
 
 - (void)safeModeSwitchChanged:(UISwitch *)sender {
-    if (sender.isOn) [self showSafeModeSettings];
-    else {
+    if (sender.isOn) {
+        [self showSafeModeSettings];
+    } else {
+        sender.on=YES;
         [self requestSafeModeDisableConfirmation];
     }
 }
@@ -2245,7 +2278,7 @@ static NSInteger const ZXMaxPINAttempts = 5;
     self.safeLockTitle.text = self.safeModeCreatingPasscode ? @"Create Passcode" : @"Enter passcode";
     self.safeLockSubtitle.text = self.safeModeCreatingPasscode ? @"Create a 6-digit private passcode" : @"Enter passcode";
     self.safeLockBackButton.hidden = !self.safeModeCreatingPasscode;
-    [self setAllPrimaryContainersHidden:YES]; self.safeLockContainer.hidden = NO;
+    [self transitionToPrimaryContainer:self.safeLockContainer];
     self.currentState = ZXAppStateStartupBlock;
 }
 
@@ -2400,7 +2433,11 @@ static NSInteger const ZXMaxPINAttempts = 5;
 - (NSString *)compatibilitySubtitle {
     NSString *status = [[NSString stringWithFormat:@"%@", self.compatibilityData[@"status"] ?: @"unknown"] lowercaseString];
     if ([status isEqualToString:@"supported"]) return @"Supported on this device";
-    if ([status isEqualToString:@"unsupported"]) return [NSString stringWithFormat:@"Unsupported • %@", self.compatibilityData[@"reason"] ?: @"Server policy"];
+    if ([status isEqualToString:@"unsupported"]) {
+        id reason=self.compatibilityData[@"reason"];
+        NSString *safeReason=[reason isKindOfClass:[NSString class]] && [reason length] ? reason : @"Server policy";
+        return [NSString stringWithFormat:@"Unsupported • %@",safeReason];
+    }
     return @"Check device, iOS and architecture support";
 }
 
@@ -2559,11 +2596,32 @@ static NSInteger const ZXMaxPINAttempts = 5;
     UILabel *sub=[self label:@"Curated visual systems. The current flagship is Obsidian Black." size:11 weight:UIFontWeightRegular color:[ZXTheme secondaryText]]; sub.textAlignment=NSTextAlignmentCenter; sub.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:sub];
     UIStackView *stack=[[UIStackView alloc] init]; stack.axis=UILayoutConstraintAxisVertical; stack.spacing=9; stack.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:stack];
     NSArray *themes=@[@"Obsidian Black",@"Carbon Silver",@"Midnight Graphite",@"Stealth Mono"];
-    for (NSString *name in themes) { UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:b]; [b setTitle:name forState:UIControlStateNormal]; [stack addArrangedSubview:b]; [b.heightAnchor constraintEqualToConstant:48].active=YES; [b addTarget:self action:@selector(themeOptionPressed:) forControlEvents:UIControlEventTouchUpInside]; }
+    NSString *selectedTheme=[[NSUserDefaults standardUserDefaults] stringForKey:ZXThemeKey] ?: @"Obsidian Black";
+    for (NSString *name in themes) {
+        UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];
+        [self styleSecondaryButton:b];
+        [b setTitle:name forState:UIControlStateNormal];
+        [b setImage:[UIImage systemImageNamed:[name isEqualToString:selectedTheme] ? @"checkmark.circle.fill" : @"circle"] forState:UIControlStateNormal];
+        b.semanticContentAttribute=UISemanticContentAttributeForceLeftToRight;
+        b.imageEdgeInsets=UIEdgeInsetsMake(0,0,0,8);
+        [stack addArrangedSubview:b];
+        [b.heightAnchor constraintEqualToConstant:48].active=YES;
+        [b addTarget:self action:@selector(themeOptionPressed:) forControlEvents:UIControlEventTouchUpInside];
+    }
     UIButton *close=[UIButton buttonWithType:UIButtonTypeSystem]; [self styleSecondaryButton:close]; [close setTitle:@"DONE" forState:UIControlStateNormal]; close.translatesAutoresizingMaskIntoConstraints=NO; [card addSubview:close]; [close addTarget:self action:@selector(closeThemeOverlay:) forControlEvents:UIControlEventTouchUpInside];
     [NSLayoutConstraint activateConstraints:@[[card.centerXAnchor constraintEqualToAnchor:overlay.centerXAnchor],[card.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],[card.leadingAnchor constraintEqualToAnchor:overlay.leadingAnchor constant:25],[card.trailingAnchor constraintEqualToAnchor:overlay.trailingAnchor constant:-25],[title.topAnchor constraintEqualToAnchor:card.topAnchor constant:25],[title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],[title.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],[sub.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:8],[sub.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],[sub.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],[stack.topAnchor constraintEqualToAnchor:sub.bottomAnchor constant:18],[stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],[stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],[close.topAnchor constraintEqualToAnchor:stack.bottomAnchor constant:14],[close.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],[close.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],[close.heightAnchor constraintEqualToConstant:48],[close.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20]]];
 }
-- (void)themeOptionPressed:(UIButton *)button { [[NSUserDefaults standardUserDefaults] setObject:button.currentTitle ?: @"Obsidian Black" forKey:ZXThemeKey]; [[NSUserDefaults standardUserDefaults] synchronize]; [self showToast:[NSString stringWithFormat:@"%@ selected",button.currentTitle] success:YES]; }
+- (void)themeOptionPressed:(UIButton *)button {
+    NSString *theme=button.currentTitle.length ? button.currentTitle : @"Obsidian Black";
+    [[NSUserDefaults standardUserDefaults] setObject:theme forKey:ZXThemeKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    [self showToast:[NSString stringWithFormat:@"%@ selected",theme] success:YES];
+    UIView *overlay=button.superview.superview.superview;
+    [UIView animateWithDuration:0.18 animations:^{ overlay.alpha=0; } completion:^(BOOL finished){
+        [overlay removeFromSuperview];
+        if (self.settingsVisible) [self rebuildSettings];
+    }];
+}
 - (void)closeThemeOverlay:(UIButton *)button { UIView *overlay=button.superview.superview; [UIView animateWithDuration:0.16 animations:^{overlay.alpha=0;} completion:^(BOOL f){[overlay removeFromSuperview];}]; }
 
 #pragma mark - Privacy / Screen Capture
