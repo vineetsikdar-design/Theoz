@@ -9,13 +9,11 @@
 #import "ZentraxUI.h"
 #import "ZentraxNetworkManager.h"
 #import <QuartzCore/QuartzCore.h>
-#import <objc/runtime.h>
 
 #pragma mark - Constants & Keys
 
-static NSString * const ZXSafeModeEnabledKey = @"Zentrax.SafeMode.Enabled";
-static NSString * const ZXSafeModePasscodeService = @"in.zentrax.safemode";
-static NSString * const ZXSafeModePasscodeAccount = @"passcode";
+static NSString * const ZXSafeModeEnabledKey = @"in.zentrax.global.safemode.enabled";
+static NSString * const ZXSafeModePasscodeAccount = @"in.zentrax.global.safemode.pin";
 static NSString * const ZXLanguageKey = @"in.zentrax.global.language";
 static NSString * const ZXThemeKey = @"in.zentrax.global.theme";
 static NSString * const ZXLastKey = @"in.zentrax.global.lastkey";
@@ -63,7 +61,8 @@ static NSString *ZXSafeString(id value, NSString *fallback) {
 #pragma mark - Localization
 
 static NSString *ZXCurrentLanguage(void) {
-    NSString *language = [[NSUserDefaults standardUserDefaults] stringForKey:ZXLanguageKey];
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    NSString *language = [globalDefaults stringForKey:ZXLanguageKey];
     return language.length ? language : @"English";
 }
 
@@ -138,7 +137,10 @@ static NSString *ZXLocalizedUI(NSString *text) {
 @end
 
 @implementation ZXTheme
-+ (NSString *)currentTheme { return [[NSUserDefaults standardUserDefaults] stringForKey:ZXThemeKey] ?: @"Obsidian Black"; }
++ (NSString *)currentTheme {
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    return [globalDefaults stringForKey:ZXThemeKey] ?: @"Obsidian Black";
+}
 + (UIColor *)background { return [UIColor blackColor]; } 
 + (UIColor *)surface {
     NSString *t = [self currentTheme];
@@ -707,9 +709,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
         return;
     }
     
-    // Always remember key in this premium version for user convenience
-    [[NSUserDefaults standardUserDefaults] setObject:key forKey:ZXLastKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    [globalDefaults setObject:key forKey:ZXLastKey];
+    [globalDefaults synchronize];
 
     [_loginBtn setLoading:YES];
     _authStatus.textColor = [ZXTheme secondaryText];
@@ -735,9 +737,21 @@ static NSString *ZXLocalizedUI(NSString *text) {
             });
         }];
     } else {
-        [self hideGlobalLoadingState];
-        [self.loginBtn setLoading:NO];
-        [self showGlobalErrorWithTitle:@"AUTHENTICATION UNAVAILABLE" message:@"The secure authentication bridge is not available."];
+        [[ZentraxNetworkManager sharedManager] authenticateWithKey:key completion:^(BOOL success, NSDictionary * _Nullable responseData, ZXNetworkErrorType errorType, NSString * _Nullable errorMsg) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) self = weakSelf;
+                if (!self) return;
+                [self hideGlobalLoadingState];
+                [self.loginBtn setLoading:NO];
+                if (success) {
+                    self.authStatus.textColor = [ZXTheme success];
+                    self.authStatus.text = ZXLocalizedUI(@"Access granted • Loading secure workspace");
+                    [self showDashboard];
+                } else {
+                    [self presentAuthError:(ZXAuthError)errorType message:errorMsg];
+                }
+            });
+        }];
     }
 }
 
@@ -1111,7 +1125,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     } else if ([self.delegate respondsToSelector:@selector(zentraxDidRequestModuleToggle:state:completion:)]) {
         [self.delegate zentraxDidRequestModuleToggle:fid state:requested completion:finish];
     } else {
-        // Fallback to direct call since header is imported
         [[ZentraxNetworkManager sharedManager] performModuleOperationWithFunctionId:fid action:(requested ? 2 : 1) completion:^(BOOL success, NSDictionary * _Nullable modulePayload, NSString * _Nullable errorMsg) {
             finish(success, errorMsg);
         }];
@@ -1355,7 +1368,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
 }
 
 - (void)completeStartupRouting {
-    NSString *key = [[NSUserDefaults standardUserDefaults] stringForKey:ZXLastKey];
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    NSString *key = [globalDefaults stringForKey:ZXLastKey];
     if (key.length > 0) {
         if ([self.delegate respondsToSelector:@selector(zentraxDidRequestSessionVerificationWithCompletion:)]) {
             __weak typeof(self) weakSelf = self;
@@ -1474,7 +1488,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [self.delegate zentraxDidRequestLogoutWithCompletion:^{ dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf showLoginScreen]; }); }];
     } else {
         [[ZentraxNetworkManager sharedManager] logout];
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:ZXLastKey];
+        NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+        [globalDefaults removeObjectForKey:ZXLastKey];
+        [globalDefaults synchronize];
         [self showLoginScreen];
     }
 }
@@ -1636,7 +1652,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [ZXTheme track:prefLabel spacing:1.5];
     [self.settingsStack addArrangedSubview:prefLabel];
     
-    NSString *language = [[NSUserDefaults standardUserDefaults] stringForKey:ZXLanguageKey] ?: @"English";
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    NSString *language = [globalDefaults stringForKey:ZXLanguageKey] ?: @"English";
     [self.settingsStack addArrangedSubview:[self settingsRow:@"Language" subtitle:language icon:@"globe" action:@selector(showLanguagePicker) accessory:nil]];
     
     NSString *theme = [ZXTheme currentTheme];
@@ -1723,15 +1740,17 @@ static NSString *ZXLocalizedUI(NSString *text) {
 #pragma mark - Safe UI Mode (Native Numpad)
 
 - (void)applyInitialSafeModeState {
-    self.safeModeEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:ZXSafeModeEnabledKey];
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    self.safeModeEnabled = [globalDefaults boolForKey:ZXSafeModeEnabledKey];
     self.safeModeState = self.safeModeEnabled ? ZXSafeModeStateLocked : ZXSafeModeStateOff;
 }
 
 - (void)updateSafeModeState:(ZXSafeModeState)state {
     self.safeModeState = state;
     self.safeModeEnabled = (state != ZXSafeModeStateOff);
-    [[NSUserDefaults standardUserDefaults] setBool:self.safeModeEnabled forKey:ZXSafeModeEnabledKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    [globalDefaults setBool:self.safeModeEnabled forKey:ZXSafeModeEnabledKey];
+    [globalDefaults synchronize];
     if (self.settingsVisible) [self rebuildSettings];
 }
 
@@ -2073,8 +2092,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
     NSArray *langs = @[@"English", @"Tiếng Việt", @"简体中文"];
     for (NSString *lang in langs) {
         [alert addAction:[UIAlertAction actionWithTitle:lang style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-            [[NSUserDefaults standardUserDefaults] setObject:lang forKey:ZXLanguageKey];
-            [[NSUserDefaults standardUserDefaults] synchronize];
+            NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+            [globalDefaults setObject:lang forKey:ZXLanguageKey];
+            [globalDefaults synchronize];
             [self applyCurrentLanguageToView:self.view];
             [self rebuildSettings];
         }]];
@@ -2088,8 +2108,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
     NSArray *themes = @[@"Obsidian Black", @"Carbon Silver", @"Midnight Graphite", @"Stealth Mono"];
     for (NSString *theme in themes) {
         [alert addAction:[UIAlertAction actionWithTitle:theme style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-            [[NSUserDefaults standardUserDefaults] setObject:theme forKey:ZXThemeKey];
-            [[NSUserDefaults standardUserDefaults] synchronize];
+            NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+            [globalDefaults setObject:theme forKey:ZXThemeKey];
+            [globalDefaults synchronize];
             [self setupSettingsScreen];
         }]];
     }
@@ -2135,8 +2156,17 @@ static NSString *ZXLocalizedUI(NSString *text) {
             });
         }];
     } else {
-        [self hideGlobalLoadingState];
-        [self showGlobalErrorWithTitle:@"UNAVAILABLE" message:@"Compatibility service is not connected."];
+        [[ZentraxNetworkManager sharedManager] checkDeviceCompatibilityWithCompletion:^(BOOL success, NSDictionary * _Nullable compatibilityData, ZXDeviceCompatibilityStatus status, NSString * _Nullable errorMsg) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self hideGlobalLoadingState];
+                if (success) {
+                    [self updateDeviceCompatibility:compatibilityData ?: @{}];
+                    [self showToast:ZXLocalizedUI(@"Compatibility Verified") success:YES];
+                } else {
+                    [self showGlobalErrorWithTitle:ZXLocalizedUI(@"CHECK FAILED") message:errorMsg ?: ZXLocalizedUI(@"Unable to verify device.")];
+                }
+            });
+        }];
     }
 }
 
@@ -2272,7 +2302,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
     if (self.safeModeEnabled) { [self showSafeModeLockScreen]; return; }
     [self transitionToPrimaryContainer:self.authContainer];
     self.currentState = ZXAppStateAuth;
-    NSString *saved = [[NSUserDefaults standardUserDefaults] stringForKey:ZXLastKey];
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    NSString *saved = [globalDefaults stringForKey:ZXLastKey];
     if (saved.length) self.keyInput.textField.text = saved;
     [self stopHeartbeatMonitor];
 }
@@ -2303,8 +2334,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
         
         [[ZentraxNetworkManager sharedManager] logout];
         
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:ZXLastKey];
-        [[NSUserDefaults standardUserDefaults] synchronize];
+        NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+        [globalDefaults removeObjectForKey:ZXLastKey];
+        [globalDefaults synchronize];
         
         if ([self.delegate respondsToSelector:@selector(zentraxDidRequestLogoutWithCompletion:)]) {
             [self.delegate zentraxDidRequestLogoutWithCompletion:^{
@@ -2327,19 +2359,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     NSDictionary *attrs=@{NSFontAttributeName:[UIFont systemFontOfSize:50 weight:UIFontWeightHeavy],NSForegroundColorAttributeName:[UIColor whiteColor]};
     [@"Z" drawInRect:CGRectMake(42,32,50,60) withAttributes:attrs];
     UIImage *i=UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return i;
-}
-
-- (NSDate *)estimatedServerNow {
-    if (self.serverDate) {
-        NSDate *reference = objc_getAssociatedObject(self, @selector(estimatedServerNow));
-        if (!reference) {
-            reference = [NSDate date];
-            objc_setAssociatedObject(self, @selector(estimatedServerNow), reference, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:reference];
-        return [self.serverDate dateByAddingTimeInterval:MAX(0, elapsed)];
-    }
-    return [NSDate date];
 }
 
 - (void)resetToStartup { self.hasStarted = NO; self.currentState = ZXAppStateInit; [self stopHeartbeatMonitor]; [self stopLicenseCountdown]; [self beginBootstrap]; }
