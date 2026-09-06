@@ -331,6 +331,39 @@
     }
 }
 
+- (BOOL)booleanValueFromServerValue:(id)value defaultValue:(BOOL)defaultValue {
+    if ([value isKindOfClass:NSNumber.class]) {
+        return [(NSNumber *)value boolValue];
+    }
+
+    if ([value isKindOfClass:NSString.class]) {
+        NSString *normalized = [(NSString *)value
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].lowercaseString;
+
+        if ([normalized isEqualToString:@"1"] ||
+            [normalized isEqualToString:@"true"] ||
+            [normalized isEqualToString:@"yes"] ||
+            [normalized isEqualToString:@"on"] ||
+            [normalized isEqualToString:@"active"] ||
+            [normalized isEqualToString:@"enabled"] ||
+            [normalized isEqualToString:@"supported"]) {
+            return YES;
+        }
+
+        if ([normalized isEqualToString:@"0"] ||
+            [normalized isEqualToString:@"false"] ||
+            [normalized isEqualToString:@"no"] ||
+            [normalized isEqualToString:@"off"] ||
+            [normalized isEqualToString:@"inactive"] ||
+            [normalized isEqualToString:@"disabled"] ||
+            [normalized isEqualToString:@"unsupported"]) {
+            return NO;
+        }
+    }
+
+    return defaultValue;
+}
+
 - (ZXNetworkErrorType)errorTypeForCode:(NSString *)code {
     NSString *normalized = code.uppercaseString ?: @"";
 
@@ -478,11 +511,21 @@
             return;
         }
 
+        BOOL httpSuccess = httpResponse.statusCode >= 200 && httpResponse.statusCode < 300;
+
         if (data.length == 0) {
-            NSString *message = [NSString stringWithFormat:@"Server returned an empty response (HTTP %ld).", (long)httpResponse.statusCode];
+            NSString *message = [NSString stringWithFormat:
+                @"%@ • HTTP %ld • Server returned an empty response.",
+                safeEndpoint.length > 0 ? safeEndpoint : @"request",
+                (long)httpResponse.statusCode];
+
             if (strongSelf) [strongSelf updateLastError:message];
             [self completeOnMain:^{
-                completion(NO, nil, ZXNetworkErrorServer, message);
+                ZXNetworkErrorType type =
+                    (httpResponse.statusCode == 401 || httpResponse.statusCode == 403)
+                    ? ZXNetworkErrorInvalidSession
+                    : ZXNetworkErrorServer;
+                completion(NO, nil, type, message);
             }];
             return;
         }
@@ -502,11 +545,15 @@
         if (strongSelf) [strongSelf updateServerTimeFromResponse:json];
 
         NSString *status = [json[@"status"] isKindOfClass:NSString.class] ? json[@"status"] : @"";
-        BOOL success = [status.lowercaseString isEqualToString:@"success"];
+        BOOL serverReportedSuccess = [status.lowercaseString isEqualToString:@"success"];
+        BOOL success = httpSuccess && serverReportedSuccess;
 
         NSString *message = [json[@"message"] isKindOfClass:NSString.class]
             ? json[@"message"]
-            : (success ? @"Request completed successfully." : @"The server rejected the request.");
+            : (success ? @"Request completed successfully." :
+               [NSString stringWithFormat:@"%@ • HTTP %ld • Server rejected the request.",
+                safeEndpoint.length > 0 ? safeEndpoint : @"request",
+                (long)httpResponse.statusCode]);
 
         if (success) {
             if (strongSelf) [strongSelf updateLastError:nil];
@@ -518,6 +565,9 @@
 
         NSString *errorCode = [json[@"error_code"] isKindOfClass:NSString.class]
             ? json[@"error_code"] : @"SERVER_ERROR";
+        if (!httpSuccess && errorCode.length == 0) {
+            errorCode = @"SERVER_ERROR";
+        }
         ZXNetworkErrorType errorType = strongSelf
             ? [strongSelf errorTypeForCode:errorCode]
             : ZXNetworkErrorServer;
@@ -700,10 +750,17 @@
 - (void)cacheConfigurationFromResponse:(NSDictionary *)response {
     if (![response isKindOfClass:NSDictionary.class]) return;
 
-    BOOL containsConfiguration = response[@"categories"] != nil ||
-                                  response[@"functions"] != nil ||
-                                  response[@"dashboard"] != nil;
-    if (!containsConfiguration) return;
+    NSArray *categories = [response[@"categories"] isKindOfClass:NSArray.class]
+        ? response[@"categories"] : nil;
+    NSArray *functions = [response[@"functions"] isKindOfClass:NSArray.class]
+        ? response[@"functions"] : nil;
+    NSDictionary *dashboard = [response[@"dashboard"] isKindOfClass:NSDictionary.class]
+        ? response[@"dashboard"] : nil;
+
+    BOOL hasUsableConfiguration = categories.count > 0 ||
+                                   functions.count > 0 ||
+                                   dashboard.count > 0;
+    if (!hasUsableConfiguration) return;
 
     NSError *error = nil;
     NSData *data = [NSJSONSerialization dataWithJSONObject:response options:0 error:&error];
@@ -736,6 +793,20 @@
                                    NSString *errorMsg) {
         if (success) {
             [self cacheConfigurationFromResponse:responseData];
+
+            NSDictionary *cached = [self cachedConfiguration];
+            BOOL hasUsableServerConfiguration =
+                ([responseData[@"categories"] isKindOfClass:NSArray.class] && [responseData[@"categories"] count] > 0) ||
+                ([responseData[@"functions"] isKindOfClass:NSArray.class] && [responseData[@"functions"] count] > 0) ||
+                ([responseData[@"dashboard"] isKindOfClass:NSDictionary.class] && [responseData[@"dashboard"] count] > 0);
+
+            if (!hasUsableServerConfiguration && cached.count > 0) {
+                NSMutableDictionary *merged = [NSMutableDictionary dictionaryWithDictionary:responseData ?: @{}];
+                if (!merged[@"categories"] && cached[@"categories"]) merged[@"categories"] = cached[@"categories"];
+                if (!merged[@"functions"] && cached[@"functions"]) merged[@"functions"] = cached[@"functions"];
+                if (!merged[@"dashboard"] && cached[@"dashboard"]) merged[@"dashboard"] = cached[@"dashboard"];
+                responseData = merged;
+            }
         }
         if (completion) completion(success, responseData, errorType, errorMsg);
     }];
@@ -860,15 +931,29 @@
             return;
         }
 
-        NSMutableDictionary *result = [NSMutableDictionary dictionaryWithDictionary:responseData];
+        NSMutableDictionary *result = [NSMutableDictionary dictionaryWithDictionary:responseData ?: @{}];
         result[@"operation_id"] = operationID;
 
+        NSDictionary *payloadData = [responseData[@"payload"] isKindOfClass:NSDictionary.class]
+            ? responseData[@"payload"] : nil;
+        if (payloadData) {
+            [result addEntriesFromDictionary:payloadData];
+        }
+
+        if ([responseData[@"target"] isKindOfClass:NSDictionary.class]) {
+            result[@"target"] = responseData[@"target"];
+        }
+        if ([responseData[@"restore_contract"] isKindOfClass:NSDictionary.class]) {
+            result[@"restore_contract"] = responseData[@"restore_contract"];
+        }
+        if ([responseData[@"switch_mode"] isKindOfClass:NSString.class]) {
+            result[@"switch_mode"] = responseData[@"switch_mode"];
+        }
+
         if (action == ZXModuleOperationActionON) {
-            NSDictionary *payloadData = [responseData[@"payload"] isKindOfClass:NSDictionary.class]
-                ? responseData[@"payload"] : nil;
-            BOOL valid = [payloadData[@"file_data"] isKindOfClass:NSString.class] &&
-                         [payloadData[@"sha256"] isKindOfClass:NSString.class] &&
-                         [payloadData[@"size"] isKindOfClass:NSNumber.class];
+            BOOL valid = [result[@"file_data"] isKindOfClass:NSString.class] &&
+                         [result[@"sha256"] isKindOfClass:NSString.class] &&
+                         [result[@"size"] isKindOfClass:NSNumber.class];
             if (!valid) {
                 if (completion) completion(NO, nil, @"Server returned an incomplete verified ON payload.");
                 return;
@@ -1060,6 +1145,20 @@
         if (success) {
             [self cacheConfigurationFromResponse:responseData];
             [self cacheCompatibilityFromResponse:responseData];
+
+            NSDictionary *cached = [self cachedConfiguration];
+            BOOL hasUsableServerConfiguration =
+                ([responseData[@"categories"] isKindOfClass:NSArray.class] && [responseData[@"categories"] count] > 0) ||
+                ([responseData[@"functions"] isKindOfClass:NSArray.class] && [responseData[@"functions"] count] > 0) ||
+                ([responseData[@"dashboard"] isKindOfClass:NSDictionary.class] && [responseData[@"dashboard"] count] > 0);
+
+            if (!hasUsableServerConfiguration && cached.count > 0) {
+                NSMutableDictionary *merged = [NSMutableDictionary dictionaryWithDictionary:responseData ?: @{}];
+                if (!merged[@"categories"] && cached[@"categories"]) merged[@"categories"] = cached[@"categories"];
+                if (!merged[@"functions"] && cached[@"functions"]) merged[@"functions"] = cached[@"functions"];
+                if (!merged[@"dashboard"] && cached[@"dashboard"]) merged[@"dashboard"] = cached[@"dashboard"];
+                responseData = merged;
+            }
         }
         completion(success, responseData, errorType, errorMsg);
     }];
@@ -1147,12 +1246,8 @@
             compatibility = [self cachedCompatibilityData];
         }
 
-        BOOL supported = YES;
-        if (compatibility) {
-            id value = compatibility[@"supported"];
-            if ([value isKindOfClass:NSNumber.class]) supported = [value boolValue];
-            else if ([value isKindOfClass:NSString.class]) supported = [value boolValue];
-        }
+        BOOL supported = [self booleanValueFromServerValue:compatibility[@"supported"]
+                                                 defaultValue:YES];
 
         if (!success && errorType != ZXNetworkErrorCompatibility) {
             completion(NO, compatibility ?: responseData, ZXDeviceCompatibilityStatusUnknown, errorMsg);
