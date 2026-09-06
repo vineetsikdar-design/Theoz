@@ -188,7 +188,7 @@ typedef NS_ENUM(NSInteger, ZXDeviceCompatibilityUIStatus) {
 #pragma mark - Settings
 
 - (void)showSettings;
-- (void)showSettingsSection:(NSString *)sectionIdentifier;
+- (void)showSettingsSection:(NSString * _Nullable)sectionIdentifier;
 
 
 #pragma mark - Navigation / State
