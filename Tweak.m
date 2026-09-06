@@ -568,6 +568,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             NSString *dataContainer = findDataContainer(bundleId);
             if (!dataContainer) {
                 [self.stateStore failOperationWithId:operationId error:nil];
+                [self releaseTargetOperation:target];
                 [self finishModuleFailure:@"Target app container could not be resolved."
                                completion:completion];
                 return;
