@@ -1,4 +1,4 @@
-//
+	//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
@@ -576,7 +576,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
     NSError *ledgerError = nil;
     [self.stateStore beginOperationWithId:operationId
-                                   action:action
+                                   action:(isOn ? @"ON" : @"OFF")
                                functionId:resolvedFunctionId
                                 licenseId:licenseId
                                  deviceId:deviceId
