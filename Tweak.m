@@ -1,4 +1,4 @@
-		//
+	//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
@@ -171,6 +171,25 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
 @implementation ZXCoreBridge
 
+- (ZXStateStore *)stateStore {
+    if (!_stateStore) {
+        @synchronized (self) {
+            if (!_stateStore) {
+                ZXStateStore *store = [ZXStateStore sharedStore];
+                NSError *openError = nil;
+                if (![store open:&openError]) {
+                    NSLog(@"[Zentrax VIP] StateStore open deferred/failed: %@", openError);
+                } else {
+                    [store synchronize:nil];
+                    [store markUnresolvedRecordsForReconciliation];
+                }
+                _stateStore = store;
+            }
+        }
+    }
+    return _stateStore;
+}
+
 + (instancetype)sharedBridge {
     static ZXCoreBridge *instance = nil;
     static dispatch_once_t onceToken;
@@ -185,17 +204,14 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     if (self) {
         _moduleExecutionQueue = dispatch_queue_create("in.zentrax.execution.queue",
                                                        DISPATCH_QUEUE_SERIAL);
-        _stateStore = [ZXStateStore sharedStore];
         _activeTargetOperations = [NSMutableSet set];
 
         /*
-         * Open the persistent application-layer ledger before UI work.
-         * The ledger records transactions/recovery state only; it does not
-         * implement or alter any low-level privilege mechanism.
+         * Do not initialize the persistent ledger during process launch.
+         * Authentication/UI startup must remain independent from optional
+         * local recovery state. The ledger is created lazily the first time
+         * a session/operation actually needs it.
          */
-        [_stateStore open:nil];
-        [_stateStore synchronize:nil];
-        [_stateStore markUnresolvedRecordsForReconciliation];
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(zentraxApplicationWillResignActive:)
@@ -289,37 +305,14 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 return;
             }
 
-            NSArray *modules = responseData[@"modules"];
-            if ([modules isKindOfClass:NSArray.class]) {
-                [self.uiController updateDashboardWithModules:modules];
-            }
-
-            NSDictionary *subscription = responseData[@"subscription"];
-            if ([subscription isKindOfClass:NSDictionary.class]) {
-                [self.uiController updateSubscriptionState:subscription];
-            }
-
             /*
-             * Associate any existing ledger records with the newly verified
-             * server session. This never changes activation/expiry timing.
+             * Authentication success must not be coupled to optional dashboard
+             * bookkeeping. The network manager has already validated the
+             * response, stored the session token and cached configuration.
+             * The UI will consume that cache after routing to the dashboard.
+             * Keeping this completion path minimal prevents malformed optional
+             * server payloads or a stale local ledger from killing a valid login.
              */
-            NSString *licenseId = [responseData[@"license"][@"id"] description];
-            NSString *deviceId = [responseData[@"device"][@"id"] description];
-
-            if (licenseId.length && deviceId.length) {
-                NSError *associationError = nil;
-                NSArray *records = [self.stateStore recordsForLicenseId:licenseId];
-
-                for (ZXTargetLedgerRecord *record in records) {
-                    if (record.canonicalTarget.length) {
-                        [self.stateStore associateTarget:record.canonicalTarget
-                                               licenseId:licenseId
-                                                deviceId:deviceId
-                                                   error:&associationError];
-                    }
-                }
-            }
-
             if (completion) completion(YES, ZXAuthErrorNone, nil);
         }];
     }];
@@ -990,10 +983,126 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
 #pragma mark - ================= ZENTRAX UI LAUNCH COORDINATOR =================
 static BOOL ZXUIInstalled=NO;
-static UIWindow *ZXFindActiveWindow(void){ UIApplication *app=UIApplication.sharedApplication; if(!app)return nil; for(UIScene *scene in app.connectedScenes){ if(scene.activationState!=UISceneActivationStateForegroundActive && scene.activationState!=UISceneActivationStateForegroundInactive)continue; if(![scene isKindOfClass:[UIWindowScene class]])continue; UIWindowScene *ws=(UIWindowScene *)scene; for(UIWindow *w in ws.windows)if(w.isKeyWindow&&w.windowLevel==UIWindowLevelNormal)return w; for(UIWindow *w in ws.windows)if(!w.hidden&&w.windowLevel==UIWindowLevelNormal)return w;} for(UIWindow *w in app.windows)if(w.isKeyWindow&&w.windowLevel==UIWindowLevelNormal)return w; for(UIWindow *w in app.windows)if(!w.hidden&&w.windowLevel==UIWindowLevelNormal)return w; return nil; }
-static void ZXInstallUIIntoWindow(UIWindow *window){ if(ZXUIInstalled||!window)return; if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{ZXInstallUIIntoWindow(window);});return;} UIViewController *root=window.rootViewController; if([root isKindOfClass:[UINavigationController class]]){UIViewController *first=((UINavigationController *)root).viewControllers.firstObject;if([first isKindOfClass:[ZentraxUI class]]){ZXUIInstalled=YES;return;}} if([root isKindOfClass:[ZentraxUI class]]){ZXUIInstalled=YES;return;} Class c=NSClassFromString(@"ZentraxUI"); if(!c)return; MCMFilzaStart(); ZentraxUI *vc=[[c alloc]init]; ZXCoreBridge *bridge=[ZXCoreBridge sharedBridge]; bridge.uiController=vc; vc.delegate=bridge; UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:vc]; nav.navigationBarHidden=YES; nav.modalPresentationStyle=UIModalPresentationFullScreen; ZXUIInstalled=YES; window.rootViewController=nav; [window makeKeyAndVisible]; }
-static void ZXLaunchCoordinatorDidFinishLaunching(NSNotification *note){(void)note; dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.12*NSEC_PER_SEC)),dispatch_get_main_queue(),^{if(ZXUIInstalled)return; UIWindow *w=ZXFindActiveWindow(); if(w)ZXInstallUIIntoWindow(w);});}
-static void ZXRegisterLaunchCoordinator(void){ NSNotificationCenter *center=NSNotificationCenter.defaultCenter; [center addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note){ZXLaunchCoordinatorDidFinishLaunching(note);}]; dispatch_async(dispatch_get_main_queue(),^{if(ZXUIInstalled)return; UIApplicationState st=UIApplication.sharedApplication.applicationState; if(st==UIApplicationStateActive||st==UIApplicationStateInactive)ZXLaunchCoordinatorDidFinishLaunching(nil);}); }
+
+static UIWindow *ZXFindActiveWindow(void) {
+    UIApplication *app = UIApplication.sharedApplication;
+    if (!app) return nil;
+    for (UIScene *scene in app.connectedScenes) {
+        if (scene.activationState != UISceneActivationStateForegroundActive &&
+            scene.activationState != UISceneActivationStateForegroundInactive) continue;
+        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        UIWindowScene *ws = (UIWindowScene *)scene;
+        for (UIWindow *w in ws.windows) {
+            if (w.windowLevel == UIWindowLevelNormal && w.isKeyWindow) return w;
+        }
+        for (UIWindow *w in ws.windows) {
+            if (w.windowLevel == UIWindowLevelNormal && !w.hidden) return w;
+        }
+    }
+    for (UIWindow *w in app.windows) {
+        if (w.windowLevel == UIWindowLevelNormal && w.isKeyWindow) return w;
+    }
+    for (UIWindow *w in app.windows) {
+        if (w.windowLevel == UIWindowLevelNormal && !w.hidden) return w;
+    }
+    return nil;
+}
+
+static void ZXInstallUIIntoWindow(UIWindow *window) {
+    if (ZXUIInstalled || !window) return;
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ ZXInstallUIIntoWindow(window); });
+        return;
+    }
+
+    UIViewController *root = window.rootViewController;
+    if ([root isKindOfClass:[UINavigationController class]]) {
+        UIViewController *first = ((UINavigationController *)root).viewControllers.firstObject;
+        if ([first isKindOfClass:[ZentraxUI class]]) { ZXUIInstalled = YES; return; }
+    }
+    if ([root isKindOfClass:[ZentraxUI class]]) { ZXUIInstalled = YES; return; }
+
+    Class c = NSClassFromString(@"ZentraxUI");
+    if (!c) return;
+
+    // Never expose Filza's normal document UI while Zentrax is taking over.
+    BOOL wasHidden = window.hidden;
+    CGFloat oldAlpha = window.alpha;
+    window.alpha = 0.0;
+
+    @try {
+        MCMFilzaStart();
+        ZentraxUI *vc = [[c alloc] init];
+        ZXCoreBridge *bridge = [ZXCoreBridge sharedBridge];
+        bridge.uiController = vc;
+        vc.delegate = bridge;
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
+        nav.navigationBarHidden = YES;
+        nav.modalPresentationStyle = UIModalPresentationFullScreen;
+        window.rootViewController = nav;
+        ZXUIInstalled = YES;
+    } @catch (NSException *exception) {
+        NSLog(@"[Zentrax VIP] UI install exception: %@", exception);
+        ZXUIInstalled = NO;
+    }
+
+    window.hidden = wasHidden;
+    window.alpha = oldAlpha > 0.0 ? oldAlpha : 1.0;
+
+    /*
+     * Never call makeKeyAndVisible here. Filza owns its application/window
+     * lifecycle; forcing that method from a constructor-time takeover can
+     * re-enter the original Filza controller and cause both the dashboard
+     * flash and launch instability.
+     */
+}
+
+static void ZXLaunchCoordinatorDidFinishLaunching(NSNotification *note) {
+    (void)note;
+    // No artificial delay: the previous 120 ms delay visibly exposed Filza.
+    UIWindow *w = ZXFindActiveWindow();
+    if (w) ZXInstallUIIntoWindow(w);
+}
+
+static void ZXRegisterLaunchCoordinator(void) {
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    [center addObserverForName:UIApplicationDidFinishLaunchingNotification
+                         object:nil
+                          queue:[NSOperationQueue mainQueue]
+                     usingBlock:^(NSNotification *note) {
+        ZXLaunchCoordinatorDidFinishLaunching(note);
+    }];
+    [center addObserverForName:UIWindowDidBecomeVisibleNotification
+                         object:nil
+                          queue:[NSOperationQueue mainQueue]
+                     usingBlock:^(NSNotification *note) {
+        (void)note;
+        if (!ZXUIInstalled) {
+            UIWindow *w = ZXFindActiveWindow();
+            if (w) ZXInstallUIIntoWindow(w);
+        }
+    }];
+    [center addObserverForName:UIApplicationDidBecomeActiveNotification
+                         object:nil
+                          queue:[NSOperationQueue mainQueue]
+                     usingBlock:^(NSNotification *note) {
+        (void)note;
+        if (!ZXUIInstalled) {
+            UIWindow *w = ZXFindActiveWindow();
+            if (w) ZXInstallUIIntoWindow(w);
+        }
+    }];
+
+    /* Cover builds where the launch notification was emitted before the
+       constructor registered its observer, without introducing a visible
+       startup delay. */
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!ZXUIInstalled) {
+            UIWindow *w = ZXFindActiveWindow();
+            if (w) ZXInstallUIIntoWindow(w);
+        }
+    });
+}
 
 #pragma mark - ================= HOOK INSTALLATION =================
 
