@@ -1,4 +1,4 @@
-	//
+		//
 //  ZXStateStore.m
 //  ZENTRAX
 //
@@ -31,12 +31,6 @@ static NSString * const ZXStateStoreSchemaVersionKey = @"schema_version";
 static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
 #pragma mark - ZXTargetLedgerRecord
-
-@interface ZXTargetLedgerRecord ()
-
-@property (nonatomic, assign, readwrite) BOOL requiresReconciliation;
-
-@end
 
 @implementation ZXTargetLedgerRecord
 
@@ -1316,7 +1310,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
 
 - (BOOL)commitOperationWithId:(NSString *)operationId
                     targetHash:(NSString *)targetHash
-                          size:(NSUInteger)size
+                          size:(long long)size
                          error:(NSError * _Nullable * _Nullable)error
 {
     @synchronized (self) {
@@ -1643,7 +1637,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
     }
 }
 
-- (BOOL)markUnresolvedRecordsForReconciliation
+- (void)markUnresolvedRecordsForReconciliation
 {
     @synchronized (self) {
         BOOL changed = NO;
@@ -1673,10 +1667,10 @@ requiresReconciliation:(BOOL)requiresReconciliation
         }
 
         if (!changed) {
-            return YES;
+            return;
         }
 
-        return [self persistLocked:nil];
+        (void)[self persistLocked:nil];
     }
 }
 
