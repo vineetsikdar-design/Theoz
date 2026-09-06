@@ -1,4 +1,4 @@
-//
+	//
 //  ZentraxNetworkManager.m
 //  Zentrax VIP - Premium Execution Node
 //
@@ -92,63 +92,36 @@
     });
 }
 
-#pragma mark - Keychain
-
-- (NSDictionary *)keychainQueryForAccount:(NSString *)account {
-    return @{
-        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-        (__bridge id)kSecAttrService: KEYCHAIN_SERVICE,
-        (__bridge id)kSecAttrAccount: account
-    };
-}
+#pragma mark - Global Defaults (Tweak-Safe Storage)
 
 - (BOOL)saveSecureString:(NSString *)value account:(NSString *)account {
     if (value.length == 0 || account.length == 0) {
         return NO;
     }
-
-    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
-    if (!data) {
-        return NO;
-    }
-
-    NSDictionary *query = [self keychainQueryForAccount:account];
-    SecItemDelete((__bridge CFDictionaryRef)query);
-
-    NSMutableDictionary *item = [query mutableCopy];
-    item[(__bridge id)kSecValueData] = data;
-    item[(__bridge id)kSecAttrAccessible] =
-        (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
-
-    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)item, NULL);
-    return status == errSecSuccess;
+    
+    // Tweak environment fix: Universal App Group Defaults instead of Sandbox-bound Keychain
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    [globalDefaults setObject:value forKey:account];
+    return [globalDefaults synchronize];
 }
 
 - (NSString * _Nullable)secureStringForAccount:(NSString *)account {
     if (account.length == 0) {
         return nil;
     }
-
-    NSMutableDictionary *query = [[self keychainQueryForAccount:account] mutableCopy];
-    query[(__bridge id)kSecReturnData] = @YES;
-    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
-
-    CFTypeRef result = NULL;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
-    if (status != errSecSuccess || result == NULL) {
-        return nil;
-    }
-
-    NSData *data = (__bridge_transfer NSData *)result;
-    return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    return [globalDefaults stringForKey:account];
 }
 
 - (void)deleteSecureAccount:(NSString *)account {
     if (account.length == 0) {
         return;
     }
-    NSDictionary *query = [self keychainQueryForAccount:account];
-    SecItemDelete((__bridge CFDictionaryRef)query);
+    
+    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
+    [globalDefaults removeObjectForKey:account];
+    [globalDefaults synchronize];
 }
 
 - (void)saveTokenToKeychain:(NSString *)token {
@@ -167,8 +140,8 @@
         return stored;
     }
 
-    NSString *vendorID = [UIDevice currentDevice].identifierForVendor.UUIDString;
-    NSString *generated = vendorID.length > 0 ? vendorID : [NSUUID UUID].UUIDString;
+    // Tweak environment fix: Universal HWID instead of identifierForVendor to prevent session drop in different apps
+    NSString *generated = [NSUUID UUID].UUIDString;
 
     if (generated.length == 0) {
         generated = @"unknown-device";
@@ -179,11 +152,8 @@
 }
 
 - (NSString *)applicationVersion {
-    NSString *version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-    if (version.length == 0) {
-        version = [[NSBundle mainBundle] objectForInfoDictionaryKey:(NSString *)kCFBundleVersionKey];
-    }
-    return version.length > 0 ? version : @"0.0.0";
+    // Tweak environment fix: Hardcode expected version to bypass host app version mismatch
+    return @"1.0.0";
 }
 
 - (NSString *)deviceArchitecture {
