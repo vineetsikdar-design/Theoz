@@ -1,4 +1,4 @@
-//
+	//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
@@ -206,13 +206,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                                        DISPATCH_QUEUE_SERIAL);
         _activeTargetOperations = [NSMutableSet set];
 
-        /*
-         * Do not initialize the persistent ledger during process launch.
-         * Authentication/UI startup must remain independent from optional
-         * local recovery state. The ledger is created lazily the first time
-         * a session/operation actually needs it.
-         */
-
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(zentraxApplicationWillResignActive:)
                                                      name:UIApplicationWillResignActiveNotification
@@ -249,30 +242,18 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
 - (ZXAuthError)mapNetworkErrorToAuthError:(ZXNetworkErrorType)networkError {
     switch (networkError) {
-        case ZXNetworkErrorNone:
-            return ZXAuthErrorNone;
-        case ZXNetworkErrorInvalidKey:
-            return ZXAuthErrorInvalidKey;
-        case ZXNetworkErrorExpiredKey:
-            return ZXAuthErrorExpiredKey;
-        case ZXNetworkErrorRevokedKey:
-            return ZXAuthErrorRevokedKey;
-        case ZXNetworkErrorDeviceLimit:
-            return ZXAuthErrorDeviceLimit;
-        case ZXNetworkErrorInvalidSession:
-            return ZXAuthErrorInvalidSession;
-        case ZXNetworkErrorConnection:
-            return ZXAuthErrorConnection;
-        case ZXNetworkErrorMaintenance:
-            return ZXAuthErrorMaintenance;
-        case ZXNetworkErrorVersionMismatch:
-            return ZXAuthErrorVersionMismatch;
-        case ZXNetworkErrorCompatibility:
-            return ZXAuthErrorCompatibility;
-        case ZXNetworkErrorRateLimited:
-            return ZXAuthErrorRateLimited;
-        default:
-            return ZXAuthErrorServer;
+        case ZXNetworkErrorNone: return ZXAuthErrorNone;
+        case ZXNetworkErrorInvalidKey: return ZXAuthErrorInvalidKey;
+        case ZXNetworkErrorExpiredKey: return ZXAuthErrorExpiredKey;
+        case ZXNetworkErrorRevokedKey: return ZXAuthErrorRevokedKey;
+        case ZXNetworkErrorDeviceLimit: return ZXAuthErrorDeviceLimit;
+        case ZXNetworkErrorInvalidSession: return ZXAuthErrorInvalidSession;
+        case ZXNetworkErrorConnection: return ZXAuthErrorConnection;
+        case ZXNetworkErrorMaintenance: return ZXAuthErrorMaintenance;
+        case ZXNetworkErrorVersionMismatch: return ZXAuthErrorVersionMismatch;
+        case ZXNetworkErrorCompatibility: return ZXAuthErrorCompatibility;
+        case ZXNetworkErrorRateLimited: return ZXAuthErrorRateLimited;
+        default: return ZXAuthErrorServer;
     }
 }
 
@@ -353,7 +334,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         if (allowDashboard &&
             configuration.count > 0 &&
             [self responseContainsUsableDashboardConfiguration:response]) {
-            /* Never replace a populated dashboard with an empty/partial response. */
             [self.uiController updateDashboardWithConfiguration:configuration];
         }
 
@@ -406,13 +386,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 return;
             }
 
-            /*
-             * The login response is authoritative. Apply its license and any
-             * usable dashboard data immediately so the UI cannot briefly show
-             * UNACTIVATED/empty state while waiting for the first heartbeat.
-             * Optional fields are defensive: malformed/empty configuration is
-             * ignored instead of clearing an already populated dashboard.
-             */
             [self applyServerResponseToUI:responseData allowDashboard:YES];
             if (completion) completion(YES, ZXAuthErrorNone, nil);
         }];
@@ -431,11 +404,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         return;
     }
 
-    /*
-     * Load/revalidate the local transaction ledger before restoring the
-     * dashboard. Unresolved entries remain visible to reconciliation logic
-     * instead of being silently discarded.
-     */
     [self.stateStore synchronize:nil];
     [self.stateStore validateLedger:nil];
 
@@ -575,8 +543,12 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSString *deviceId = [modulePayload[@"device_id"] description];
 
     NSError *ledgerError = nil;
+    
+    // THE ONLY FIX APPLIED: Safely translating the ENUM to NSString to satisfy ZXStateStore
+    NSString *actionString = (action == ZXModuleOperationActionON) ? @"ON" : @"OFF";
+
     [self.stateStore beginOperationWithId:operationId
-                                   action:(action == ZXModuleOperationActionON ? @"ON" : @"OFF")
+                                   action:actionString
                                functionId:resolvedFunctionId
                                 licenseId:licenseId
                                  deviceId:deviceId
@@ -590,10 +562,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         return;
     }
 
-    /*
-     * OFF is restore/delete-contract driven. The client does not request or
-     * manufacture an OFF payload.
-     */
     if (!isOn) {
         NSDictionary *restore = modulePayload[@"restore_contract"];
         NSString *mode = [restore[@"mode"] description];
@@ -611,10 +579,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         NSString *relativePath = [modulePayload[@"relative_path"] description];
         NSString *targetFilename = [modulePayload[@"target_filename"] description];
 
-        /*
-         * If the server has no file operation to perform locally (for example
-         * the ledger has no active target), simply synchronize the state.
-         */
         if (!record &&
             bundleId.length == 0 &&
             relativePath.length == 0 &&
@@ -782,10 +746,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         return;
     }
 
-    /*
-     * ON receives exactly one server-authorized payload. Verify its declared
-     * hash before applying it.
-     */
     NSString *base64Data = [modulePayload[@"file_data"] description];
     NSString *bundleId = [modulePayload[@"bundle_id"] description];
     NSString *relativePath = [modulePayload[@"relative_path"] description];
@@ -857,10 +817,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         ZXTargetLedgerRecord *record =
             [self.stateStore recordForTarget:target];
 
-        /*
-         * Preserve the original target only once. During a function switch,
-         * an existing .bak is never overwritten.
-         */
         if (!record || !record.hasOriginalBackup) {
             if ([fm fileExistsAtPath:backupPath]) {
                 [self.stateStore markTarget:target
@@ -1077,8 +1033,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 return;
             }
 
-            /* Preserve the last known compatibility result when the network
-             * check is temporarily unavailable. Do not manufacture support. */
             NSDictionary *cached = [network cachedCompatibilityData];
             if (cached.count > 0) {
                 [self.uiController updateDeviceCompatibility:cached];
@@ -1099,11 +1053,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 - (void)zentraxDidRequestLogoutWithCompletion:(void(^)(void))completion {
     ZentraxNetworkManager *network = [ZentraxNetworkManager sharedManager];
 
-    /*
-     * Logout removes the authenticated session association only.
-     * Persistent target ledger records are retained for recovery and the
-     * license activation/expiry clock is never modified here.
-     */
     [network logout];
     [self.stateStore clearTransientState];
 
@@ -1118,14 +1067,31 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
 static IMP orig_UIWindow_makeKeyAndVisible = NULL;
 static BOOL ZXUIInstalled = NO;
-static UIWindow *zx_secureOverlayWindow = nil;
-static BOOL zx_is_hook_entered = NO;
 
 static void ZXInstallUIBeforeVisibility(UIWindow *window) {
     if (ZXUIInstalled || !window) return;
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            ZXInstallUIBeforeVisibility(window);
+        });
+        return;
+    }
 
     Class uiClass = NSClassFromString(@"ZentraxUI");
     if (!uiClass) return;
+
+    UIViewController *root = window.rootViewController;
+    if ([root isKindOfClass:[UINavigationController class]]) {
+        UIViewController *first = ((UINavigationController *)root).viewControllers.firstObject;
+        if ([first isKindOfClass:uiClass]) {
+            ZXUIInstalled = YES;
+            return;
+        }
+    }
+    if ([root isKindOfClass:uiClass]) {
+        ZXUIInstalled = YES;
+        return;
+    }
 
     @try {
         MCMFilzaStart();
@@ -1140,15 +1106,9 @@ static void ZXInstallUIBeforeVisibility(UIWindow *window) {
         UINavigationController *navController =
             [[UINavigationController alloc] initWithRootViewController:zentraxVC];
         navController.navigationBarHidden = YES;
+        navController.modalPresentationStyle = UIModalPresentationFullScreen;
 
-        // SURGICAL FIX: Create isolated overlay window
-        zx_secureOverlayWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-        zx_secureOverlayWindow.windowLevel = UIWindowLevelAlert + 100;
-        zx_secureOverlayWindow.rootViewController = navController;
-        zx_secureOverlayWindow.backgroundColor = [UIColor blackColor];
-        
-        [zx_secureOverlayWindow makeKeyAndVisible];
-
+        window.rootViewController = navController;
         ZXUIInstalled = YES;
     } @catch (NSException *exception) {
         NSLog(@"[Zentrax VIP] UI install exception: %@", exception);
@@ -1157,17 +1117,10 @@ static void ZXInstallUIBeforeVisibility(UIWindow *window) {
 }
 
 static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
-    // SURGICAL FIX: Prevent dispatch_once deadlock
-    if (zx_is_hook_entered) {
-        if (orig_UIWindow_makeKeyAndVisible) {
-            ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
-        }
-        return;
-    }
-    
-    zx_is_hook_entered = YES;
-
-    ZXInstallUIBeforeVisibility(self);
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        ZXInstallUIBeforeVisibility(self);
+    });
 
     if (orig_UIWindow_makeKeyAndVisible) {
         ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
