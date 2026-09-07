@@ -1,10 +1,11 @@
-	//
+//
 //  ZentraxNetworkManager.m
 //  Zentrax VIP - Premium Execution Node
 //
 //  Production network/session/configuration layer.
 //  This file intentionally stays at the application/network layer and does
 //  not modify the project's low-level filesystem or sandbox components.
+//  Status: STATE SYNC AUDITED
 //
 
 #import "ZentraxNetworkManager.h"
@@ -770,11 +771,20 @@
                 ([responseData[@"functions"] isKindOfClass:NSArray.class] && [responseData[@"functions"] count] > 0) ||
                 ([responseData[@"dashboard"] isKindOfClass:NSDictionary.class] && [responseData[@"dashboard"] count] > 0);
 
-            if (!hasUsableServerConfiguration && cached.count > 0) {
+            if (cached.count > 0) {
                 NSMutableDictionary *merged = [NSMutableDictionary dictionaryWithDictionary:responseData ?: @{}];
-                if (!merged[@"categories"] && cached[@"categories"]) merged[@"categories"] = cached[@"categories"];
-                if (!merged[@"functions"] && cached[@"functions"]) merged[@"functions"] = cached[@"functions"];
-                if (!merged[@"dashboard"] && cached[@"dashboard"]) merged[@"dashboard"] = cached[@"dashboard"];
+                
+                if (!hasUsableServerConfiguration) {
+                    if (!merged[@"categories"] && cached[@"categories"]) merged[@"categories"] = cached[@"categories"];
+                    if (!merged[@"functions"] && cached[@"functions"]) merged[@"functions"] = cached[@"functions"];
+                    if (!merged[@"dashboard"] && cached[@"dashboard"]) merged[@"dashboard"] = cached[@"dashboard"];
+                }
+                
+                // CRITICAL FIX: Always protect the license object from being wiped by sparse heartbeat payloads
+                if (!merged[@"license"] && cached[@"license"]) {
+                    merged[@"license"] = cached[@"license"];
+                }
+                
                 responseData = merged;
             }
         }
@@ -1122,11 +1132,20 @@
                 ([responseData[@"functions"] isKindOfClass:NSArray.class] && [responseData[@"functions"] count] > 0) ||
                 ([responseData[@"dashboard"] isKindOfClass:NSDictionary.class] && [responseData[@"dashboard"] count] > 0);
 
-            if (!hasUsableServerConfiguration && cached.count > 0) {
+            if (cached.count > 0) {
                 NSMutableDictionary *merged = [NSMutableDictionary dictionaryWithDictionary:responseData ?: @{}];
-                if (!merged[@"categories"] && cached[@"categories"]) merged[@"categories"] = cached[@"categories"];
-                if (!merged[@"functions"] && cached[@"functions"]) merged[@"functions"] = cached[@"functions"];
-                if (!merged[@"dashboard"] && cached[@"dashboard"]) merged[@"dashboard"] = cached[@"dashboard"];
+                
+                if (!hasUsableServerConfiguration) {
+                    if (!merged[@"categories"] && cached[@"categories"]) merged[@"categories"] = cached[@"categories"];
+                    if (!merged[@"functions"] && cached[@"functions"]) merged[@"functions"] = cached[@"functions"];
+                    if (!merged[@"dashboard"] && cached[@"dashboard"]) merged[@"dashboard"] = cached[@"dashboard"];
+                }
+                
+                // CRITICAL FIX: Always protect the license object from being wiped by sparse heartbeat payloads
+                if (!merged[@"license"] && cached[@"license"]) {
+                    merged[@"license"] = cached[@"license"];
+                }
+                
                 responseData = merged;
             }
         }
