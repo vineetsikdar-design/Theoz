@@ -1,9 +1,9 @@
-	//
+//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
 //  Createdd by Zentrax Team.
-//  Status: PRODUCTION READY (V4)
+//  Status: PRODUCTION AUDITED (V5)
 //
 
 @import UIKit;
@@ -26,6 +26,7 @@
 #import "MCMFilzaIntegration.h"
 #import "ZentraxUI.h"
 #import "ZentraxNetworkManager.h"
+#import "ZXStateStore.h"
 
 #pragma mark - ================= ROOT HELPER HOOKS =================
 
@@ -158,8 +159,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
 
 #pragma mark - ================= ZENTRAX VIP EXECUTION BRIDGE =================
-
-#import "ZXStateStore.h"
 
 @interface ZXCoreBridge : NSObject <ZentraxUIDelegate>
 @property (nonatomic, weak) ZentraxUI *uiController;
@@ -461,7 +460,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 - (BOOL)claimTargetOperation:(NSString *)target operationId:(NSString *)operationId {
     if (target.length == 0 || operationId.length == 0) return NO;
     @synchronized (self) {
-        NSString *key = [NSString stringWithFormat:@"%@|%@", target, operationId];
         if ([self.activeTargetOperations containsObject:target]) return NO;
         [self.activeTargetOperations addObject:target];
         return YES;
@@ -575,15 +573,18 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSString *deviceId = [modulePayload[@"device_id"] description];
 
     NSError *ledgerError = nil;
-    [self.stateStore beginOperationWithId:operationId
-                                   action:(action == ZXModuleOperationActionON ? @"ON" : @"OFF")
-                               functionId:resolvedFunctionId
-                                licenseId:licenseId
-                                 deviceId:deviceId
-                                   target:target
-                                    error:&ledgerError];
+    BOOL began = [self.stateStore beginOperationWithId:operationId
+                                                action:action
+                                            functionId:resolvedFunctionId
+                                             licenseId:licenseId
+                                              deviceId:deviceId
+                                                target:target
+                                                 error:&ledgerError];
 
-    if (ledgerError) {
+    if (!began) {
+        NSLog(@"[Zentrax VIP] [StateStore] beginOperation failed | OpID: %@ | Target: %@ | Func: %@ | Action: %ld | Domain: %@ | Code: %ld | Desc: %@",
+              operationId, target, resolvedFunctionId, (long)action, ledgerError.domain, (long)ledgerError.code, ledgerError.localizedDescription);
+              
         [self releaseTargetOperation:target];
         [self finishModuleFailure:@"Unable to prepare the local transaction safely."
                        completion:completion];
@@ -627,12 +628,20 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                   completion:^(BOOL syncSuccess,
                                                NSString * _Nullable syncErrorMsg) {
                 if (syncSuccess) {
-                    [self.stateStore commitOperationWithId:operationId
-                                                targetHash:nil
-                                                      size:0
-                                                     error:nil];
-                    [self.stateStore clearCompletedOperationWithId:operationId
-                                                               error:nil];
+                    NSError *commitErr = nil;
+                    BOOL committed = [self.stateStore commitOperationWithId:operationId
+                                                                 targetHash:nil
+                                                                       size:0
+                                                                      error:&commitErr];
+                    if (!committed) {
+                        NSLog(@"[Zentrax VIP] [StateStore] commitOperation failed for empty OFF | Error: %@", commitErr);
+                        [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+                        [self releaseTargetOperation:target];
+                        [self finishModuleFailure:@"Failed to commit local transaction." completion:completion];
+                        return;
+                    }
+                    
+                    [self.stateStore clearCompletedOperationWithId:operationId error:nil];
                     [self releaseTargetOperation:target];
                     [self completeOnMain:^{
                         if (completion) completion(YES, nil);
@@ -684,41 +693,47 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             BOOL success = YES;
 
             if ([fm fileExistsAtPath:backupPath]) {
-                [self.stateStore setState:ZXTargetLedgerStateRestoring
-                                 forTarget:target
-                                    error:nil];
-
-                if (!record.hasOriginalBackup ||
-                    record.backupValidity != ZXBackupValidityValid) {
+                BOOL stateSet = [self.stateStore setState:ZXTargetLedgerStateRestoring
+                                                 forTarget:target
+                                                    error:&fsError];
+                if (!stateSet) {
                     success = NO;
+                    NSLog(@"[Zentrax VIP] [StateStore] setState Restoring failed: %@", fsError);
                 } else {
-                    NSUInteger backupSize = 0;
-                    NSString *backupHash = [self sha256OfFileAtPath:backupPath size:&backupSize];
-                    if (backupHash.length == 0 ||
-                        (record.originalBackupHash.length && ![backupHash.lowercaseString isEqualToString:record.originalBackupHash.lowercaseString]) ||
-                        (record.originalBackupSize > 0 && backupSize != record.originalBackupSize)) {
+                    if (!record.hasOriginalBackup ||
+                        record.backupValidity != ZXBackupValidityValid) {
                         success = NO;
-                    }
-                    if (success && [fm fileExistsAtPath:finalTargetPath]) {
-                        [fm removeItemAtPath:finalTargetPath error:&fsError];
-                    }
-
-                    if (success &&
-                        ![fm moveItemAtPath:backupPath
-                                     toPath:finalTargetPath
-                                      error:&fsError]) {
-                        success = NO;
+                    } else {
+                        NSUInteger backupSize = 0;
+                        NSString *backupHash = [self sha256OfFileAtPath:backupPath size:&backupSize];
+                        if (backupHash.length == 0 ||
+                            (record.originalBackupHash.length && ![backupHash.lowercaseString isEqualToString:record.originalBackupHash.lowercaseString]) ||
+                            (record.originalBackupSize > 0 && backupSize != record.originalBackupSize)) {
+                            success = NO;
+                        }
+                        if (success && [fm fileExistsAtPath:finalTargetPath]) {
+                            [fm removeItemAtPath:finalTargetPath error:&fsError];
+                        }
+                        if (success &&
+                            ![fm moveItemAtPath:backupPath
+                                         toPath:finalTargetPath
+                                          error:&fsError]) {
+                            success = NO;
+                        }
                     }
                 }
             } else if (record.activeFunctionId.length > 0 &&
                        [fm fileExistsAtPath:finalTargetPath]) {
 
-                [self.stateStore setState:ZXTargetLedgerStateRestoring
-                                 forTarget:target
-                                    error:nil];
-
-                success = [fm removeItemAtPath:finalTargetPath
-                                          error:&fsError];
+                BOOL stateSet = [self.stateStore setState:ZXTargetLedgerStateRestoring
+                                                 forTarget:target
+                                                    error:&fsError];
+                if (!stateSet) {
+                    success = NO;
+                    NSLog(@"[Zentrax VIP] [StateStore] setState Restoring failed: %@", fsError);
+                } else {
+                    success = [fm removeItemAtPath:finalTargetPath error:&fsError];
+                }
             }
 
             if (!success) {
@@ -733,16 +748,25 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 return;
             }
 
-            [self.stateStore setActiveFunctionId:nil
-                                      functionName:nil
-                                       payloadHash:nil
-                                      payloadSize:0
-                                         forTarget:target
-                                             error:nil];
+            BOOL activeCleared = [self.stateStore setActiveFunctionId:nil
+                                                         functionName:nil
+                                                          payloadHash:nil
+                                                          payloadSize:0
+                                                            forTarget:target
+                                                                error:&fsError];
+            
+            BOOL stateIdled = [self.stateStore setState:ZXTargetLedgerStateIdle
+                                               forTarget:target
+                                                  error:&fsError];
 
-            [self.stateStore setState:ZXTargetLedgerStateIdle
-                             forTarget:target
-                                error:nil];
+            if (!activeCleared || !stateIdled) {
+                NSLog(@"[Zentrax VIP] [StateStore] Failed to update ledger state after restore: %@", fsError);
+                [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+                [self.stateStore failOperationWithId:operationId error:nil];
+                [self releaseTargetOperation:target];
+                [self finishModuleFailure:@"Failed to update local ledger after restore." completion:completion];
+                return;
+            }
 
             [[ZentraxNetworkManager sharedManager]
                 syncModuleStateForFunctionId:resolvedFunctionId
@@ -762,10 +786,19 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                     return;
                 }
 
-                [self.stateStore commitOperationWithId:operationId
-                                            targetHash:nil
-                                                  size:0
-                                                 error:nil];
+                NSError *commitErr = nil;
+                BOOL committed = [self.stateStore commitOperationWithId:operationId
+                                                             targetHash:nil
+                                                                   size:0
+                                                                  error:&commitErr];
+                if (!committed) {
+                    NSLog(@"[Zentrax VIP] [StateStore] commitOperation failed (OFF): %@", commitErr);
+                    [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+                    [self releaseTargetOperation:target];
+                    [self finishModuleFailure:@"Failed to commit local transaction." completion:completion];
+                    return;
+                }
+
                 [self.stateStore clearCompletedOperationWithId:operationId
                                                            error:nil];
                 [self.stateStore markTarget:target
@@ -904,27 +937,51 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                     return;
                 }
 
-                [self.stateStore setOriginalBackupHash:originalHash
-                                                  size:originalData.length
-                                                exists:YES
-                                             validity:ZXBackupValidityValid
-                                             forTarget:target
-                                                 error:nil];
+                BOOL backupSet = [self.stateStore setOriginalBackupHash:originalHash
+                                                                   size:originalData.length
+                                                                 exists:YES
+                                                               validity:ZXBackupValidityValid
+                                                              forTarget:target
+                                                                  error:&fsError];
+                if (!backupSet) {
+                    NSLog(@"[Zentrax VIP] [StateStore] Failed to register original backup: %@", fsError);
+                    [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+                    [self.stateStore failOperationWithId:operationId error:nil];
+                    [self releaseTargetOperation:target];
+                    [self finishModuleFailure:@"Failed to register original backup in ledger." completion:completion];
+                    return;
+                }
             } else if (![fm fileExistsAtPath:backupPath]) {
-                [self.stateStore setOriginalBackupHash:nil
-                                                  size:0
-                                                exists:NO
-                                             validity:ZXBackupValidityMissing
-                                             forTarget:target
-                                                 error:nil];
+                BOOL backupSet = [self.stateStore setOriginalBackupHash:nil
+                                                                   size:0
+                                                                 exists:NO
+                                                               validity:ZXBackupValidityMissing
+                                                              forTarget:target
+                                                                  error:&fsError];
+                if (!backupSet) {
+                    NSLog(@"[Zentrax VIP] [StateStore] Failed to register missing backup state: %@", fsError);
+                    [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+                    [self.stateStore failOperationWithId:operationId error:nil];
+                    [self releaseTargetOperation:target];
+                    [self finishModuleFailure:@"Failed to initialize backup state in ledger." completion:completion];
+                    return;
+                }
             }
         }
 
-        [self.stateStore setState:record.activeFunctionId.length
-                                  ? ZXTargetLedgerStateSwitching
-                                  : ZXTargetLedgerStateStagingON
-                         forTarget:target
-                            error:nil];
+        BOOL stateSet = [self.stateStore setState:record.activeFunctionId.length
+                                                  ? ZXTargetLedgerStateSwitching
+                                                  : ZXTargetLedgerStateStagingON
+                                         forTarget:target
+                                            error:&fsError];
+        if (!stateSet) {
+            NSLog(@"[Zentrax VIP] [StateStore] Failed to transition to staging state: %@", fsError);
+            [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+            [self.stateStore failOperationWithId:operationId error:nil];
+            [self releaseTargetOperation:target];
+            [self finishModuleFailure:@"Failed to transition transaction state." completion:completion];
+            return;
+        }
 
         BOOL written =
             [fileData writeToFile:finalTargetPath
@@ -963,16 +1020,25 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
 
-        [self.stateStore setState:ZXTargetLedgerStateONInProgress
-                         forTarget:target
-                            error:nil];
+        BOOL inProgSet = [self.stateStore setState:ZXTargetLedgerStateONInProgress
+                                         forTarget:target
+                                            error:&fsError];
 
-        [self.stateStore setActiveFunctionId:resolvedFunctionId
-                                  functionName:[modulePayload[@"function_name"] description]
-                                   payloadHash:writtenHash
-                                  payloadSize:writtenData.length
-                                     forTarget:target
-                                         error:nil];
+        BOOL activeSet = [self.stateStore setActiveFunctionId:resolvedFunctionId
+                                                 functionName:[modulePayload[@"function_name"] description]
+                                                  payloadHash:writtenHash
+                                                 payloadSize:writtenData.length
+                                                    forTarget:target
+                                                        error:&fsError];
+                                                        
+        if (!inProgSet || !activeSet) {
+            NSLog(@"[Zentrax VIP] [StateStore] Failed to set ON/InProgress state: %@", fsError);
+            [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+            [self.stateStore failOperationWithId:operationId error:nil];
+            [self releaseTargetOperation:target];
+            [self finishModuleFailure:@"Failed to register active function in ledger." completion:completion];
+            return;
+        }
 
         [[ZentraxNetworkManager sharedManager]
             syncModuleStateForFunctionId:resolvedFunctionId
@@ -995,14 +1061,24 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 return;
             }
 
-            [self.stateStore setState:ZXTargetLedgerStateIdle
-                             forTarget:target
-                                error:nil];
+            NSError *commitErr = nil;
+            BOOL idledSet = [self.stateStore setState:ZXTargetLedgerStateIdle
+                                            forTarget:target
+                                               error:&commitErr];
 
-            [self.stateStore commitOperationWithId:operationId
-                                        targetHash:writtenHash
-                                              size:writtenData.length
-                                             error:nil];
+            BOOL committed = [self.stateStore commitOperationWithId:operationId
+                                                         targetHash:writtenHash
+                                                               size:writtenData.length
+                                                              error:&commitErr];
+                                                              
+            if (!idledSet || !committed) {
+                NSLog(@"[Zentrax VIP] [StateStore] commitOperation failed (ON): %@", commitErr);
+                [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+                [self releaseTargetOperation:target];
+                [self finishModuleFailure:@"Failed to commit local transaction." completion:completion];
+                return;
+            }
+
             [self.stateStore clearCompletedOperationWithId:operationId
                                                        error:nil];
             [self.stateStore markTarget:target
@@ -1175,16 +1251,17 @@ static void ZXInstallUIBeforeVisibility(UIWindow *window) {
 }
 
 static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
-    // FIX: Only inject into the main application window.
-    // Injecting into system/background windows causes a black screen + watchdog crash.
-    if ([NSStringFromClass([self class]) isEqualToString:@"UIWindow"] && 
-        CGRectEqualToRect(self.bounds, [UIScreen mainScreen].bounds)) {
-        static dispatch_once_t onceToken;
-        dispatch_once(&onceToken, ^{
-            ZXInstallUIBeforeVisibility(self);
-        });
-    }
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        ZXInstallUIBeforeVisibility(self);
+    });
 
+    /*
+     * Keep Filza's original visibility/lifecycle call.  The only thing being
+     * intercepted is the controller installed immediately before visibility.
+     * This avoids both the Filza dashboard flash and the lifecycle break caused
+     * by replacing the root from a later notification callback.
+     */
     if (orig_UIWindow_makeKeyAndVisible) {
         ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
     }
