@@ -3,7 +3,7 @@
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
 //  Createdd by Zentrax Team.
-//  Status: PRODUCTION AUDITED (V9 - Bulletproof Restore via Move/Trash)
+//  Status: PRODUCTION AUDITED (V10 - Centralized Backup Vault & Safe Move)
 //
 
 @import UIKit;
@@ -91,6 +91,18 @@ static NSString *computeSHA256OfData(NSData *data) {
         return output;
     }
     return nil;
+}
+
+// V10 NEW: Centralized Zentrax Backup Vault
+static NSString *zentraxVaultDirectory() {
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *base = [[paths firstObject] stringByAppendingPathComponent:@"Zentrax"];
+    NSString *vaultDir = [base stringByAppendingPathComponent:@"Vault"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if (![fm fileExistsAtPath:vaultDir]) {
+        [fm createDirectoryAtPath:vaultDir withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+    return vaultDir;
 }
 
 #pragma mark - ================= APPS MANAGER HOOKS =================
@@ -376,7 +388,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 - (BOOL)claimTargetOperation:(NSString *)target operationId:(NSString *)operationId {
     if (target.length == 0 || operationId.length == 0) return NO;
     @synchronized (self) {
-        NSString *key = [NSString stringWithFormat:@"%@|%@", target, operationId];
         if ([self.activeTargetOperations containsObject:target]) return NO;
         [self.activeTargetOperations addObject:target];
         return YES;
@@ -477,7 +488,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
     BOOL began = [self.stateStore beginOperationWithId:operationId action:actionString functionId:resolvedFunctionId licenseId:licenseId deviceId:deviceId target:target error:&ledgerError];
 
-    // Force reconciliation if DB is locked (Code 1502)
     if (!began && ledgerError.code == 1502) {
         ZXTargetLedgerRecord *staleRecord = [self.stateStore recordForTarget:target];
         if (staleRecord && staleRecord.operationId.length > 0) {
@@ -556,7 +566,11 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 [self finishModuleFailure:@"Resolved path failed security checks." completion:completion];
                 return;
             }
-            NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
+            
+            // V10: Use Centralized Zentrax Vault instead of polluting the game folder
+            NSString *safeIdent = [NSString stringWithFormat:@"%@_%@", bundleId, targetFilename];
+            NSString *backupPath = [zentraxVaultDirectory() stringByAppendingPathComponent:[safeIdent stringByAppendingString:@".bak"]];
+            NSString *trashPath = [zentraxVaultDirectory() stringByAppendingPathComponent:[safeIdent stringByAppendingString:@".trash"]];
 
             NSFileManager *fm = NSFileManager.defaultManager;
             NSError * __autoreleasing fsError = nil;
@@ -587,25 +601,22 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                     return;
                 }
                 
-                // V9 FIX: Foolproof Restore using Move & Trash. 
-                // Getting the active file out of the way first guarantees the sandbox won't reject the restore.
+                // Move active file out of the way into the Trash vault
                 if (success && [fm fileExistsAtPath:finalTargetPath]) {
-                    NSString *trashPath = [finalTargetPath stringByAppendingString:@".trash"];
                     [fm removeItemAtPath:trashPath error:nil];
-                    [fm moveItemAtPath:finalTargetPath toPath:trashPath error:nil]; // Move it out of the way safely
+                    [fm moveItemAtPath:finalTargetPath toPath:trashPath error:nil]; 
                 }
                 
+                // Move original file back from the Backup vault to the game folder
                 if (success) {
                     success = [fm moveItemAtPath:backupPath toPath:finalTargetPath error:&fsError];
                 }
                 
             } else if (record.activeFunctionId.length > 0 && [fm fileExistsAtPath:finalTargetPath]) {
-                // V9 FIX: DELETE_ACTIVE_TARGET fallback.
                 BOOL stateSet = [self.stateStore setState:ZXTargetLedgerStateRestoring forTarget:target error:&fsError];
                 if (!stateSet) {
                     success = NO;
                 } else {
-                    NSString *trashPath = [finalTargetPath stringByAppendingString:@".trash"];
                     [fm removeItemAtPath:trashPath error:nil]; 
                     success = [fm moveItemAtPath:finalTargetPath toPath:trashPath error:&fsError];
                 }
@@ -706,7 +717,10 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             [self finishModuleFailure:@"Resolved path failed security validation." completion:completion];
             return;
         }
-        NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
+        
+        // V10: Use Centralized Zentrax Vault instead of polluting the game folder
+        NSString *safeIdent = [NSString stringWithFormat:@"%@_%@", bundleId, targetFilename];
+        NSString *backupPath = [zentraxVaultDirectory() stringByAppendingPathComponent:[safeIdent stringByAppendingString:@".bak"]];
 
         NSFileManager *fm = NSFileManager.defaultManager;
         NSError * __autoreleasing fsError = nil;
@@ -722,7 +736,8 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             }
 
             if ([fm fileExistsAtPath:finalTargetPath] && ![fm fileExistsAtPath:backupPath]) {
-                if (![fm copyItemAtPath:finalTargetPath toPath:backupPath error:&fsError]) {
+                // Move the original out of the game folder entirely into our Vault
+                if (![fm moveItemAtPath:finalTargetPath toPath:backupPath error:&fsError]) {
                     [self.stateStore failOperationWithId:operationId error:&fsError];
                     [self releaseTargetOperation:target];
                     [self finishModuleFailure:[NSString stringWithFormat:@"Original file backup failed: %@", fsError.localizedDescription] completion:completion];
@@ -956,13 +971,6 @@ static void ZXInstallUIBeforeVisibility(UIWindow *window) {
     }
 
     @try {
-        /*
-         * This is intentionally the original interception point used by the
-         * working Filza integration.  Do NOT wait for UIWindowDidBecomeVisible
-         * or UIApplicationDidBecomeActive: by then Filza has already rendered
-         * its Documents dashboard.  The Zentrax controller must be installed
-         * while Filza is still inside makeKeyAndVisible.
-         */
         MCMFilzaStart();
 
         ZentraxUI *zentraxVC = [[uiClass alloc] init];
@@ -991,12 +999,6 @@ static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
         ZXInstallUIBeforeVisibility(self);
     });
 
-    /*
-     * Keep Filza's original visibility/lifecycle call.  The only thing being
-     * intercepted is the controller installed immediately before visibility.
-     * This avoids both the Filza dashboard flash and the lifecycle break caused
-     * by replacing the root from a later notification callback.
-     */
     if (orig_UIWindow_makeKeyAndVisible) {
         ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
     }
