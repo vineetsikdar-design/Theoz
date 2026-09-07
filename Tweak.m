@@ -3,7 +3,7 @@
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
 //  Createdd by Zentrax Team.
-//  Status: PRODUCTION AUDITED (V5)
+//  Status: PRODUCTION READY (V4)
 //
 
 @import UIKit;
@@ -156,7 +156,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             NSSelectorFromString(@"dismissViewControllerAnimated:completion:"), NO, nil);
     });
 }
-
 
 #pragma mark - ================= ZENTRAX VIP EXECUTION BRIDGE =================
 
@@ -460,6 +459,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 - (BOOL)claimTargetOperation:(NSString *)target operationId:(NSString *)operationId {
     if (target.length == 0 || operationId.length == 0) return NO;
     @synchronized (self) {
+        NSString *key = [NSString stringWithFormat:@"%@|%@", target, operationId];
         if ([self.activeTargetOperations containsObject:target]) return NO;
         [self.activeTargetOperations addObject:target];
         return YES;
@@ -573,8 +573,10 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSString *deviceId = [modulePayload[@"device_id"] description];
 
     NSError *ledgerError = nil;
+    NSString *actionString = (action == ZXModuleOperationActionON) ? @"ON" : @"OFF";
+
     BOOL began = [self.stateStore beginOperationWithId:operationId
-                                                action:action
+                                                action:actionString
                                             functionId:resolvedFunctionId
                                              licenseId:licenseId
                                               deviceId:deviceId
@@ -582,8 +584,8 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                                  error:&ledgerError];
 
     if (!began) {
-        NSLog(@"[Zentrax VIP] [StateStore] beginOperation failed | OpID: %@ | Target: %@ | Func: %@ | Action: %ld | Domain: %@ | Code: %ld | Desc: %@",
-              operationId, target, resolvedFunctionId, (long)action, ledgerError.domain, (long)ledgerError.code, ledgerError.localizedDescription);
+        NSLog(@"[Zentrax VIP] [StateStore] beginOperation failed | OpID: %@ | Target: %@ | Func: %@ | Action: %@ | Domain: %@ | Code: %ld | Desc: %@",
+              operationId, target, resolvedFunctionId, actionString, ledgerError.domain, (long)ledgerError.code, ledgerError.localizedDescription);
               
         [self releaseTargetOperation:target];
         [self finishModuleFailure:@"Unable to prepare the local transaction safely."
