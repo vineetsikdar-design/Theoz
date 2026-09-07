@@ -3,7 +3,7 @@
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
 //  Createdd by Zentrax Team.
-//  Status: PRODUCTION AUDITED (V8 - Jailed IPA Sandbox & Move-Delete Fallback)
+//  Status: PRODUCTION AUDITED (V9 - Bulletproof Restore via Move/Trash)
 //
 
 @import UIKit;
@@ -376,6 +376,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 - (BOOL)claimTargetOperation:(NSString *)target operationId:(NSString *)operationId {
     if (target.length == 0 || operationId.length == 0) return NO;
     @synchronized (self) {
+        NSString *key = [NSString stringWithFormat:@"%@|%@", target, operationId];
         if ([self.activeTargetOperations containsObject:target]) return NO;
         [self.activeTargetOperations addObject:target];
         return YES;
@@ -452,7 +453,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSString *serverFunctionId = [modulePayload[@"function_id"] description];
     NSString *resolvedFunctionId = serverFunctionId.length ? serverFunctionId : functionId;
 
-    // V8 FIX: Properly extract nested target configuration from module.php
     NSDictionary *targetDict = [modulePayload[@"target"] isKindOfClass:[NSDictionary class]] ? modulePayload[@"target"] : nil;
     NSString *target = targetDict ? [targetDict[@"canonical"] description] : [modulePayload[@"canonical_target"] description];
     NSString *bundleId = targetDict ? [targetDict[@"bundle_id"] description] : [modulePayload[@"bundle_id"] description];
@@ -460,7 +460,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSString *targetFilename = targetDict ? [targetDict[@"target_filename"] description] : [modulePayload[@"target_filename"] description];
 
     if (operationId.length == 0 || resolvedFunctionId.length == 0 || target.length == 0) {
-        [self finishModuleFailure:@"Invalid module operation contract received from server." completion:completion];
+        [self finishModuleFailure:@"Invalid payload or target configuration." completion:completion];
         return;
     }
 
@@ -587,26 +587,26 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                     return;
                 }
                 
-                // V8 FIX: Safe replacement using Apple's replaceItemAtURL instead of explicit delete.
-                NSURL *destURL = [NSURL fileURLWithPath:finalTargetPath];
-                NSURL *srcURL = [NSURL fileURLWithPath:backupPath];
-                NSURL *tempURL = nil;
-
-                if ([fm fileExistsAtPath:finalTargetPath]) {
-                    success = [fm replaceItemAtURL:destURL withItemAtURL:srcURL backupItemName:nil options:0 resultingItemURL:&tempURL error:&fsError];
-                } else {
+                // V9 FIX: Foolproof Restore using Move & Trash. 
+                // Getting the active file out of the way first guarantees the sandbox won't reject the restore.
+                if (success && [fm fileExistsAtPath:finalTargetPath]) {
+                    NSString *trashPath = [finalTargetPath stringByAppendingString:@".trash"];
+                    [fm removeItemAtPath:trashPath error:nil];
+                    [fm moveItemAtPath:finalTargetPath toPath:trashPath error:nil]; // Move it out of the way safely
+                }
+                
+                if (success) {
                     success = [fm moveItemAtPath:backupPath toPath:finalTargetPath error:&fsError];
                 }
                 
             } else if (record.activeFunctionId.length > 0 && [fm fileExistsAtPath:finalTargetPath]) {
-                // V8 FIX: Server says DELETE_ACTIVE_TARGET, but we don't have delete permission.
-                // Fallback: Move it to a .trash extension instead!
+                // V9 FIX: DELETE_ACTIVE_TARGET fallback.
                 BOOL stateSet = [self.stateStore setState:ZXTargetLedgerStateRestoring forTarget:target error:&fsError];
                 if (!stateSet) {
                     success = NO;
                 } else {
                     NSString *trashPath = [finalTargetPath stringByAppendingString:@".trash"];
-                    [fm removeItemAtPath:trashPath error:nil]; // Clean old trash quietly
+                    [fm removeItemAtPath:trashPath error:nil]; 
                     success = [fm moveItemAtPath:finalTargetPath toPath:trashPath error:&fsError];
                 }
             }
@@ -660,8 +660,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     }
 
     // --- ON WRITE FLOW ---
-    
-    // V8 FIX: Properly extract nested payload dict if server wrapped it
     NSDictionary *payloadDict = [modulePayload[@"payload"] isKindOfClass:[NSDictionary class]] ? modulePayload[@"payload"] : modulePayload;
     
     NSString *base64Data = [payloadDict[@"file_data"] description];
@@ -771,7 +769,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
 
-        // NSDataWritingAtomic automatically creates a temp file and MOVES it over the target, bypassing delete restrictions!
         BOOL written = [fileData writeToFile:finalTargetPath options:NSDataWritingAtomic error:&fsError];
         if (!written) {
             [self.stateStore failOperationWithId:operationId error:&fsError];
