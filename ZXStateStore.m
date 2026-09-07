@@ -1,4 +1,4 @@
-	//
+//
 //  ZXStateStore.m
 //  ZENTRAX
 //
@@ -383,14 +383,14 @@ static NSInteger const ZXStateStoreCurrentSchemaVersion = 1;
 
 - (void)buildStoragePaths
 {
-    // Tweak environment fix: Use a universal shared path instead of an app-specific sandbox directory
-    // This ensures state is globally synchronized between SpringBoard and target applications.
-    NSString *sharedDirectory = @"/var/mobile/Documents/Zentrax";
+    // Tweak environment fix: Use the host application's sandboxed Documents directory.
+    // This ensures read/write permissions are always granted regardless of rootless/jailed state.
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *baseDirectory = [paths firstObject];
+    NSString *sharedDirectory = [baseDirectory stringByAppendingPathComponent:ZXStateStoreDirectoryName];
 
     self.storageDirectory = sharedDirectory;
-
     self.storageFilePath = [sharedDirectory stringByAppendingPathComponent:ZXStateStoreFileName];
-
     self.checkpointFilePath = [sharedDirectory stringByAppendingPathComponent:ZXStateStoreCheckpointFileName];
 }
 
@@ -1141,7 +1141,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
 #pragma mark Operations
 
 - (BOOL)beginOperationWithId:(NSString *)operationId
-                       action:(ZXModuleOperationAction)action
+                       action:(NSString *)action
                    functionId:(NSString *)functionId
                     licenseId:(NSString *)licenseId
                      deviceId:(NSString *)deviceId
@@ -1194,7 +1194,14 @@ requiresReconciliation:(BOOL)requiresReconciliation
         }
 
         record.operationId = operationId;
-        record.operationAction = action;
+        
+        if ([action isEqualToString:@"ON"]) {
+            record.operationAction = ZXModuleOperationActionON;
+        } else if ([action isEqualToString:@"OFF"]) {
+            record.operationAction = ZXModuleOperationActionOFF;
+        } else {
+            record.operationAction = ZXModuleOperationActionUnknown;
+        }
 
         if (functionId.length) {
             record.activeFunctionId = functionId;
@@ -1211,7 +1218,7 @@ requiresReconciliation:(BOOL)requiresReconciliation
         record.operationState =
             ZXLedgerOperationStatePrepared;
 
-        switch (action) {
+        switch (record.operationAction) {
             case ZXModuleOperationActionON:
                 record.state =
                     ZXTargetLedgerStateStagingON;
