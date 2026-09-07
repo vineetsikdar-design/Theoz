@@ -3,11 +3,10 @@
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
 //  Architecture: Server-authoritative UI / Network-driven state
-//  Status: AUDITED REPLACEMENT
+//  Status: PRODUCTION AUDITED
 //
 
 #import "ZentraxUI.h"
-#import "ZentraxNetworkManager.h"
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -85,10 +84,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
         @"Lifetime server entitlement": @"Quyền sử dụng vĩnh viễn từ máy chủ",
         @"No functions available": @"Không có chức năng khả dụng",
         @"Your server configuration will appear here when functions are assigned to this license.": @"Cấu hình máy chủ sẽ xuất hiện ở đây khi chức năng được gán cho giấy phép này.",
-        @"Enter passcode": @"Nhập mật mã", @"Create Passcode": @"Tạo mật mã",
+        @"Enter Passcode": @"Nhập mật mã", @"Create Passcode": @"Tạo mật mã",
         @"Create a 6-digit private passcode": @"Tạo mật mã riêng gồm 6 chữ số",
         @"Confirm Passcode": @"Xác nhận mật mã", @"Enter the same 6-digit passcode again": @"Nhập lại mật mã 6 chữ số",
-        @"Private space unlocked": @"Không gian riêng đã mở khóa",
         @"Choose your language": @"Chọn ngôn ngữ", @"You can change this anytime from Settings.": @"Bạn có thể thay đổi bất cứ lúc nào trong Cài đặt.",
         @"WELCOME TO ZENTRAX": @"CHÀO MỪNG ĐẾN VỚI ZENTRAX",
         @"PREMIUM THEMES": @"CHỦ ĐỀ CAO CẤP", @"DONE": @"XONG", @"RECHECK": @"KIỂM TRA LẠI",
@@ -97,7 +95,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         @"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information": @"Ứng dụng chia sẻ màn hình có thể bị kẻ gian sử dụng để ghi lại màn hình và đánh cắp thông tin ví của bạn",
         @"AUTHENTICATE": @"XÁC THỰC", @"SECURE OPERATION": @"THAO TÁC BẢO MẬT", @"Please wait…": @"Vui lòng chờ…",
         @"Awaiting verification": @"Đang chờ xác minh", @"NOT VERIFIED": @"CHƯA XÁC MINH", @"SUPPORTED": @"HỖ TRỢ", @"UNSUPPORTED": @"KHÔNG HỖ TRỢ",
-        @"Private Space": @"Không gian riêng tư"
+        @"ACTIVE":@"ĐANG BẬT", @"READY":@"SẴN SÀNG", @"UNACTIVATED":@"CHƯA KÍCH HOẠT", @"EXPIRED":@"ĐÃ HẾT HẠN", @"REVOKED":@"ĐÃ THU HỒI", @"DISABLED":@"ĐÃ TẮT", @"UNKNOWN":@"KHÔNG XÁC ĐỊNH", @"PROCESSING":@"ĐANG XỬ LÝ", @"PERMANENT":@"VĨNH VIỄN", @"NOT STARTED":@"CHƯA BẮT ĐẦU", @"● SECURE":@"● BẢO MẬT", @"● OFFLINE":@"● NGOẠI TUYẾN"
     };
     NSDictionary *zh = @{
         @"Settings": @"设置", @"Safe UI Mode": @"安全界面模式",
@@ -109,24 +107,44 @@ static NSString *ZXLocalizedUI(NSString *text) {
         @"Awaiting first activation": @"等待首次激活", @"Lifetime server entitlement": @"服务器永久授权",
         @"No functions available": @"暂无可用功能",
         @"Your server configuration will appear here when functions are assigned to this license.": @"为此许可证分配功能后，服务器配置将显示在这里。",
-        @"Enter passcode": @"输入密码", @"Create Passcode": @"创建密码", @"Create a 6-digit private passcode": @"创建六位私密密码",
+        @"Enter Passcode": @"输入密码", @"Create Passcode": @"创建密码", @"Create a 6-digit private passcode": @"创建六位私密密码",
         @"Confirm Passcode": @"确认密码", @"Enter the same 6-digit passcode again": @"再次输入相同的六位密码",
-        @"Private space unlocked": @"私密空间已解锁", @"Choose your language": @"选择语言",
+        @"Choose your language": @"选择语言",
         @"You can change this anytime from Settings.": @"你可以随时在设置中更改。", @"WELCOME TO ZENTRAX": @"欢迎使用 ZENTRAX",
         @"PREMIUM THEMES": @"高级主题", @"DONE": @"完成", @"RECHECK": @"重新检查", @"UNAVAILABLE": @"不可用",
         @"DISMISS": @"关闭", @"RETRY": @"重试", @"Close screen sharing app": @"关闭屏幕共享应用",
         @"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information": @"屏幕共享应用可能被诈骗者用来录制屏幕并窃取钱包信息",
         @"AUTHENTICATE": @"验证", @"SECURE OPERATION": @"安全操作", @"Please wait…": @"请稍候…",
         @"Awaiting verification": @"等待验证", @"NOT VERIFIED": @"未验证", @"SUPPORTED": @"支持", @"UNSUPPORTED": @"不支持",
-        @"Private Space": @"私密空间"
+        @"ACTIVE":@"已启用", @"READY":@"就绪", @"UNACTIVATED":@"未激活", @"EXPIRED":@"已过期", @"REVOKED":@"已撤销", @"DISABLED":@"已禁用", @"UNKNOWN":@"未知", @"PROCESSING":@"处理中", @"PERMANENT":@"永久", @"NOT STARTED":@"未开始", @"● SECURE":@"● 安全", @"● OFFLINE":@"● 离线"
     };
-    NSString *localized = [language isEqualToString:@"Tiếng Việt"] ? vi[text] : ([language isEqualToString:@"简体中文"] ? zh[text] : nil);
-    if (!localized.length) {
-        NSDictionary *commonVI=@{ @"ACTIVE":@"ĐANG BẬT", @"READY":@"SẴN SÀNG", @"UNACTIVATED":@"CHƯA KÍCH HOẠT", @"EXPIRED":@"ĐÃ HẾT HẠN", @"REVOKED":@"ĐÃ THU HỒI", @"DISABLED":@"ĐÃ TẮT", @"UNKNOWN":@"KHÔNG XÁC ĐỊNH", @"PROCESSING":@"ĐANG XỬ LÝ", @"PERMANENT":@"VĨNH VIỄN", @"NOT STARTED":@"CHƯA BẮT ĐẦU", @"● SECURE":@"● BẢO MẬT", @"● OFFLINE":@"● NGOẠI TUYẾN" };
-        NSDictionary *commonZH=@{ @"ACTIVE":@"已启用", @"READY":@"就绪", @"UNACTIVATED":@"未激活", @"EXPIRED":@"已过期", @"REVOKED":@"已撤销", @"DISABLED":@"已禁用", @"UNKNOWN":@"未知", @"PROCESSING":@"处理中", @"PERMANENT":@"永久", @"NOT STARTED":@"未开始", @"● SECURE":@"● 安全", @"● OFFLINE":@"● 离线" };
-        localized = [language isEqualToString:@"Tiếng Việt"] ? commonVI[text] : ([language isEqualToString:@"简体中文"] ? commonZH[text] : nil);
-    }
-    return localized.length ? localized : text;
+    NSDictionary *ja = @{
+        @"Settings": @"設定", @"Safe UI Mode": @"安全なUIモード",
+        @"Protected lock screen is enabled": @"保護されたロック画面が有効です", @"Add a private six-digit lock screen": @"プライベートな6桁のロック画面を追加",
+        @"DEVICE STATUS": @"デバイスのステータス", @"PREFERENCES": @"環境設定", @"ACCOUNT": @"アカウント",
+        @"Language": @"言語", @"Appearance": @"外観", @"Sign Out": @"サインアウト",
+        @"Close the current secure session": @"現在の安全なセッションを閉じる", @"LICENSE CONTROL": @"ライセンス管理",
+        @"SECURE FUNCTIONS": @"安全な機能", @"Secure node connected.": @"セキュアノードに接続しました。",
+        @"Awaiting first activation": @"初回アクティベーション待ち", @"Lifetime server entitlement": @"サーバーの永久エンタイトルメント",
+        @"No functions available": @"利用可能な機能はありません",
+        @"Your server configuration will appear here when functions are assigned to this license.": @"このライセンスに機能が割り当てられると、ここにサーバー構成が表示されます。",
+        @"Enter Passcode": @"パスコードを入力", @"Create Passcode": @"パスコードを作成", @"Create a 6-digit private passcode": @"6桁のプライベートパスコードを作成します",
+        @"Confirm Passcode": @"パスコードの確認", @"Enter the same 6-digit passcode again": @"同じ6桁のパスコードをもう一度入力してください",
+        @"Choose your language": @"言語を選択",
+        @"You can change this anytime from Settings.": @"設定からいつでも変更できます。", @"WELCOME TO ZENTRAX": @"ZENTRAXへようこそ",
+        @"PREMIUM THEMES": @"プレミアムテーマ", @"DONE": @"完了", @"RECHECK": @"再確認", @"UNAVAILABLE": @"利用不可",
+        @"DISMISS": @"閉じる", @"RETRY": @"再試行", @"Close screen sharing app": @"画面共有アプリを閉じる",
+        @"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information": @"画面共有アプリは、詐欺師が画面を録画し、ウォレット情報を盗むために使用される可能性があります",
+        @"AUTHENTICATE": @"認証する", @"SECURE OPERATION": @"安全な操作", @"Please wait…": @"お待ちください…",
+        @"Awaiting verification": @"確認待ち", @"NOT VERIFIED": @"未確認", @"SUPPORTED": @"サポート対象", @"UNSUPPORTED": @"サポート対象外",
+        @"ACTIVE":@"アクティブ", @"READY":@"準備完了", @"UNACTIVATED":@"未アクティベート", @"EXPIRED":@"期限切れ", @"REVOKED":@"無効化", @"DISABLED":@"無効", @"UNKNOWN":@"不明", @"PROCESSING":@"処理中", @"PERMANENT":@"永久", @"NOT STARTED":@"未開始", @"● SECURE":@"● 安全", @"● OFFLINE":@"● オフライン"
+    };
+
+    if ([language isEqualToString:@"Tiếng Việt"]) return vi[text] ?: text;
+    if ([language isEqualToString:@"简体中文"]) return zh[text] ?: text;
+    if ([language isEqualToString:@"日本語"]) return ja[text] ?: text;
+    
+    return text;
 }
 
 #pragma mark - Theme Engine
@@ -152,13 +170,13 @@ static NSString *ZXLocalizedUI(NSString *text) {
 }
 + (UIColor *)background {
     NSString *t = [self currentTheme];
-    if ([t isEqualToString:@"Midnight"]) return [UIColor colorWithRed:0.04 green:0.05 blue:0.08 alpha:1.0];
+    if ([t isEqualToString:@"Midnight"]) return [UIColor colorWithRed:0.03 green:0.04 blue:0.07 alpha:1.0];
     if ([t isEqualToString:@"Titanium"]) return [UIColor colorWithWhite:0.08 alpha:1.0];
-    if ([t isEqualToString:@"Arctic"]) return [UIColor colorWithWhite:0.98 alpha:1.0];
-    if ([t isEqualToString:@"Emerald"]) return [UIColor colorWithRed:0.02 green:0.06 blue:0.04 alpha:1.0];
-    if ([t isEqualToString:@"Crimson"]) return [UIColor colorWithRed:0.08 green:0.02 blue:0.02 alpha:1.0];
+    if ([t isEqualToString:@"Arctic"]) return [UIColor colorWithRed:0.96 green:0.97 blue:0.98 alpha:1.0];
+    if ([t isEqualToString:@"Emerald"]) return [UIColor colorWithRed:0.01 green:0.05 blue:0.03 alpha:1.0];
+    if ([t isEqualToString:@"Crimson"]) return [UIColor colorWithRed:0.07 green:0.02 blue:0.02 alpha:1.0];
     if ([t isEqualToString:@"Royal"]) return [UIColor colorWithRed:0.05 green:0.03 blue:0.08 alpha:1.0];
-    if ([t isEqualToString:@"Pearl"]) return [UIColor colorWithRed:0.98 green:0.97 blue:0.96 alpha:1.0];
+    if ([t isEqualToString:@"Pearl"]) return [UIColor colorWithRed:0.98 green:0.97 blue:0.95 alpha:1.0];
     return [UIColor blackColor]; // Obsidian
 }
 + (UIColor *)surface {
@@ -188,11 +206,11 @@ static NSString *ZXLocalizedUI(NSString *text) {
 }
 + (UIColor *)border {
     NSString *t = [self currentTheme];
-    if ([t isEqualToString:@"Arctic"]) return [UIColor colorWithWhite:0.90 alpha:1.0];
+    if ([t isEqualToString:@"Arctic"]) return [UIColor colorWithWhite:0.88 alpha:1.0];
     if ([t isEqualToString:@"Pearl"]) return [UIColor colorWithRed:0.90 green:0.88 blue:0.86 alpha:1.0];
     if ([t isEqualToString:@"Midnight"]) return [UIColor colorWithRed:0.18 green:0.22 blue:0.30 alpha:1.0];
     if ([t isEqualToString:@"Titanium"]) return [UIColor colorWithWhite:0.25 alpha:1.0];
-    return [UIColor colorWithWhite:0.15 alpha:1.0];
+    return [UIColor colorWithWhite:0.14 alpha:1.0];
 }
 + (UIColor *)borderStrong {
     return [self isLightMode] ? [UIColor colorWithWhite:0.75 alpha:1.0] : [UIColor colorWithWhite:0.35 alpha:1.0];
@@ -209,8 +227,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
 + (UIColor *)accent {
     NSString *t = [self currentTheme];
     if ([t isEqualToString:@"Midnight"]) return [UIColor colorWithRed:0.25 green:0.55 blue:0.95 alpha:1.0];
-    if ([t isEqualToString:@"Titanium"]) return [UIColor colorWithWhite:0.80 alpha:1.0];
-    if ([t isEqualToString:@"Arctic"]) return [UIColor colorWithRed:0.0 green:0.45 blue:0.85 alpha:1.0];
+    if ([t isEqualToString:@"Titanium"]) return [UIColor colorWithWhite:0.85 alpha:1.0];
+    if ([t isEqualToString:@"Arctic"]) return [UIColor colorWithRed:0.05 green:0.45 blue:0.85 alpha:1.0];
     if ([t isEqualToString:@"Emerald"]) return [UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:1.0];
     if ([t isEqualToString:@"Crimson"]) return [UIColor colorWithRed:0.90 green:0.30 blue:0.25 alpha:1.0];
     if ([t isEqualToString:@"Royal"]) return [UIColor colorWithRed:0.60 green:0.35 blue:0.85 alpha:1.0];
@@ -236,9 +254,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
     view.layer.borderWidth = 1;
     view.layer.borderColor = [self border].CGColor;
     view.layer.shadowColor = [UIColor blackColor].CGColor;
-    view.layer.shadowOpacity = [self isLightMode] ? 0.05 : 0.20;
-    view.layer.shadowRadius = 12;
-    view.layer.shadowOffset = CGSizeMake(0, 4);
+    view.layer.shadowOpacity = [self isLightMode] ? 0.04 : 0.15;
+    view.layer.shadowRadius = 16;
+    view.layer.shadowOffset = CGSizeMake(0, 6);
 }
 @end
 
@@ -255,7 +273,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     self=[super initWithFrame:CGRectZero];
     if (!self) return nil;
     self.backgroundColor = [ZXTheme accent];
-    self.layer.cornerRadius = 12.0;
+    self.layer.cornerRadius = 14.0;
     self.clipsToBounds = NO;
     self.titleLabel.font = [ZXTheme heading:15];
     
@@ -265,6 +283,11 @@ static NSString *ZXLocalizedUI(NSString *text) {
     }
     [self setTitleColor:titleColor forState:UIControlStateNormal];
     
+    self.layer.shadowColor = [ZXTheme accent].CGColor;
+    self.layer.shadowOpacity = 0.25;
+    self.layer.shadowRadius = 12.0;
+    self.layer.shadowOffset = CGSizeMake(0, 4);
+
     _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
     _spinner.color = titleColor;
     _spinner.hidesWhenStopped = YES;
@@ -315,7 +338,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
     _container = [[UIView alloc] init];
     _container.backgroundColor = [ZXTheme surfaceInset];
-    _container.layer.cornerRadius = 10;
+    _container.layer.cornerRadius = 12;
     _container.layer.borderWidth = 1;
     _container.layer.borderColor = [ZXTheme border].CGColor;
     _container.translatesAutoresizingMaskIntoConstraints = NO;
@@ -340,7 +363,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [_container.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [_container.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
         [_container.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
-        [_container.heightAnchor constraintEqualToConstant:50],
+        [_container.heightAnchor constraintEqualToConstant:54],
         [_textField.leadingAnchor constraintEqualToAnchor:_container.leadingAnchor constant:16],
         [_textField.trailingAnchor constraintEqualToAnchor:_container.trailingAnchor constant:-16],
         [_textField.centerYAnchor constraintEqualToAnchor:_container.centerYAnchor]
@@ -377,7 +400,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
 @property(nonatomic,strong) NSDate *expiresAt;
 @property(nonatomic,strong) NSTimer *licenseTimer;
 @property(nonatomic,strong) NSTimer *heartbeatTimer;
-@property(nonatomic,copy) NSString *serverBannerMessage;
 @property(nonatomic,strong) NSDictionary *compatibilityData;
 @property(nonatomic,strong) NSDictionary *dashboardConfiguration;
 @property(nonatomic,strong) NSMutableDictionary<NSString *, NSNumber *> *functionStates;
@@ -392,10 +414,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
 @property(nonatomic,strong) UIView *settingsContainer;
 @property(nonatomic,strong) UIView *startupBlockContainer;
 @property(nonatomic,strong) UIView *safeLockContainer;
-@property(nonatomic,strong) UIView *privacyOverlay;
+@property(nonatomic,strong) UIVisualEffectView *privacyOverlay;
 @property(nonatomic,strong) UIView *globalLoadingOverlay;
 @property(nonatomic,strong) UIView *toastView;
-@property(nonatomic,strong) UIView *languageOverlay;
 
 @property(nonatomic,strong) UILabel *splashStatus;
 @property(nonatomic,strong) UILabel *splashDetail;
@@ -414,7 +435,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
 @property(nonatomic,strong) UIStackView *modulesStack;
 @property(nonatomic,strong) UIScrollView *modulesScroll;
 @property(nonatomic,strong) UIView *emptyState;
-@property(nonatomic,strong) UIView *serverBannerView;
 @property(nonatomic,strong) UIView *licenseCard;
 
 @property(nonatomic,strong) UIScrollView *settingsScroll;
@@ -443,6 +463,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
 - (UIImage *)preferredLogoImage;
 - (void)toggleDashboardKey;
+- (void)rebuildAllContainers;
 @end
 
 @implementation ZentraxUI
@@ -476,13 +497,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     self.view.opaque = YES;
     self.currentState = ZXAppStateInit;
 
-    [self setupSplash];
-    [self setupAuth];
-    [self setupDashboard];
-    [self setupSettingsScreen];
-    [self setupStartupBlock];
-    [self setupSafeModeLock];
-    [self setupGlobalLoading];
+    [self rebuildAllContainers];
 
     [self registerPrivacyObservers];
     [self applyInitialSafeModeState];
@@ -490,6 +505,29 @@ static NSString *ZXLocalizedUI(NSString *text) {
     
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+}
+
+- (void)rebuildAllContainers {
+    [self.splashContainer removeFromSuperview];
+    [self.authContainer removeFromSuperview];
+    [self.dashboardContainer removeFromSuperview];
+    [self.settingsContainer removeFromSuperview];
+    [self.startupBlockContainer removeFromSuperview];
+    [self.safeLockContainer removeFromSuperview];
+    [self.globalLoadingOverlay removeFromSuperview];
+    [self.privacyOverlay removeFromSuperview];
+
+    self.view.backgroundColor = [ZXTheme background];
+    
+    [self setupSplash];
+    [self setupAuth];
+    [self setupDashboard];
+    [self setupSettingsScreen];
+    [self setupStartupBlock];
+    [self setupSafeModeLock];
+    [self setupGlobalLoading];
+    
+    [self setAllPrimaryContainersHidden:YES];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -570,7 +608,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
 - (void)styleSecondaryButton:(UIButton *)button {
     button.backgroundColor = [ZXTheme surfaceRaised];
-    button.layer.cornerRadius = 10.0;
+    button.layer.cornerRadius = 12.0;
     button.layer.borderWidth = 1.0;
     button.layer.borderColor = [ZXTheme border].CGColor;
     button.titleLabel.font = [ZXTheme heading:13];
@@ -874,8 +912,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [header addSubview:settingsBtn];
 
     [NSLayoutConstraint activateConstraints:@[
-        [header.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:20],
-        [header.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-20],
+        [header.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
+        [header.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
         [header.topAnchor constraintEqualToAnchor:_dashboardContainer.safeAreaLayoutGuide.topAnchor constant:8],
         [header.heightAnchor constraintEqualToConstant:40],
         [logo.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
@@ -893,8 +931,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
     _licenseCard = [self card];
     [_dashboardContainer addSubview:_licenseCard];
     [NSLayoutConstraint activateConstraints:@[
-        [_licenseCard.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:20],
-        [_licenseCard.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-20],
+        [_licenseCard.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
+        [_licenseCard.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
         [_licenseCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:24],
         [_licenseCard.heightAnchor constraintEqualToConstant:130]
     ]];
@@ -927,20 +965,20 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [_licenseCard addSubview:_keyEyeButton];
 
     [NSLayoutConstraint activateConstraints:@[
-        [licenseCaption.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:18],
-        [licenseCaption.topAnchor constraintEqualToAnchor:_licenseCard.topAnchor constant:18],
-        [_licenseStatusLabel.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-18],
+        [licenseCaption.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:20],
+        [licenseCaption.topAnchor constraintEqualToAnchor:_licenseCard.topAnchor constant:20],
+        [_licenseStatusLabel.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-20],
         [_licenseStatusLabel.centerYAnchor constraintEqualToAnchor:licenseCaption.centerYAnchor],
-        [_countdownLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:18],
+        [_countdownLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:20],
         [_countdownLabel.topAnchor constraintEqualToAnchor:licenseCaption.bottomAnchor constant:12],
-        [_countdownLabel.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-18],
-        [_expiryLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:18],
+        [_countdownLabel.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-20],
+        [_expiryLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:20],
         [_expiryLabel.topAnchor constraintEqualToAnchor:_countdownLabel.bottomAnchor constant:4],
-        [_expiryLabel.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-18],
-        [_keyRevealLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:18],
-        [_keyRevealLabel.bottomAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:-14],
+        [_expiryLabel.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-20],
+        [_keyRevealLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:20],
+        [_keyRevealLabel.bottomAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:-16],
         [_keyRevealLabel.trailingAnchor constraintEqualToAnchor:_keyEyeButton.leadingAnchor constant:-8],
-        [_keyEyeButton.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-12],
+        [_keyEyeButton.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-14],
         [_keyEyeButton.centerYAnchor constraintEqualToAnchor:_keyRevealLabel.centerYAnchor]
     ]];
 
@@ -957,16 +995,16 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
     _modulesStack = [[UIStackView alloc] init];
     _modulesStack.axis = UILayoutConstraintAxisVertical;
-    _modulesStack.spacing = 12;
+    _modulesStack.spacing = 14;
     _modulesStack.translatesAutoresizingMaskIntoConstraints = NO;
     [_modulesScroll addSubview:_modulesStack];
 
     [NSLayoutConstraint activateConstraints:@[
-        [functionsTitle.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:20],
+        [functionsTitle.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
         [functionsTitle.topAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:28],
-        [functionsTitle.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-20],
-        [_modulesScroll.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:20],
-        [_modulesScroll.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-20],
+        [functionsTitle.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
+        [_modulesScroll.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor constant:24],
+        [_modulesScroll.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor constant:-24],
         [_modulesScroll.topAnchor constraintEqualToAnchor:functionsTitle.bottomAnchor constant:12],
         [_modulesScroll.bottomAnchor constraintEqualToAnchor:_dashboardContainer.bottomAnchor],
         [_modulesStack.leadingAnchor constraintEqualToAnchor:_modulesScroll.contentLayoutGuide.leadingAnchor],
@@ -1127,7 +1165,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
     UISwitch *toggle = [[UISwitch alloc] init];
     toggle.onTintColor = [ZXTheme accent];
-    toggle.thumbTintColor = [UIColor whiteColor];
+    toggle.thumbTintColor = [ZXTheme isLightMode] ? [UIColor whiteColor] : [UIColor blackColor];
     toggle.on = on;
     toggle.translatesAutoresizingMaskIntoConstraints = NO;
     [toggle addTarget:self action:@selector(functionToggleChanged:) forControlEvents:UIControlEventValueChanged];
@@ -1135,25 +1173,25 @@ static NSString *ZXLocalizedUI(NSString *text) {
     self.functionControls[fid] = toggle;
 
     [NSLayoutConstraint activateConstraints:@[
-        [icon.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
-        [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:18],
-        [icon.widthAnchor constraintEqualToConstant:18],
-        [icon.heightAnchor constraintEqualToConstant:18],
+        [icon.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
+        [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:20],
+        [icon.widthAnchor constraintEqualToConstant:20],
+        [icon.heightAnchor constraintEqualToConstant:20],
         
-        [stateLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
-        [stateLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:18],
+        [stateLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
+        [stateLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:20],
         
         [title.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:12],
-        [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:18],
+        [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:20],
         [title.trailingAnchor constraintLessThanOrEqualToAnchor:stateLabel.leadingAnchor constant:-10],
         
         [detail.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
         [detail.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:4],
-        [detail.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        [detail.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
         
-        [toggle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        [toggle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
         [toggle.topAnchor constraintEqualToAnchor:detail.bottomAnchor constant:16],
-        [toggle.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-18]
+        [toggle.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20]
     ]];
     return card;
 }
@@ -1193,7 +1231,10 @@ static NSString *ZXLocalizedUI(NSString *text) {
                 self.functionStates[fid] = @(!requested);
                 state.text = ZXLocalizedUI(!requested ? @"ACTIVE" : @"READY");
                 state.textColor = !requested ? [ZXTheme success] : [ZXTheme mutedText];
-                [self showGlobalErrorWithTitle:ZXLocalizedUI(@"OPERATION FAILED") message:msg ?: ZXLocalizedUI(@"The server could not complete this operation.")];
+                // Do not display generic errors on RESTORE_OFF unless it actually failed. The bridge passes success=YES on valid RESTORE_OFF.
+                if (msg.length > 0) {
+                    [self showGlobalErrorWithTitle:ZXLocalizedUI(@"OPERATION FAILED") message:msg];
+                }
             }
         });
     };
@@ -1250,7 +1291,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     if (![subData isKindOfClass:[NSDictionary class]]) return;
     NSString *statusRaw = subData[@"status"];
     
-    // Prevent accidental wipe of valid active license if optional heartbeat data is sparse
+    // Guard against clearing active permanent license upon sparse heartbeat update
     if (!statusRaw && self.licenseStatus == ZXLicenseUIStatusActive) return;
     
     NSString *status = [[NSString stringWithFormat:@"%@", (statusRaw ?: @"unknown")] lowercaseString];
@@ -1266,7 +1307,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     NSDate *expires = [self dateFromServerValue:subData[@"expires_at"]];
     BOOL permanent = [subData[@"is_permanent"] boolValue];
     
-    // If it was permanent before, and we receive a sparse update, preserve permanent
     if (!subData[@"is_permanent"] && self.licensePermanent) permanent = YES;
     
     [self updateLicenseStatus:uiStatus activatedAt:activated expiresAt:expires isPermanent:permanent];
@@ -1588,7 +1628,11 @@ static NSString *ZXLocalizedUI(NSString *text) {
                     dispatch_async(dispatch_get_main_queue(), ^{
                         __strong typeof(weakSelf) self = weakSelf; if (!self) return;
                         if (!valid) [self handleRevokedSessionEnvironment];
-                        else { self.connectionLabel.text = ZXLocalizedUI(@"● SECURE"); self.connectionLabel.textColor = [ZXTheme success]; }
+                        else { 
+                            self.connectionLabel.text = ZXLocalizedUI(@"● SECURE"); 
+                            self.connectionLabel.textColor = [ZXTheme success]; 
+                            if (res[@"license"]) [self updateSubscriptionState:res[@"license"]];
+                        }
                     });
                 };
                 ((void (*)(id, SEL, id))objc_msgSend)(manager, verifySel, netCompletion);
@@ -1682,8 +1726,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [_settingsScroll addSubview:_settingsStack];
     
     [NSLayoutConstraint activateConstraints:@[
-        [_settingsScroll.leadingAnchor constraintEqualToAnchor:_settingsContainer.leadingAnchor constant:20],
-        [_settingsScroll.trailingAnchor constraintEqualToAnchor:_settingsContainer.trailingAnchor constant:-20],
+        [_settingsScroll.leadingAnchor constraintEqualToAnchor:_settingsContainer.leadingAnchor constant:24],
+        [_settingsScroll.trailingAnchor constraintEqualToAnchor:_settingsContainer.trailingAnchor constant:-24],
         [_settingsScroll.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:20],
         [_settingsScroll.bottomAnchor constraintEqualToAnchor:_settingsContainer.bottomAnchor],
         [_settingsStack.leadingAnchor constraintEqualToAnchor:_settingsScroll.contentLayoutGuide.leadingAnchor],
@@ -1774,7 +1818,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     
     UISwitch *safe = [[UISwitch alloc] init];
     safe.onTintColor = [ZXTheme accent];
-    safe.thumbTintColor = [UIColor whiteColor];
+    safe.thumbTintColor = [ZXTheme isLightMode] ? [UIColor whiteColor] : [UIColor blackColor];
     safe.on = self.safeModeEnabled;
     [safe addTarget:self action:@selector(safeModeSwitchChanged:) forControlEvents:UIControlEventValueChanged];
     [self.settingsStack addArrangedSubview:[self settingsRow:@"Safe UI Mode" subtitle:safe.isOn ? @"Protected lock screen is enabled" : @"Add a private six-digit lock screen" icon:@"lock.fill" action:nil accessory:safe]];
@@ -1944,7 +1988,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
 - (void)setupSafeModeLock {
     _safeLockContainer = [[UIView alloc] init];
     _safeLockContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    _safeLockContainer.backgroundColor = [ZXTheme background];
+    // Premium dark lock screen regardless of theme
+    _safeLockContainer.backgroundColor = [UIColor colorWithWhite:0.04 alpha:1.0];
     [self.view addSubview:_safeLockContainer];
     [NSLayoutConstraint activateConstraints:@[
         [_safeLockContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -1954,40 +1999,41 @@ static NSString *ZXLocalizedUI(NSString *text) {
     ]];
 
     _safeLockBackButton = [self iconButton:@"chevron.left" size:34];
+    _safeLockBackButton.tintColor = [UIColor whiteColor];
     _safeLockBackButton.hidden = YES;
     [_safeLockBackButton addTarget:self action:@selector(cancelSafeModeAction) forControlEvents:UIControlEventTouchUpInside];
     [_safeLockContainer addSubview:_safeLockBackButton];
 
-    _safeLockTitle = [self label:@"Private Space" size:24 weight:UIFontWeightBold color:[ZXTheme primaryText]];
+    _safeLockTitle = [self label:@"Enter Passcode" size:22 weight:UIFontWeightSemibold color:[UIColor whiteColor]];
     _safeLockTitle.textAlignment = NSTextAlignmentCenter;
     _safeLockTitle.translatesAutoresizingMaskIntoConstraints = NO;
     [_safeLockContainer addSubview:_safeLockTitle];
 
-    _safeLockSubtitle = [self label:@"Enter passcode" size:14 weight:UIFontWeightRegular color:[ZXTheme secondaryText]];
+    _safeLockSubtitle = [self label:@"" size:14 weight:UIFontWeightRegular color:[UIColor lightGrayColor]];
     _safeLockSubtitle.textAlignment = NSTextAlignmentCenter;
     _safeLockSubtitle.translatesAutoresizingMaskIntoConstraints = NO;
     [_safeLockContainer addSubview:_safeLockSubtitle];
 
-    _safePinError = [self label:@"" size:12 weight:UIFontWeightMedium color:[ZXTheme error]];
+    _safePinError = [self label:@"" size:13 weight:UIFontWeightMedium color:[ZXTheme error]];
     _safePinError.textAlignment = NSTextAlignmentCenter;
     _safePinError.translatesAutoresizingMaskIntoConstraints = NO;
     [_safeLockContainer addSubview:_safePinError];
 
     _pinBoxes = [[UIStackView alloc] init];
     _pinBoxes.axis = UILayoutConstraintAxisHorizontal;
-    _pinBoxes.spacing = 16;
+    _pinBoxes.spacing = 18;
     _pinBoxes.distribution = UIStackViewDistributionFillEqually;
     _pinBoxes.translatesAutoresizingMaskIntoConstraints = NO;
     [_safeLockContainer addSubview:_pinBoxes];
     for (NSInteger i = 0; i < 6; i++) {
         UIView *box = [[UIView alloc] init];
-        box.layer.cornerRadius = 8;
+        box.layer.cornerRadius = 7; // Exact 14x14 circle
         box.layer.borderWidth = 1.0;
-        box.layer.borderColor = [ZXTheme borderStrong].CGColor;
+        box.layer.borderColor = [UIColor colorWithWhite:0.4 alpha:1.0].CGColor;
         box.backgroundColor = [UIColor clearColor];
         [_pinBoxes addArrangedSubview:box];
-        [box.widthAnchor constraintEqualToConstant:16].active = YES;
-        [box.heightAnchor constraintEqualToConstant:16].active = YES;
+        [box.widthAnchor constraintEqualToConstant:14].active = YES;
+        [box.heightAnchor constraintEqualToConstant:14].active = YES;
     }
 
     _safePINInput = [[UITextField alloc] init];
@@ -2003,7 +2049,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [NSLayoutConstraint activateConstraints:@[
         [_safeLockBackButton.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:20],
         [_safeLockBackButton.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:10],
-        [_safeLockTitle.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:100],
+        [_safeLockTitle.topAnchor constraintEqualToAnchor:_safeLockContainer.safeAreaLayoutGuide.topAnchor constant:90],
         [_safeLockTitle.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:20],
         [_safeLockTitle.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-20],
         [_safeLockSubtitle.topAnchor constraintEqualToAnchor:_safeLockTitle.bottomAnchor constant:12],
@@ -2012,7 +2058,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         [_safePinError.topAnchor constraintEqualToAnchor:_safeLockSubtitle.bottomAnchor constant:12],
         [_safePinError.leadingAnchor constraintEqualToAnchor:_safeLockContainer.leadingAnchor constant:20],
         [_safePinError.trailingAnchor constraintEqualToAnchor:_safeLockContainer.trailingAnchor constant:-20],
-        [_pinBoxes.topAnchor constraintEqualToAnchor:_safePinError.bottomAnchor constant:32],
+        [_pinBoxes.topAnchor constraintEqualToAnchor:_safePinError.bottomAnchor constant:36],
         [_pinBoxes.centerXAnchor constraintEqualToAnchor:_safeLockContainer.centerXAnchor],
         [_safePINInput.centerXAnchor constraintEqualToAnchor:_safeLockContainer.centerXAnchor],
         [_safePINInput.topAnchor constraintEqualToAnchor:_safeLockContainer.topAnchor],
@@ -2037,8 +2083,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
         self.safeLockSubtitle.text = ZXLocalizedUI(@"Enter passcode to disable");
         self.safeLockBackButton.hidden = NO;
     } else {
-        self.safeLockTitle.text = ZXLocalizedUI(@"Private Space");
-        self.safeLockSubtitle.text = ZXLocalizedUI(@"Enter passcode");
+        self.safeLockTitle.text = ZXLocalizedUI(@"Enter Passcode");
+        self.safeLockSubtitle.text = @"";
         self.safeLockBackButton.hidden = YES;
     }
     
@@ -2079,11 +2125,11 @@ static NSString *ZXLocalizedUI(NSString *text) {
     for (NSInteger i=0;i<6;i++) {
         UIView *box = [self.pinBoxes.arrangedSubviews objectAtIndex:i];
         if (i < self.enteredPIN.length) {
-            box.backgroundColor = [ZXTheme primaryText];
-            box.layer.borderColor = [ZXTheme primaryText].CGColor;
+            box.backgroundColor = [UIColor whiteColor];
+            box.layer.borderColor = [UIColor whiteColor].CGColor;
         } else {
             box.backgroundColor = [UIColor clearColor];
-            box.layer.borderColor = [ZXTheme borderStrong].CGColor;
+            box.layer.borderColor = [UIColor colorWithWhite:0.4 alpha:1.0].CGColor;
         }
     }
 }
@@ -2179,39 +2225,42 @@ static NSString *ZXLocalizedUI(NSString *text) {
 - (void)showPrivacyOverlay {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!self.privacyOverlay) {
-            self.privacyOverlay = [[UIView alloc] initWithFrame:self.view.bounds];
+            UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
+            self.privacyOverlay = [[UIVisualEffectView alloc] initWithEffect:blur];
+            self.privacyOverlay.frame = self.view.bounds;
             self.privacyOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-            self.privacyOverlay.backgroundColor = [UIColor blackColor];
             self.privacyOverlay.layer.zPosition = 30000;
+            
+            UIView *content = self.privacyOverlay.contentView;
 
             UIImageView *shield = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"eye.slash.fill"]];
             shield.tintColor = [UIColor whiteColor];
             shield.contentMode = UIViewContentModeScaleAspectFit;
             shield.translatesAutoresizingMaskIntoConstraints = NO;
-            [self.privacyOverlay addSubview:shield];
+            [content addSubview:shield];
 
             UILabel *title = [self label:@"Close screen sharing app" size:22 weight:UIFontWeightBold color:[UIColor whiteColor]];
             title.textAlignment = NSTextAlignmentCenter;
             title.translatesAutoresizingMaskIntoConstraints = NO;
-            [self.privacyOverlay addSubview:title];
+            [content addSubview:title];
 
-            UILabel *message = [self label:@"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information" size:14 weight:UIFontWeightRegular color:[UIColor lightGrayColor]];
+            UILabel *message = [self label:@"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information" size:15 weight:UIFontWeightMedium color:[UIColor lightGrayColor]];
             message.textAlignment = NSTextAlignmentCenter;
             message.numberOfLines = 0;
             message.translatesAutoresizingMaskIntoConstraints = NO;
-            [self.privacyOverlay addSubview:message];
+            [content addSubview:message];
 
             [NSLayoutConstraint activateConstraints:@[
-                [shield.centerXAnchor constraintEqualToAnchor:self.privacyOverlay.centerXAnchor],
-                [shield.centerYAnchor constraintEqualToAnchor:self.privacyOverlay.centerYAnchor constant:-60],
-                [shield.widthAnchor constraintEqualToConstant:48],
-                [shield.heightAnchor constraintEqualToConstant:48],
+                [shield.centerXAnchor constraintEqualToAnchor:content.centerXAnchor],
+                [shield.centerYAnchor constraintEqualToAnchor:content.centerYAnchor constant:-80],
+                [shield.widthAnchor constraintEqualToConstant:56],
+                [shield.heightAnchor constraintEqualToConstant:56],
                 [title.topAnchor constraintEqualToAnchor:shield.bottomAnchor constant:24],
-                [title.leadingAnchor constraintEqualToAnchor:self.privacyOverlay.leadingAnchor constant:30],
-                [title.trailingAnchor constraintEqualToAnchor:self.privacyOverlay.trailingAnchor constant:-30],
-                [message.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:12],
-                [message.leadingAnchor constraintEqualToAnchor:self.privacyOverlay.leadingAnchor constant:40],
-                [message.trailingAnchor constraintEqualToAnchor:self.privacyOverlay.trailingAnchor constant:-40]
+                [title.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:30],
+                [title.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-30],
+                [message.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:16],
+                [message.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:40],
+                [message.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-40]
             ]];
             [self applyCurrentLanguageToView:self.privacyOverlay];
         }
@@ -2226,14 +2275,14 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
 - (void)showLanguagePicker {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:ZXLocalizedUI(@"Choose your language") message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    NSArray *langs = @[@"English", @"Tiếng Việt", @"简体中文"];
+    NSArray *langs = @[@"English", @"Tiếng Việt", @"简体中文", @"日本語"];
     for (NSString *lang in langs) {
         [alert addAction:[UIAlertAction actionWithTitle:lang style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
             [globalDefaults setObject:lang forKey:ZXLanguageKey];
             [globalDefaults synchronize];
-            [self applyCurrentLanguageToView:self.view];
-            [self rebuildSettings];
+            [self rebuildAllContainers];
+            [self transitionToPrimaryContainer:self.settingsContainer];
         }]];
     }
     [alert addAction:[UIAlertAction actionWithTitle:ZXLocalizedUI(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
@@ -2248,8 +2297,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
             NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
             [globalDefaults setObject:theme forKey:ZXThemeKey];
             [globalDefaults synchronize];
-            self.view.backgroundColor = [ZXTheme background];
-            [self setupSettingsScreen];
+            [self rebuildAllContainers];
+            [self transitionToPrimaryContainer:self.settingsContainer];
         }]];
     }
     [alert addAction:[UIAlertAction actionWithTitle:ZXLocalizedUI(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
@@ -2314,15 +2363,16 @@ static NSString *ZXLocalizedUI(NSString *text) {
 #pragma mark - Global Modals & Loading
 
 - (void)setupGlobalLoading {
-    _globalLoadingOverlay = [[UIView alloc] initWithFrame:self.view.bounds];
-    _globalLoadingOverlay.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
+    UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
+    _globalLoadingOverlay = [[UIVisualEffectView alloc] initWithEffect:blur];
+    _globalLoadingOverlay.frame = self.view.bounds;
     _globalLoadingOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _globalLoadingOverlay.hidden = YES;
     _globalLoadingOverlay.layer.zPosition = 10000;
     [self.view addSubview:_globalLoadingOverlay];
     
     UIView *card = [self card];
-    [_globalLoadingOverlay addSubview:card];
+    [((UIVisualEffectView *)_globalLoadingOverlay).contentView addSubview:card];
     
     _globalSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
     _globalSpinner.color = [ZXTheme primaryText];
@@ -2385,7 +2435,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
         toast.layer.borderColor = (success ? [ZXTheme success] : [ZXTheme error]).CGColor;
         toast.translatesAutoresizingMaskIntoConstraints = NO;
         
-        // Add elegant shadow
         toast.layer.shadowColor = [UIColor blackColor].CGColor;
         toast.layer.shadowOpacity = [ZXTheme isLightMode] ? 0.05 : 0.2;
         toast.layer.shadowRadius = 8;
@@ -2456,13 +2505,20 @@ static NSString *ZXLocalizedUI(NSString *text) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.currentState != ZXAppStateDashboard) return;
         
+        [self updateLicenseStatus:self.licenseStatus activatedAt:self.activatedAt expiresAt:self.expiresAt isPermanent:self.licensePermanent];
+        
         Class mgrCls = NSClassFromString(@"ZentraxNetworkManager");
         if (mgrCls && [mgrCls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
             id manager = ((id (*)(id, SEL))objc_msgSend)((id)mgrCls, NSSelectorFromString(@"sharedManager"));
             SEL configSel = NSSelectorFromString(@"cachedConfiguration");
             if ([manager respondsToSelector:configSel]) {
                 NSDictionary *config = ((NSDictionary *(*)(id, SEL))objc_msgSend)(manager, configSel);
-                if ([config isKindOfClass:[NSDictionary class]]) [self updateDashboardWithConfiguration:config];
+                if ([config isKindOfClass:[NSDictionary class]]) {
+                    [self updateDashboardWithConfiguration:config];
+                    if (config[@"license"]) {
+                        [self updateSubscriptionState:config[@"license"]];
+                    }
+                }
             }
         }
     });
