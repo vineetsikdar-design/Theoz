@@ -1,9 +1,9 @@
-//
+	//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
 //  Architecture: Server-authoritative UI / Network-driven state
-//  Status: FINAL CONTRACT
+//  Status: AUDITED REPLACEMENT
 //
 
 #import "ZentraxUI.h"
@@ -113,7 +113,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
         @"You can change this anytime from Settings.": @"你可以随时在设置中更改。", @"WELCOME TO ZENTRAX": @"欢迎使用 ZENTRAX",
         @"PREMIUM THEMES": @"高级主题", @"DONE": @"完成", @"RECHECK": @"重新检查", @"UNAVAILABLE": @"不可用",
         @"DISMISS": @"关闭", @"RETRY": @"重试", @"Close screen sharing app": @"关闭屏幕共享应用",
-        @"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet信息": @"屏幕共享应用可能被诈骗者用来录制屏幕并窃取钱包信息",
+        @"Screen sharing apps can be used by fraudsters to record your screen and steal your wallet information": @"屏幕共享应用可能被诈骗者用来录制屏幕并窃取钱包信息",
         @"AUTHENTICATE": @"验证", @"SECURE OPERATION": @"安全操作", @"Please wait…": @"请稍候…",
         @"Awaiting verification": @"等待验证", @"NOT VERIFIED": @"未验证", @"SUPPORTED": @"支持", @"UNSUPPORTED": @"不支持"
     };
@@ -395,6 +395,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 @property(nonatomic,strong) UILabel *globalLoadingDetail;
 
 - (UIImage *)preferredLogoImage;
+- (void)toggleDashboardKey;
 @end
 
 @implementation ZentraxUI
@@ -1119,6 +1120,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     state.text = ZXLocalizedUI(@"PROCESSING");
 
     __weak typeof(self) weakSelf = self;
+    
     void (^finish)(BOOL, NSString *) = ^(BOOL success, NSString *msg) {
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) self = weakSelf;
@@ -2176,17 +2178,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
             });
         }];
     } else {
-        [[ZentraxNetworkManager sharedManager] checkDeviceCompatibilityWithCompletion:^(BOOL success, NSDictionary * _Nullable compatibilityData, ZXDeviceCompatibilityStatus status, NSString * _Nullable errorMsg) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self hideGlobalLoadingState];
-                if (success) {
-                    [self updateDeviceCompatibility:compatibilityData ?: @{}];
-                    [self showToast:ZXLocalizedUI(@"Compatibility Verified") success:YES];
-                } else {
-                    [self showGlobalErrorWithTitle:ZXLocalizedUI(@"CHECK FAILED") message:errorMsg ?: ZXLocalizedUI(@"Unable to verify device.")];
-                }
-            });
-        }];
+        [self hideGlobalLoadingState];
+        [self showGlobalErrorWithTitle:@"UNAVAILABLE" message:@"Compatibility service is not connected."];
     }
 }
 
@@ -2336,8 +2329,16 @@ static NSString *ZXLocalizedUI(NSString *text) {
     
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.currentState != ZXAppStateDashboard) return;
-        NSDictionary *config = [[ZentraxNetworkManager sharedManager] cachedConfiguration];
-        if (config) [self updateDashboardWithConfiguration:config];
+        
+        Class mgrCls = NSClassFromString(@"ZentraxNetworkManager");
+        if (mgrCls && [mgrCls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
+            id manager = ((id (*)(id, SEL))objc_msgSend)((id)mgrCls, NSSelectorFromString(@"sharedManager"));
+            SEL configSel = NSSelectorFromString(@"cachedConfiguration");
+            if ([manager respondsToSelector:configSel]) {
+                NSDictionary *config = ((NSDictionary *(*)(id, SEL))objc_msgSend)(manager, configSel);
+                if ([config isKindOfClass:[NSDictionary class]]) [self updateDashboardWithConfiguration:config];
+            }
+        }
     });
 }
 
@@ -2352,7 +2353,14 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [alert addAction:[UIAlertAction actionWithTitle:ZXLocalizedUI(@"Sign Out") style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
         __strong typeof(weakSelf) self = weakSelf; if (!self) return;
         
-        [[ZentraxNetworkManager sharedManager] logout];
+        Class mgrCls = NSClassFromString(@"ZentraxNetworkManager");
+        if (mgrCls && [mgrCls respondsToSelector:NSSelectorFromString(@"sharedManager")]) {
+            id manager = ((id (*)(id, SEL))objc_msgSend)((id)mgrCls, NSSelectorFromString(@"sharedManager"));
+            SEL outSel = NSSelectorFromString(@"logout");
+            if ([manager respondsToSelector:outSel]) {
+                ((void (*)(id, SEL))objc_msgSend)(manager, outSel);
+            }
+        }
         
         NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
         [globalDefaults removeObjectForKey:ZXLastKey];
@@ -2367,6 +2375,18 @@ static NSString *ZXLocalizedUI(NSString *text) {
         }
     }]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (UIImage *)preferredLogoImage {
+    NSArray *names=@[@"ZentraxLogo",@"AppIcon60x60",@"AppIcon"];
+    for (NSString *n in names) { UIImage *i=[UIImage imageNamed:n]; if(i) return i; }
+    
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(120,120),YES,0);
+    [[UIColor blackColor] setFill]; UIRectFill(CGRectMake(0,0,120,120));
+    [[UIColor whiteColor] setStroke]; UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(20, 20, 80, 80) cornerRadius:16]; path.lineWidth = 4; [path stroke];
+    NSDictionary *attrs=@{NSFontAttributeName:[UIFont systemFontOfSize:50 weight:UIFontWeightHeavy],NSForegroundColorAttributeName:[UIColor whiteColor]};
+    [@"Z" drawInRect:CGRectMake(42,32,50,60) withAttributes:attrs];
+    UIImage *i=UIGraphicsGetImageFromCurrentImageContext(); UIGraphicsEndImageContext(); return i;
 }
 
 - (void)resetToStartup { self.hasStarted = NO; self.currentState = ZXAppStateInit; [self stopHeartbeatMonitor]; [self stopLicenseCountdown]; [self beginBootstrap]; }
