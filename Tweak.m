@@ -1,9 +1,9 @@
-//
+	//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
 //  Createdd by Zentrax Team.
-//  Status: PRODUCTION READY (V4)
+//  Status: PRODUCTION AUDITED (V6 - Transaction Resiliency)
 //
 
 @import UIKit;
@@ -156,6 +156,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             NSSelectorFromString(@"dismissViewControllerAnimated:completion:"), NO, nil);
     });
 }
+
 
 #pragma mark - ================= ZENTRAX VIP EXECUTION BRIDGE =================
 
@@ -582,6 +583,29 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                               deviceId:deviceId
                                                 target:target
                                                  error:&ledgerError];
+
+    // SURGICAL FIX: Handle Stale Ledger Locks (Code 1502)
+    // If the server explicitly authorizes a new operation_id but the local DB is stuck 
+    // from a previous crash/timeout, we forcefully reconcile to unblock the system.
+    if (!began && ledgerError.code == 1502) {
+        NSLog(@"[Zentrax VIP] [StateStore] Stale lock detected (1502) for target: %@. Server authorized new operation %@. Forcing reconciliation to unblock.", target, operationId);
+        
+        ZXTargetLedgerRecord *staleRecord = [self.stateStore recordForTarget:target];
+        if (staleRecord && staleRecord.operationId.length > 0) {
+            [self.stateStore failOperationWithId:staleRecord.operationId error:nil];
+        }
+        [self.stateStore markTargetReconciled:target error:nil];
+        
+        // Retry beginning the operation
+        ledgerError = nil;
+        began = [self.stateStore beginOperationWithId:operationId
+                                               action:actionString
+                                           functionId:resolvedFunctionId
+                                            licenseId:licenseId
+                                             deviceId:deviceId
+                                               target:target
+                                                error:&ledgerError];
+    }
 
     if (!began) {
         NSLog(@"[Zentrax VIP] [StateStore] beginOperation failed | OpID: %@ | Target: %@ | Func: %@ | Action: %@ | Domain: %@ | Code: %ld | Desc: %@",
