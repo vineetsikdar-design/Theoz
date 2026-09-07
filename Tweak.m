@@ -1,9 +1,9 @@
-	//
+//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
 //  Createdd by Zentrax Team.
-//  Status: PRODUCTION AUDITED (V6 - Transaction Resiliency)
+//  Status: VERBOSE DEBUGGING (V7)
 //
 
 @import UIKit;
@@ -405,13 +405,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 return;
             }
 
-            /*
-             * The login response is authoritative. Apply its license and any
-             * usable dashboard data immediately so the UI cannot briefly show
-             * UNACTIVATED/empty state while waiting for the first heartbeat.
-             * Optional fields are defensive: malformed/empty configuration is
-             * ignored instead of clearing an already populated dashboard.
-             */
             [self applyServerResponseToUI:responseData allowDashboard:YES];
             if (completion) completion(YES, ZXAuthErrorNone, nil);
         }];
@@ -430,11 +423,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         return;
     }
 
-    /*
-     * Load/revalidate the local transaction ledger before restoring the
-     * dashboard. Unresolved entries remain visible to reconciliation logic
-     * instead of being silently discarded.
-     */
     [self.stateStore synchronize:nil];
     [self.stateStore validateLedger:nil];
 
@@ -541,32 +529,26 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                         NSString * _Nullable errorMsg))completion {
 
     if (![modulePayload isKindOfClass:NSDictionary.class]) {
-        [self finishModuleFailure:@"Invalid module operation response."
-                       completion:completion];
+        [self finishModuleFailure:@"Invalid module operation response." completion:completion];
         return;
     }
 
     NSString *operationId = [modulePayload[@"operation_id"] description];
     NSString *serverFunctionId = [modulePayload[@"function_id"] description];
-    NSString *resolvedFunctionId =
-        serverFunctionId.length ? serverFunctionId : functionId;
+    NSString *resolvedFunctionId = serverFunctionId.length ? serverFunctionId : functionId;
 
     NSString *target = [modulePayload[@"target"] description];
     if (target.length == 0) {
         target = [modulePayload[@"canonical_target"] description];
     }
 
-    if (operationId.length == 0 ||
-        resolvedFunctionId.length == 0 ||
-        target.length == 0) {
-        [self finishModuleFailure:@"Invalid module operation contract received from server."
-                       completion:completion];
+    if (operationId.length == 0 || resolvedFunctionId.length == 0 || target.length == 0) {
+        [self finishModuleFailure:@"Invalid module operation contract received from server." completion:completion];
         return;
     }
 
     if (![self claimTargetOperation:target operationId:operationId]) {
-        [self finishModuleFailure:@"This target already has an operation in progress. Please wait for it to finish."
-                       completion:completion];
+        [self finishModuleFailure:@"Target busy. Please wait for the current operation to finish." completion:completion];
         return;
     }
 
@@ -584,19 +566,14 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                                                 target:target
                                                  error:&ledgerError];
 
-    // SURGICAL FIX: Handle Stale Ledger Locks (Code 1502)
-    // If the server explicitly authorizes a new operation_id but the local DB is stuck 
-    // from a previous crash/timeout, we forcefully reconcile to unblock the system.
+    // Force reconciliation if DB is locked (Code 1502)
     if (!began && ledgerError.code == 1502) {
-        NSLog(@"[Zentrax VIP] [StateStore] Stale lock detected (1502) for target: %@. Server authorized new operation %@. Forcing reconciliation to unblock.", target, operationId);
-        
         ZXTargetLedgerRecord *staleRecord = [self.stateStore recordForTarget:target];
         if (staleRecord && staleRecord.operationId.length > 0) {
             [self.stateStore failOperationWithId:staleRecord.operationId error:nil];
         }
         [self.stateStore markTargetReconciled:target error:nil];
         
-        // Retry beginning the operation
         ledgerError = nil;
         began = [self.stateStore beginOperationWithId:operationId
                                                action:actionString
@@ -608,19 +585,13 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     }
 
     if (!began) {
-        NSLog(@"[Zentrax VIP] [StateStore] beginOperation failed | OpID: %@ | Target: %@ | Func: %@ | Action: %@ | Domain: %@ | Code: %ld | Desc: %@",
-              operationId, target, resolvedFunctionId, actionString, ledgerError.domain, (long)ledgerError.code, ledgerError.localizedDescription);
-              
+        NSString *debugMsg = [NSString stringWithFormat:@"DB Init Error [%ld]: %@", (long)ledgerError.code, ledgerError.localizedDescription ?: @"Ledger initialization failed."];
         [self releaseTargetOperation:target];
-        [self finishModuleFailure:@"Unable to prepare the local transaction safely."
-                       completion:completion];
+        [self finishModuleFailure:debugMsg completion:completion];
         return;
     }
 
-    /*
-     * OFF is restore/delete-contract driven. The client does not request or
-     * manufacture an OFF payload.
-     */
+    // --- OFF RESTORE FLOW ---
     if (!isOn) {
         NSDictionary *restore = modulePayload[@"restore_contract"];
         NSString *mode = [restore[@"mode"] description];
@@ -628,8 +599,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         if (![mode isEqualToString:@"CLIENT_ORIGINAL_BACKUP"]) {
             [self.stateStore failOperationWithId:operationId error:nil];
             [self releaseTargetOperation:target];
-            [self finishModuleFailure:@"Invalid restore contract received from server."
-                           completion:completion];
+            [self finishModuleFailure:[NSString stringWithFormat:@"Invalid restore mode: %@", mode] completion:completion];
             return;
         }
 
@@ -638,57 +608,33 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         NSString *relativePath = [modulePayload[@"relative_path"] description];
         NSString *targetFilename = [modulePayload[@"target_filename"] description];
 
-        /*
-         * If the server has no file operation to perform locally (for example
-         * the ledger has no active target), simply synchronize the state.
-         */
-        if (!record &&
-            bundleId.length == 0 &&
-            relativePath.length == 0 &&
-            targetFilename.length == 0) {
-
-            [[ZentraxNetworkManager sharedManager]
-                syncModuleStateForFunctionId:resolvedFunctionId
-                                      state:NO
-                                operationId:operationId
-                                  completion:^(BOOL syncSuccess,
-                                               NSString * _Nullable syncErrorMsg) {
+        if (!record && bundleId.length == 0 && relativePath.length == 0 && targetFilename.length == 0) {
+            [[ZentraxNetworkManager sharedManager] syncModuleStateForFunctionId:resolvedFunctionId state:NO operationId:operationId completion:^(BOOL syncSuccess, NSString * _Nullable syncErrorMsg) {
                 if (syncSuccess) {
                     NSError *commitErr = nil;
-                    BOOL committed = [self.stateStore commitOperationWithId:operationId
-                                                                 targetHash:nil
-                                                                       size:0
-                                                                      error:&commitErr];
+                    BOOL committed = [self.stateStore commitOperationWithId:operationId targetHash:nil size:0 error:&commitErr];
                     if (!committed) {
-                        NSLog(@"[Zentrax VIP] [StateStore] commitOperation failed for empty OFF | Error: %@", commitErr);
                         [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
                         [self releaseTargetOperation:target];
-                        [self finishModuleFailure:@"Failed to commit local transaction." completion:completion];
+                        [self finishModuleFailure:[NSString stringWithFormat:@"Commit Failed: %@", commitErr.localizedDescription] completion:completion];
                         return;
                     }
-                    
                     [self.stateStore clearCompletedOperationWithId:operationId error:nil];
                     [self releaseTargetOperation:target];
-                    [self completeOnMain:^{
-                        if (completion) completion(YES, nil);
-                    }];
+                    [self completeOnMain:^{ if (completion) completion(YES, nil); }];
                 } else {
                     [self.stateStore failOperationWithId:operationId error:nil];
                     [self releaseTargetOperation:target];
-                    [self finishModuleFailure:syncErrorMsg ?: @"Failed to synchronize module state."
-                                   completion:completion];
+                    [self finishModuleFailure:[NSString stringWithFormat:@"Sync Failed: %@", syncErrorMsg] completion:completion];
                 }
             }];
             return;
         }
 
-        if (!record ||
-            ![self isSafeRelativePath:relativePath filename:targetFilename] ||
-            bundleId.length == 0) {
+        if (!record || ![self isSafeRelativePath:relativePath filename:targetFilename] || bundleId.length == 0) {
             [self.stateStore failOperationWithId:operationId error:nil];
             [self releaseTargetOperation:target];
-            [self finishModuleFailure:@"Security validation failed for the restore target."
-                           completion:completion];
+            [self finishModuleFailure:[NSString stringWithFormat:@"Security validation failed for path: %@", targetFilename] completion:completion];
             return;
         }
 
@@ -697,19 +643,15 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             if (!dataContainer) {
                 [self.stateStore failOperationWithId:operationId error:nil];
                 [self releaseTargetOperation:target];
-                [self finishModuleFailure:@"Target app container could not be resolved."
-                               completion:completion];
+                [self finishModuleFailure:[NSString stringWithFormat:@"Container not found for Bundle ID: %@", bundleId] completion:completion];
                 return;
             }
 
-            NSString *finalTargetPath = [self targetPathForContainer:dataContainer
-                                                           relativePath:relativePath
-                                                                filename:targetFilename];
+            NSString *finalTargetPath = [self targetPathForContainer:dataContainer relativePath:relativePath filename:targetFilename];
             if (!finalTargetPath) {
                 [self.stateStore failOperationWithId:operationId error:nil];
                 [self releaseTargetOperation:target];
-                [self finishModuleFailure:@"Security validation failed for the resolved target path."
-                               completion:completion];
+                [self finishModuleFailure:@"Resolved path failed security checks." completion:completion];
                 return;
             }
             NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
@@ -719,156 +661,116 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             BOOL success = YES;
 
             if ([fm fileExistsAtPath:backupPath]) {
-                BOOL stateSet = [self.stateStore setState:ZXTargetLedgerStateRestoring
-                                                 forTarget:target
-                                                    error:&fsError];
+                BOOL stateSet = [self.stateStore setState:ZXTargetLedgerStateRestoring forTarget:target error:&fsError];
                 if (!stateSet) {
                     success = NO;
-                    NSLog(@"[Zentrax VIP] [StateStore] setState Restoring failed: %@", fsError);
-                } else {
-                    if (!record.hasOriginalBackup ||
-                        record.backupValidity != ZXBackupValidityValid) {
-                        success = NO;
-                    } else {
-                        NSUInteger backupSize = 0;
-                        NSString *backupHash = [self sha256OfFileAtPath:backupPath size:&backupSize];
-                        if (backupHash.length == 0 ||
-                            (record.originalBackupHash.length && ![backupHash.lowercaseString isEqualToString:record.originalBackupHash.lowercaseString]) ||
-                            (record.originalBackupSize > 0 && backupSize != record.originalBackupSize)) {
-                            success = NO;
-                        }
-                        if (success && [fm fileExistsAtPath:finalTargetPath]) {
-                            [fm removeItemAtPath:finalTargetPath error:&fsError];
-                        }
-                        if (success &&
-                            ![fm moveItemAtPath:backupPath
-                                         toPath:finalTargetPath
-                                          error:&fsError]) {
-                            success = NO;
-                        }
-                    }
+                    [self releaseTargetOperation:target];
+                    [self finishModuleFailure:[NSString stringWithFormat:@"DB State Error: %@", fsError.localizedDescription] completion:completion];
+                    return;
+                } 
+                
+                if (!record.hasOriginalBackup || record.backupValidity != ZXBackupValidityValid) {
+                    success = NO;
+                    [self releaseTargetOperation:target];
+                    [self finishModuleFailure:@"Backup metadata missing or invalid in DB." completion:completion];
+                    return;
+                } 
+                
+                NSUInteger backupSize = 0;
+                NSString *backupHash = [self sha256OfFileAtPath:backupPath size:&backupSize];
+                if (backupHash.length == 0 || (record.originalBackupHash.length && ![backupHash.lowercaseString isEqualToString:record.originalBackupHash.lowercaseString]) || (record.originalBackupSize > 0 && backupSize != record.originalBackupSize)) {
+                    success = NO;
+                    [self releaseTargetOperation:target];
+                    [self finishModuleFailure:@"Backup file hash/size mismatch. Restore aborted." completion:completion];
+                    return;
                 }
-            } else if (record.activeFunctionId.length > 0 &&
-                       [fm fileExistsAtPath:finalTargetPath]) {
-
-                BOOL stateSet = [self.stateStore setState:ZXTargetLedgerStateRestoring
-                                                 forTarget:target
-                                                    error:&fsError];
+                
+                if (success && [fm fileExistsAtPath:finalTargetPath]) {
+                    [fm removeItemAtPath:finalTargetPath error:&fsError];
+                }
+                
+                if (success && ![fm moveItemAtPath:backupPath toPath:finalTargetPath error:&fsError]) {
+                    success = NO;
+                    [self releaseTargetOperation:target];
+                    [self finishModuleFailure:[NSString stringWithFormat:@"Restore Move Failed: %@", fsError.localizedDescription] completion:completion];
+                    return;
+                }
+                
+            } else if (record.activeFunctionId.length > 0 && [fm fileExistsAtPath:finalTargetPath]) {
+                BOOL stateSet = [self.stateStore setState:ZXTargetLedgerStateRestoring forTarget:target error:&fsError];
                 if (!stateSet) {
                     success = NO;
-                    NSLog(@"[Zentrax VIP] [StateStore] setState Restoring failed: %@", fsError);
                 } else {
                     success = [fm removeItemAtPath:finalTargetPath error:&fsError];
                 }
             }
 
             if (!success) {
-                [self.stateStore markTarget:target
-                  requiresReconciliation:YES
-                                    error:nil];
-                [self.stateStore failOperationWithId:operationId
-                                               error:&fsError];
+                [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+                [self.stateStore failOperationWithId:operationId error:&fsError];
                 [self releaseTargetOperation:target];
-                [self finishModuleFailure:@"Failed to restore the original target safely."
-                               completion:completion];
+                [self finishModuleFailure:[NSString stringWithFormat:@"Recovery Action Failed: %@", fsError.localizedDescription] completion:completion];
                 return;
             }
 
-            BOOL activeCleared = [self.stateStore setActiveFunctionId:nil
-                                                         functionName:nil
-                                                          payloadHash:nil
-                                                          payloadSize:0
-                                                            forTarget:target
-                                                                error:&fsError];
-            
-            BOOL stateIdled = [self.stateStore setState:ZXTargetLedgerStateIdle
-                                               forTarget:target
-                                                  error:&fsError];
+            BOOL activeCleared = [self.stateStore setActiveFunctionId:nil functionName:nil payloadHash:nil payloadSize:0 forTarget:target error:&fsError];
+            BOOL stateIdled = [self.stateStore setState:ZXTargetLedgerStateIdle forTarget:target error:&fsError];
 
             if (!activeCleared || !stateIdled) {
-                NSLog(@"[Zentrax VIP] [StateStore] Failed to update ledger state after restore: %@", fsError);
                 [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
                 [self.stateStore failOperationWithId:operationId error:nil];
                 [self releaseTargetOperation:target];
-                [self finishModuleFailure:@"Failed to update local ledger after restore." completion:completion];
+                [self finishModuleFailure:[NSString stringWithFormat:@"DB Sync Error: %@", fsError.localizedDescription] completion:completion];
                 return;
             }
 
-            [[ZentraxNetworkManager sharedManager]
-                syncModuleStateForFunctionId:resolvedFunctionId
-                                      state:NO
-                                operationId:operationId
-                                  completion:^(BOOL syncSuccess,
-                                               NSString * _Nullable syncErrorMsg) {
+            [[ZentraxNetworkManager sharedManager] syncModuleStateForFunctionId:resolvedFunctionId state:NO operationId:operationId completion:^(BOOL syncSuccess, NSString * _Nullable syncErrorMsg) {
                 if (!syncSuccess) {
-                    [self.stateStore markTarget:target
-                      requiresReconciliation:YES
-                                        error:nil];
+                    [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
                     [self.stateStore failOperationWithId:operationId error:nil];
                     [self releaseTargetOperation:target];
-                    [self finishModuleFailure:
-                        syncErrorMsg ?: @"Server synchronization failed; recovery is required."
-                               completion:completion];
+                    [self finishModuleFailure:[NSString stringWithFormat:@"Server Sync Failed: %@", syncErrorMsg] completion:completion];
                     return;
                 }
 
                 NSError *commitErr = nil;
-                BOOL committed = [self.stateStore commitOperationWithId:operationId
-                                                             targetHash:nil
-                                                                   size:0
-                                                                  error:&commitErr];
+                BOOL committed = [self.stateStore commitOperationWithId:operationId targetHash:nil size:0 error:&commitErr];
                 if (!committed) {
-                    NSLog(@"[Zentrax VIP] [StateStore] commitOperation failed (OFF): %@", commitErr);
                     [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
                     [self releaseTargetOperation:target];
-                    [self finishModuleFailure:@"Failed to commit local transaction." completion:completion];
+                    [self finishModuleFailure:[NSString stringWithFormat:@"DB Commit Failed: %@", commitErr.localizedDescription] completion:completion];
                     return;
                 }
 
-                [self.stateStore clearCompletedOperationWithId:operationId
-                                                           error:nil];
-                [self.stateStore markTarget:target
-                  requiresReconciliation:NO
-                                    error:nil];
+                [self.stateStore clearCompletedOperationWithId:operationId error:nil];
+                [self.stateStore markTarget:target requiresReconciliation:NO error:nil];
                 [self releaseTargetOperation:target];
 
-                [self completeOnMain:^{
-                    if (completion) completion(YES, nil);
-                }];
+                [self completeOnMain:^{ if (completion) completion(YES, nil); }];
             }];
         });
 
         return;
     }
 
-    /*
-     * ON receives exactly one server-authorized payload. Verify its declared
-     * hash before applying it.
-     */
+    // --- ON WRITE FLOW ---
     NSString *base64Data = [modulePayload[@"file_data"] description];
     NSString *bundleId = [modulePayload[@"bundle_id"] description];
     NSString *relativePath = [modulePayload[@"relative_path"] description];
     NSString *targetFilename = [modulePayload[@"target_filename"] description];
 
-    if (base64Data.length == 0 ||
-        bundleId.length == 0 ||
-        ![self isSafeRelativePath:relativePath filename:targetFilename]) {
+    if (base64Data.length == 0 || bundleId.length == 0 || ![self isSafeRelativePath:relativePath filename:targetFilename]) {
         [self.stateStore failOperationWithId:operationId error:nil];
         [self releaseTargetOperation:target];
-        [self finishModuleFailure:@"Invalid module payload or target configuration."
-                       completion:completion];
+        [self finishModuleFailure:@"Invalid payload or target configuration." completion:completion];
         return;
     }
 
-    NSData *fileData =
-        [[NSData alloc] initWithBase64EncodedString:base64Data
-                                            options:NSDataBase64DecodingIgnoreUnknownCharacters];
-
+    NSData *fileData = [[NSData alloc] initWithBase64EncodedString:base64Data options:NSDataBase64DecodingIgnoreUnknownCharacters];
     if (!fileData.length) {
         [self.stateStore failOperationWithId:operationId error:nil];
         [self releaseTargetOperation:target];
-        [self finishModuleFailure:@"The module payload could not be decoded."
-                       completion:completion];
+        [self finishModuleFailure:@"Payload Base64 decoding failed." completion:completion];
         return;
     }
 
@@ -876,15 +778,10 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSUInteger declaredSize = [modulePayload[@"size"] unsignedIntegerValue];
     NSString *computedHash = computeSHA256OfData(fileData);
 
-    if (declaredHash.length == 0 ||
-        computedHash.length == 0 ||
-        declaredSize == 0 ||
-        declaredSize != fileData.length ||
-        ![declaredHash.lowercaseString isEqualToString:computedHash.lowercaseString]) {
+    if (declaredHash.length == 0 || computedHash.length == 0 || declaredSize == 0 || declaredSize != fileData.length || ![declaredHash.lowercaseString isEqualToString:computedHash.lowercaseString]) {
         [self.stateStore failOperationWithId:operationId error:nil];
         [self releaseTargetOperation:target];
-        [self finishModuleFailure:@"Payload integrity verification failed."
-                       completion:completion];
+        [self finishModuleFailure:@"Payload SHA256 integrity verification failed." completion:completion];
         return;
     }
 
@@ -893,228 +790,135 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         if (!dataContainer) {
             [self.stateStore failOperationWithId:operationId error:nil];
             [self releaseTargetOperation:target];
-            [self finishModuleFailure:@"Target app container could not be resolved."
-                           completion:completion];
+            [self finishModuleFailure:[NSString stringWithFormat:@"App container not found for Bundle ID: %@", bundleId] completion:completion];
             return;
         }
 
-        NSString *finalTargetPath = [self targetPathForContainer:dataContainer
-                                                       relativePath:relativePath
-                                                            filename:targetFilename];
+        NSString *finalTargetPath = [self targetPathForContainer:dataContainer relativePath:relativePath filename:targetFilename];
         if (!finalTargetPath) {
             [self.stateStore failOperationWithId:operationId error:nil];
             [self releaseTargetOperation:target];
-            [self finishModuleFailure:@"Security validation failed for the resolved target path."
-                           completion:completion];
+            [self finishModuleFailure:@"Resolved path failed security validation." completion:completion];
             return;
         }
         NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
 
         NSFileManager *fm = NSFileManager.defaultManager;
         NSError * __autoreleasing fsError = nil;
+        ZXTargetLedgerRecord *record = [self.stateStore recordForTarget:target];
 
-        ZXTargetLedgerRecord *record =
-            [self.stateStore recordForTarget:target];
-
-        /*
-         * Preserve the original target only once. During a function switch,
-         * an existing .bak is never overwritten.
-         */
         if (!record || !record.hasOriginalBackup) {
             if ([fm fileExistsAtPath:backupPath]) {
-                [self.stateStore markTarget:target
-                  requiresReconciliation:YES
-                                    error:nil];
+                [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
                 [self.stateStore failOperationWithId:operationId error:nil];
                 [self releaseTargetOperation:target];
-                [self finishModuleFailure:@"An existing backup was found but is not registered in the recovery ledger."
-                               completion:completion];
+                [self finishModuleFailure:@"A backup file exists but is unregistered. Aborting to prevent data loss." completion:completion];
                 return;
             }
 
-            if ([fm fileExistsAtPath:finalTargetPath] &&
-                ![fm fileExistsAtPath:backupPath]) {
-
-                if (![fm copyItemAtPath:finalTargetPath
-                                 toPath:backupPath
-                                  error:&fsError]) {
-                    [self.stateStore failOperationWithId:operationId
-                                                   error:&fsError];
+            if ([fm fileExistsAtPath:finalTargetPath] && ![fm fileExistsAtPath:backupPath]) {
+                if (![fm copyItemAtPath:finalTargetPath toPath:backupPath error:&fsError]) {
+                    [self.stateStore failOperationWithId:operationId error:&fsError];
                     [self releaseTargetOperation:target];
-                    [self finishModuleFailure:
-                        @"Could not preserve the original target safely."
-                               completion:completion];
+                    [self finishModuleFailure:[NSString stringWithFormat:@"Original file backup failed: %@", fsError.localizedDescription] completion:completion];
                     return;
                 }
 
-                NSData *originalData =
-                    [NSData dataWithContentsOfFile:backupPath];
-                NSString *originalHash =
-                    computeSHA256OfData(originalData);
+                NSData *originalData = [NSData dataWithContentsOfFile:backupPath];
+                NSString *originalHash = computeSHA256OfData(originalData);
 
                 if (originalHash.length == 0 || originalData.length == 0) {
-                    [self.stateStore markTarget:target
-                      requiresReconciliation:YES
-                                        error:nil];
-                    [self.stateStore failOperationWithId:operationId error:nil];
-                    [self releaseTargetOperation:target];
-                    [self finishModuleFailure:@"The original backup could not be verified."
-                                   completion:completion];
-                    return;
-                }
-
-                BOOL backupSet = [self.stateStore setOriginalBackupHash:originalHash
-                                                                   size:originalData.length
-                                                                 exists:YES
-                                                               validity:ZXBackupValidityValid
-                                                              forTarget:target
-                                                                  error:&fsError];
-                if (!backupSet) {
-                    NSLog(@"[Zentrax VIP] [StateStore] Failed to register original backup: %@", fsError);
                     [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
                     [self.stateStore failOperationWithId:operationId error:nil];
                     [self releaseTargetOperation:target];
-                    [self finishModuleFailure:@"Failed to register original backup in ledger." completion:completion];
+                    [self finishModuleFailure:@"Original backup file hash generation failed." completion:completion];
+                    return;
+                }
+
+                BOOL backupSet = [self.stateStore setOriginalBackupHash:originalHash size:originalData.length exists:YES validity:ZXBackupValidityValid forTarget:target error:&fsError];
+                if (!backupSet) {
+                    [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+                    [self.stateStore failOperationWithId:operationId error:nil];
+                    [self releaseTargetOperation:target];
+                    [self finishModuleFailure:[NSString stringWithFormat:@"DB Backup Register Failed: %@", fsError.localizedDescription] completion:completion];
                     return;
                 }
             } else if (![fm fileExistsAtPath:backupPath]) {
-                BOOL backupSet = [self.stateStore setOriginalBackupHash:nil
-                                                                   size:0
-                                                                 exists:NO
-                                                               validity:ZXBackupValidityMissing
-                                                              forTarget:target
-                                                                  error:&fsError];
+                BOOL backupSet = [self.stateStore setOriginalBackupHash:nil size:0 exists:NO validity:ZXBackupValidityMissing forTarget:target error:&fsError];
                 if (!backupSet) {
-                    NSLog(@"[Zentrax VIP] [StateStore] Failed to register missing backup state: %@", fsError);
                     [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
                     [self.stateStore failOperationWithId:operationId error:nil];
                     [self releaseTargetOperation:target];
-                    [self finishModuleFailure:@"Failed to initialize backup state in ledger." completion:completion];
+                    [self finishModuleFailure:[NSString stringWithFormat:@"DB Backup Missing Reg Failed: %@", fsError.localizedDescription] completion:completion];
                     return;
                 }
             }
         }
 
-        BOOL stateSet = [self.stateStore setState:record.activeFunctionId.length
-                                                  ? ZXTargetLedgerStateSwitching
-                                                  : ZXTargetLedgerStateStagingON
-                                         forTarget:target
-                                            error:&fsError];
+        BOOL stateSet = [self.stateStore setState:record.activeFunctionId.length ? ZXTargetLedgerStateSwitching : ZXTargetLedgerStateStagingON forTarget:target error:&fsError];
         if (!stateSet) {
-            NSLog(@"[Zentrax VIP] [StateStore] Failed to transition to staging state: %@", fsError);
             [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
             [self.stateStore failOperationWithId:operationId error:nil];
             [self releaseTargetOperation:target];
-            [self finishModuleFailure:@"Failed to transition transaction state." completion:completion];
+            [self finishModuleFailure:[NSString stringWithFormat:@"DB Staging State Failed: %@", fsError.localizedDescription] completion:completion];
             return;
         }
 
-        BOOL written =
-            [fileData writeToFile:finalTargetPath
-                          options:NSDataWritingAtomic
-                            error:&fsError];
-
+        BOOL written = [fileData writeToFile:finalTargetPath options:NSDataWritingAtomic error:&fsError];
         if (!written) {
-            [self.stateStore failOperationWithId:operationId
-                                           error:&fsError];
+            [self.stateStore failOperationWithId:operationId error:&fsError];
             [self releaseTargetOperation:target];
-            [self finishModuleFailure:
-                @"Failed to apply the requested module payload."
-                       completion:completion];
+            [self finishModuleFailure:[NSString stringWithFormat:@"Payload Write Failed: %@", fsError.localizedDescription] completion:completion];
             return;
         }
 
-        NSData *writtenData =
-            [NSData dataWithContentsOfFile:finalTargetPath];
-        NSString *writtenHash =
-            computeSHA256OfData(writtenData);
+        NSData *writtenData = [NSData dataWithContentsOfFile:finalTargetPath];
+        NSString *writtenHash = computeSHA256OfData(writtenData);
 
-        if (!writtenData ||
-            writtenData.length != fileData.length ||
-            ![writtenHash.lowercaseString
-                isEqualToString:computedHash.lowercaseString]) {
-
-            [self.stateStore markTarget:target
-              requiresReconciliation:YES
-                                error:nil];
+        if (!writtenData || writtenData.length != fileData.length || ![writtenHash.lowercaseString isEqualToString:computedHash.lowercaseString]) {
+            [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
             [self.stateStore failOperationWithId:operationId error:nil];
             [self releaseTargetOperation:target];
-
-            [self finishModuleFailure:
-                @"Post-write integrity verification failed."
-                       completion:completion];
+            [self finishModuleFailure:@"Post-write payload verification failed on disk." completion:completion];
             return;
         }
 
-        BOOL inProgSet = [self.stateStore setState:ZXTargetLedgerStateONInProgress
-                                         forTarget:target
-                                            error:&fsError];
-
-        BOOL activeSet = [self.stateStore setActiveFunctionId:resolvedFunctionId
-                                                 functionName:[modulePayload[@"function_name"] description]
-                                                  payloadHash:writtenHash
-                                                 payloadSize:writtenData.length
-                                                    forTarget:target
-                                                        error:&fsError];
+        BOOL inProgSet = [self.stateStore setState:ZXTargetLedgerStateONInProgress forTarget:target error:&fsError];
+        BOOL activeSet = [self.stateStore setActiveFunctionId:resolvedFunctionId functionName:[modulePayload[@"function_name"] description] payloadHash:writtenHash payloadSize:writtenData.length forTarget:target error:&fsError];
                                                         
         if (!inProgSet || !activeSet) {
-            NSLog(@"[Zentrax VIP] [StateStore] Failed to set ON/InProgress state: %@", fsError);
             [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
             [self.stateStore failOperationWithId:operationId error:nil];
             [self releaseTargetOperation:target];
-            [self finishModuleFailure:@"Failed to register active function in ledger." completion:completion];
+            [self finishModuleFailure:[NSString stringWithFormat:@"DB Active Reg Failed: %@", fsError.localizedDescription] completion:completion];
             return;
         }
 
-        [[ZentraxNetworkManager sharedManager]
-            syncModuleStateForFunctionId:resolvedFunctionId
-                                  state:YES
-                            operationId:operationId
-                              completion:^(BOOL syncSuccess,
-                                           NSString * _Nullable syncErrorMsg) {
-
+        [[ZentraxNetworkManager sharedManager] syncModuleStateForFunctionId:resolvedFunctionId state:YES operationId:operationId completion:^(BOOL syncSuccess, NSString * _Nullable syncErrorMsg) {
             if (!syncSuccess) {
-                [self.stateStore markTarget:target
-                  requiresReconciliation:YES
-                                    error:nil];
-                [self.stateStore failOperationWithId:operationId
-                                               error:nil];
+                [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
+                [self.stateStore failOperationWithId:operationId error:nil];
                 [self releaseTargetOperation:target];
-
-                [self finishModuleFailure:
-                    syncErrorMsg ?: @"Server synchronization failed; recovery is required."
-                           completion:completion];
+                [self finishModuleFailure:[NSString stringWithFormat:@"Server Sync Failed: %@", syncErrorMsg] completion:completion];
                 return;
             }
 
             NSError *commitErr = nil;
-            BOOL idledSet = [self.stateStore setState:ZXTargetLedgerStateIdle
-                                            forTarget:target
-                                               error:&commitErr];
-
-            BOOL committed = [self.stateStore commitOperationWithId:operationId
-                                                         targetHash:writtenHash
-                                                               size:writtenData.length
-                                                              error:&commitErr];
+            BOOL idledSet = [self.stateStore setState:ZXTargetLedgerStateIdle forTarget:target error:&commitErr];
+            BOOL committed = [self.stateStore commitOperationWithId:operationId targetHash:writtenHash size:writtenData.length error:&commitErr];
                                                               
             if (!idledSet || !committed) {
-                NSLog(@"[Zentrax VIP] [StateStore] commitOperation failed (ON): %@", commitErr);
                 [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
                 [self releaseTargetOperation:target];
-                [self finishModuleFailure:@"Failed to commit local transaction." completion:completion];
+                [self finishModuleFailure:[NSString stringWithFormat:@"DB Commit Failed: %@", commitErr.localizedDescription] completion:completion];
                 return;
             }
 
-            [self.stateStore clearCompletedOperationWithId:operationId
-                                                       error:nil];
-            [self.stateStore markTarget:target
-              requiresReconciliation:NO
-                                error:nil];
+            [self.stateStore clearCompletedOperationWithId:operationId error:nil];
+            [self.stateStore markTarget:target requiresReconciliation:NO error:nil];
             [self releaseTargetOperation:target];
 
-            [self completeOnMain:^{
-                if (completion) completion(YES, nil);
-            }];
+            [self completeOnMain:^{ if (completion) completion(YES, nil); }];
         }];
     });
 }
