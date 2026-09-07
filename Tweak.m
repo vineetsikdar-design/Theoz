@@ -3,7 +3,7 @@
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
 //  Createdd by Zentrax Team.
-//  Status: PRODUCTION AUDITED (V8 - Jailed IPA Sandbox & Move-Delete Fallback)
+//  Status: PRODUCTION AUDITED (V10 - Centralized Backup Vault & Safe Move)
 //
 
 @import UIKit;
@@ -91,6 +91,18 @@ static NSString *computeSHA256OfData(NSData *data) {
         return output;
     }
     return nil;
+}
+
+// V10 NEW: Centralized Zentrax Backup Vault
+static NSString *zentraxVaultDirectory() {
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *base = [[paths firstObject] stringByAppendingPathComponent:@"Zentrax"];
+    NSString *vaultDir = [base stringByAppendingPathComponent:@"Vault"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if (![fm fileExistsAtPath:vaultDir]) {
+        [fm createDirectoryAtPath:vaultDir withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+    return vaultDir;
 }
 
 #pragma mark - ================= APPS MANAGER HOOKS =================
@@ -452,7 +464,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSString *serverFunctionId = [modulePayload[@"function_id"] description];
     NSString *resolvedFunctionId = serverFunctionId.length ? serverFunctionId : functionId;
 
-    // V8 FIX: Properly extract nested target configuration from module.php
     NSDictionary *targetDict = [modulePayload[@"target"] isKindOfClass:[NSDictionary class]] ? modulePayload[@"target"] : nil;
     NSString *target = targetDict ? [targetDict[@"canonical"] description] : [modulePayload[@"canonical_target"] description];
     NSString *bundleId = targetDict ? [targetDict[@"bundle_id"] description] : [modulePayload[@"bundle_id"] description];
@@ -460,7 +471,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSString *targetFilename = targetDict ? [targetDict[@"target_filename"] description] : [modulePayload[@"target_filename"] description];
 
     if (operationId.length == 0 || resolvedFunctionId.length == 0 || target.length == 0) {
-        [self finishModuleFailure:@"Invalid module operation contract received from server." completion:completion];
+        [self finishModuleFailure:@"Invalid payload or target configuration." completion:completion];
         return;
     }
 
@@ -477,7 +488,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
     BOOL began = [self.stateStore beginOperationWithId:operationId action:actionString functionId:resolvedFunctionId licenseId:licenseId deviceId:deviceId target:target error:&ledgerError];
 
-    // Force reconciliation if DB is locked (Code 1502)
     if (!began && ledgerError.code == 1502) {
         ZXTargetLedgerRecord *staleRecord = [self.stateStore recordForTarget:target];
         if (staleRecord && staleRecord.operationId.length > 0) {
@@ -556,7 +566,11 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                 [self finishModuleFailure:@"Resolved path failed security checks." completion:completion];
                 return;
             }
-            NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
+            
+            // V10: Use Centralized Zentrax Vault instead of polluting the game folder
+            NSString *safeIdent = [NSString stringWithFormat:@"%@_%@", bundleId, targetFilename];
+            NSString *backupPath = [zentraxVaultDirectory() stringByAppendingPathComponent:[safeIdent stringByAppendingString:@".bak"]];
+            NSString *trashPath = [zentraxVaultDirectory() stringByAppendingPathComponent:[safeIdent stringByAppendingString:@".trash"]];
 
             NSFileManager *fm = NSFileManager.defaultManager;
             NSError * __autoreleasing fsError = nil;
@@ -587,26 +601,23 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
                     return;
                 }
                 
-                // V8 FIX: Safe replacement using Apple's replaceItemAtURL instead of explicit delete.
-                NSURL *destURL = [NSURL fileURLWithPath:finalTargetPath];
-                NSURL *srcURL = [NSURL fileURLWithPath:backupPath];
-                NSURL *tempURL = nil;
-
-                if ([fm fileExistsAtPath:finalTargetPath]) {
-                    success = [fm replaceItemAtURL:destURL withItemAtURL:srcURL backupItemName:nil options:0 resultingItemURL:&tempURL error:&fsError];
-                } else {
+                // Move active file out of the way into the Trash vault
+                if (success && [fm fileExistsAtPath:finalTargetPath]) {
+                    [fm removeItemAtPath:trashPath error:nil];
+                    [fm moveItemAtPath:finalTargetPath toPath:trashPath error:nil]; 
+                }
+                
+                // Move original file back from the Backup vault to the game folder
+                if (success) {
                     success = [fm moveItemAtPath:backupPath toPath:finalTargetPath error:&fsError];
                 }
                 
             } else if (record.activeFunctionId.length > 0 && [fm fileExistsAtPath:finalTargetPath]) {
-                // V8 FIX: Server says DELETE_ACTIVE_TARGET, but we don't have delete permission.
-                // Fallback: Move it to a .trash extension instead!
                 BOOL stateSet = [self.stateStore setState:ZXTargetLedgerStateRestoring forTarget:target error:&fsError];
                 if (!stateSet) {
                     success = NO;
                 } else {
-                    NSString *trashPath = [finalTargetPath stringByAppendingString:@".trash"];
-                    [fm removeItemAtPath:trashPath error:nil]; // Clean old trash quietly
+                    [fm removeItemAtPath:trashPath error:nil]; 
                     success = [fm moveItemAtPath:finalTargetPath toPath:trashPath error:&fsError];
                 }
             }
@@ -660,8 +671,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     }
 
     // --- ON WRITE FLOW ---
-    
-    // V8 FIX: Properly extract nested payload dict if server wrapped it
     NSDictionary *payloadDict = [modulePayload[@"payload"] isKindOfClass:[NSDictionary class]] ? modulePayload[@"payload"] : modulePayload;
     
     NSString *base64Data = [payloadDict[@"file_data"] description];
@@ -708,7 +717,10 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             [self finishModuleFailure:@"Resolved path failed security validation." completion:completion];
             return;
         }
-        NSString *backupPath = [finalTargetPath stringByAppendingString:@".bak"];
+        
+        // V10: Use Centralized Zentrax Vault instead of polluting the game folder
+        NSString *safeIdent = [NSString stringWithFormat:@"%@_%@", bundleId, targetFilename];
+        NSString *backupPath = [zentraxVaultDirectory() stringByAppendingPathComponent:[safeIdent stringByAppendingString:@".bak"]];
 
         NSFileManager *fm = NSFileManager.defaultManager;
         NSError * __autoreleasing fsError = nil;
@@ -724,7 +736,8 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             }
 
             if ([fm fileExistsAtPath:finalTargetPath] && ![fm fileExistsAtPath:backupPath]) {
-                if (![fm copyItemAtPath:finalTargetPath toPath:backupPath error:&fsError]) {
+                // Move the original out of the game folder entirely into our Vault
+                if (![fm moveItemAtPath:finalTargetPath toPath:backupPath error:&fsError]) {
                     [self.stateStore failOperationWithId:operationId error:&fsError];
                     [self releaseTargetOperation:target];
                     [self finishModuleFailure:[NSString stringWithFormat:@"Original file backup failed: %@", fsError.localizedDescription] completion:completion];
@@ -771,7 +784,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
 
-        // NSDataWritingAtomic automatically creates a temp file and MOVES it over the target, bypassing delete restrictions!
         BOOL written = [fileData writeToFile:finalTargetPath options:NSDataWritingAtomic error:&fsError];
         if (!written) {
             [self.stateStore failOperationWithId:operationId error:&fsError];
@@ -959,13 +971,6 @@ static void ZXInstallUIBeforeVisibility(UIWindow *window) {
     }
 
     @try {
-        /*
-         * This is intentionally the original interception point used by the
-         * working Filza integration.  Do NOT wait for UIWindowDidBecomeVisible
-         * or UIApplicationDidBecomeActive: by then Filza has already rendered
-         * its Documents dashboard.  The Zentrax controller must be installed
-         * while Filza is still inside makeKeyAndVisible.
-         */
         MCMFilzaStart();
 
         ZentraxUI *zentraxVC = [[uiClass alloc] init];
@@ -994,12 +999,6 @@ static void hook_UIWindow_makeKeyAndVisible(UIWindow *self, SEL _cmd) {
         ZXInstallUIBeforeVisibility(self);
     });
 
-    /*
-     * Keep Filza's original visibility/lifecycle call.  The only thing being
-     * intercepted is the controller installed immediately before visibility.
-     * This avoids both the Filza dashboard flash and the lifecycle break caused
-     * by replacing the root from a later notification callback.
-     */
     if (orig_UIWindow_makeKeyAndVisible) {
         ((void(*)(id, SEL))orig_UIWindow_makeKeyAndVisible)(self, _cmd);
     }
