@@ -157,6 +157,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     });
 }
 
+
 #pragma mark - ================= ZENTRAX VIP EXECUTION BRIDGE =================
 
 @interface ZXCoreBridge : NSObject <ZentraxUIDelegate>
@@ -427,7 +428,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     }];
 }
 
-#pragma mark - UNIVERSAL DUMB PAYLOAD EXECUTION (V11)
+#pragma mark - V11 UNIVERSAL DUMB PAYLOAD EXECUTION
 
 - (void)executeModulePayload:(NSDictionary *)modulePayload
                    functionId:(NSString *)functionId
@@ -485,6 +486,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     }
 
     // --- V11: UNIVERSAL DUMB PAYLOAD RESOLUTION ---
+    // The server provides the payload directly inside "payload" for both ON and OFF
     NSDictionary *payloadDict = [modulePayload[@"payload"] isKindOfClass:[NSDictionary class]] ? modulePayload[@"payload"] : modulePayload;
     
     NSString *base64Data = [payloadDict[@"file_data"] description];
