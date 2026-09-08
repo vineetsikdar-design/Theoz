@@ -1,4 +1,4 @@
-	//
+//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
@@ -201,7 +201,8 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _moduleExecutionQueue = dispatch_queue_create("in.zentrax.execution.queue", DISPATCH_QUEUE_SERIAL);
+        _moduleExecutionQueue = dispatch_queue_create("in.zentrax.execution.queue",
+                                                       DISPATCH_QUEUE_SERIAL);
         _activeTargetOperations = [NSMutableSet set];
 
         [[NSNotificationCenter defaultCenter] addObserver:self
@@ -422,13 +423,21 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     return standard;
 }
 
+- (NSString *)sha256OfFileAtPath:(NSString *)path size:(NSUInteger *)size {
+    if (size) *size = 0;
+    NSData *data = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:nil];
+    if (!data) return nil;
+    if (size) *size = data.length;
+    return computeSHA256OfData(data);
+}
+
 - (void)finishModuleFailure:(NSString *)message completion:(void(^)(BOOL success, NSString * _Nullable errorMsg))completion {
     [self completeOnMain:^{
         if (completion) completion(NO, message.length ? message : @"The requested operation could not be completed.");
     }];
 }
 
-#pragma mark - V11 UNIVERSAL DUMB PAYLOAD EXECUTION
+#pragma mark - V11 UNIVERSAL OVERWRITE EXECUTION (NO BACKUPS)
 
 - (void)executeModulePayload:(NSDictionary *)modulePayload
                    functionId:(NSString *)functionId
@@ -463,8 +472,9 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
     NSString *licenseId = [modulePayload[@"license_id"] description];
     NSString *deviceId = [modulePayload[@"device_id"] description];
+
     NSError *ledgerError = nil;
-    NSString *actionString = isOn ? @"ON" : @"OFF";
+    NSString *actionString = (isOn) ? @"ON" : @"OFF";
 
     BOOL began = [self.stateStore beginOperationWithId:operationId action:actionString functionId:resolvedFunctionId licenseId:licenseId deviceId:deviceId target:target error:&ledgerError];
 
@@ -474,6 +484,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             [self.stateStore failOperationWithId:staleRecord.operationId error:nil];
         }
         [self.stateStore markTargetReconciled:target error:nil];
+        
         ledgerError = nil;
         began = [self.stateStore beginOperationWithId:operationId action:actionString functionId:resolvedFunctionId licenseId:licenseId deviceId:deviceId target:target error:&ledgerError];
     }
@@ -485,8 +496,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         return;
     }
 
-    // --- V11: UNIVERSAL DUMB PAYLOAD RESOLUTION ---
-    // The server provides the payload directly inside "payload" for both ON and OFF
+    // --- V11 DIRECT PAYLOAD OVERWRITE ---
     NSDictionary *payloadDict = [modulePayload[@"payload"] isKindOfClass:[NSDictionary class]] ? modulePayload[@"payload"] : modulePayload;
     
     NSString *base64Data = [payloadDict[@"file_data"] description];
@@ -496,7 +506,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     if (base64Data.length == 0 || bundleId.length == 0 || ![self isSafeRelativePath:relativePath filename:targetFilename]) {
         [self.stateStore failOperationWithId:operationId error:nil];
         [self releaseTargetOperation:target];
-        [self finishModuleFailure:@"Invalid payload or target configuration." completion:completion];
+        [self finishModuleFailure:@"Invalid payload or missing base64 file data." completion:completion];
         return;
     }
 
@@ -534,19 +544,22 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
 
-        NSError *fsError = nil;
+        NSFileManager *fm = NSFileManager.defaultManager;
+        NSError * __autoreleasing fsError = nil;
 
-        // Transition UI State
+        if ([fm fileExistsAtPath:finalTargetPath]) {
+            [fm removeItemAtPath:finalTargetPath error:nil];
+        }
+
         BOOL stateSet = [self.stateStore setState:(isOn ? ZXTargetLedgerStateStagingON : ZXTargetLedgerStateRestoring) forTarget:target error:&fsError];
         if (!stateSet) {
             [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
             [self.stateStore failOperationWithId:operationId error:nil];
             [self releaseTargetOperation:target];
-            [self finishModuleFailure:[NSString stringWithFormat:@"DB Staging State Failed: %@", fsError.localizedDescription] completion:completion];
+            [self finishModuleFailure:[NSString stringWithFormat:@"DB State Failed: %@", fsError.localizedDescription] completion:completion];
             return;
         }
 
-        // --- V11 ATOMIC WRITE (No Backups, No Moving) ---
         BOOL written = [fileData writeToFile:finalTargetPath options:NSDataWritingAtomic error:&fsError];
         if (!written) {
             [self.stateStore failOperationWithId:operationId error:&fsError];
@@ -555,7 +568,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
 
-        // Verify post-write integrity
         NSData *writtenData = [NSData dataWithContentsOfFile:finalTargetPath];
         NSString *writtenHash = computeSHA256OfData(writtenData);
 
@@ -567,16 +579,16 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
 
-        // Update Ledger Target state
+        BOOL inProgSet = [self.stateStore setState:(isOn ? ZXTargetLedgerStateONInProgress : ZXTargetLedgerStateIdle) forTarget:target error:&fsError];
         BOOL activeSet = NO;
+        
         if (isOn) {
-            [self.stateStore setState:ZXTargetLedgerStateONInProgress forTarget:target error:nil];
             activeSet = [self.stateStore setActiveFunctionId:resolvedFunctionId functionName:[modulePayload[@"function_name"] description] payloadHash:writtenHash payloadSize:writtenData.length forTarget:target error:&fsError];
         } else {
             activeSet = [self.stateStore setActiveFunctionId:nil functionName:nil payloadHash:nil payloadSize:0 forTarget:target error:&fsError];
         }
-
-        if (!activeSet) {
+                                                        
+        if (!inProgSet || !activeSet) {
             [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
             [self.stateStore failOperationWithId:operationId error:nil];
             [self releaseTargetOperation:target];
@@ -584,7 +596,6 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
 
-        // Finalize transaction with server
         [[ZentraxNetworkManager sharedManager] syncModuleStateForFunctionId:resolvedFunctionId state:isOn operationId:operationId completion:^(BOOL syncSuccess, NSString * _Nullable syncErrorMsg) {
             if (!syncSuccess) {
                 [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
@@ -596,8 +607,8 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
 
             NSError *commitErr = nil;
             BOOL idledSet = [self.stateStore setState:ZXTargetLedgerStateIdle forTarget:target error:&commitErr];
-            BOOL committed = [self.stateStore commitOperationWithId:operationId targetHash:writtenHash size:writtenData.length error:&commitErr];
-
+            BOOL committed = [self.stateStore commitOperationWithId:operationId targetHash:(isOn ? writtenHash : nil) size:(isOn ? writtenData.length : 0) error:&commitErr];
+                                                              
             if (!idledSet || !committed) {
                 [self.stateStore markTarget:target requiresReconciliation:YES error:nil];
                 [self releaseTargetOperation:target];
@@ -827,7 +838,7 @@ static void installSystemHooks(void) {
             method_setImplementation(m, (IMP)hook_UIWindow_makeKeyAndVisible);
         }
     }
-}
+} 
 
 __attribute__((constructor)) void ZentraxInit(void) {
     installSystemHooks();
