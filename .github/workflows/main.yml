@@ -89,3 +89,4 @@ jobs:
             packages/*.deb
             packages/*.ipa
             *.ipa
+          retention-days: 3
