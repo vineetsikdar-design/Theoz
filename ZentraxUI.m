@@ -1023,7 +1023,9 @@ static NSString *ZXLocalizedUI(NSString *text) {
     divider.translatesAutoresizingMaskIntoConstraints = NO;
     [_licenseCard addSubview:divider];
     
-    _keyRevealLabel = [self label:@"•••• •••• ••••" size:13 weight:UIFontWeightMono color:[ZXTheme secondaryText]];
+    _keyRevealLabel = [self label:@"•••• •••• ••••" size:13 weight:UIFontWeightMedium color:[ZXTheme secondaryText]];
+    _keyRevealLabel.font = [ZXTheme mono:13 weight:UIFontWeightMedium];
+
     _keyRevealLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [_licenseCard addSubview:_keyRevealLabel];
 
@@ -2729,5 +2731,85 @@ static NSString *ZXLocalizedUI(NSString *text) {
 - (BOOL)isShowingLogin { return self.currentState == ZXAppStateAuth && !self.authContainer.hidden; }
 - (BOOL)isShowingDashboard { return self.currentState == ZXAppStateDashboard && !self.dashboardContainer.hidden; }
 - (BOOL)isShowingSafeModeLock { return !self.safeLockContainer.hidden && self.safeModeEnabled; }
+
+
+#pragma mark - Public Methods (From Header)
+
+- (void)updateFunctionState:(NSString *)functionId state:(BOOL)isOn {
+    if (!functionId.length) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.functionStates[functionId] = @(ZXIsTruthyValue(@(isOn)));
+        UISwitch *toggle = (UISwitch *)self.functionControls[functionId];
+        if ([toggle isKindOfClass:[UISwitch class]]) [toggle setOn:isOn animated:YES];
+        
+        UILabel *label = self.functionStateLabels[functionId];
+        if (label) {
+            label.text = ZXLocalizedUI(isOn ? @"ACTIVE" : @"READY");
+            label.textColor = isOn ? [ZXTheme success] : [ZXTheme mutedText];
+            UIView *pill = label.superview;
+            pill.backgroundColor = isOn ? [[ZXTheme success] colorWithAlphaComponent:0.15] : [[ZXTheme mutedText] colorWithAlphaComponent:0.1];
+            
+            UIView *card = self.functionCards[functionId];
+            if (card) {
+                card.layer.borderColor = isOn ? [ZXTheme borderAccent].CGColor : [ZXTheme border].CGColor;
+                card.backgroundColor = isOn ? [ZXTheme surfaceRaised] : [ZXTheme surface];
+                card.layer.shadowOpacity = isOn ? 0.4 : 0.2;
+                card.layer.shadowColor = isOn ? [ZXTheme accentPrimary].CGColor : [UIColor blackColor].CGColor;
+                
+                for (UIView *sub in card.subviews) {
+                    if (sub.bounds.size.width == 36) { // IconBg
+                        sub.backgroundColor = isOn ? [[ZXTheme accentPrimary] colorWithAlphaComponent:0.15] : [ZXTheme surfaceRaised];
+                        for (UIImageView *iv in sub.subviews) {
+                            iv.tintColor = isOn ? [ZXTheme accentPrimary] : [ZXTheme mutedText];
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+- (void)updateFunctionStates:(NSDictionary<NSString *, NSNumber *> *)states {
+    if (![states isKindOfClass:[NSDictionary class]]) return;
+    for (NSString *fid in states) {
+        id value = states[fid];
+        if (![value respondsToSelector:@selector(boolValue)]) continue;
+        [self updateFunctionState:fid state:[value boolValue]];
+    }
+}
+
+- (void)updateServerBanner:(NSDictionary *)banner {
+    // Basic banner handling stub to satisfy header
+}
+
+- (void)showDeviceCompatibilityDetails {
+    // Details are integrated directly into Settings card now
+    [self showSettings];
+}
+
+- (void)showSafeModeSettings {
+    if (self.safeModeEnabled) { [self showSafeModeLockScreen]; return; }
+    self.safeModeCreatingPasscode = YES;
+    self.pendingSafeModePasscode = nil;
+    [self updateSafeModeState:ZXSafeModeStateOff];
+    [self showSafeModeLockScreen];
+}
+
+- (void)lockSafeMode {
+    if (!self.safeModeEnabled) return;
+    [self updateSafeModeState:ZXSafeModeStateLocked];
+    [self showSafeModeLockScreen];
+}
+
+- (void)unlockSafeMode {
+    if (!self.safeModeEnabled) return;
+    [self updateSafeModeState:ZXSafeModeStateUnlocked];
+}
+
+- (void)showSettingsSection:(NSString *)sectionIdentifier {
+    [self showSettings];
+}
+
+
 
 @end
