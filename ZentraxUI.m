@@ -19,6 +19,8 @@ static NSString * const ZXLastKey = @"in.zentrax.global.lastkey";
 static NSString * const ZXLoginAttemptsKey = @"in.zentrax.global.login.attempts";
 static NSString * const ZXLoginTimeoutKey = @"in.zentrax.global.login.timeout";
 
+static NSString *ZXLocalizedUI(NSString *text);
+
 #pragma mark - App State Enum
 
 typedef NS_ENUM(NSInteger, ZXAppState) {
@@ -540,7 +542,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
     _trackLayer.frame=self.bounds;
     _trackLayer.path=[UIBezierPath bezierPathWithOvalInRect:r].CGPath;
     _orbitLayer.frame=self.bounds;
-    UIBezierPath *p=[UIBezierPath bezierPathWithOvalInRect:r].CGPath;
+    CGPathRef p=[UIBezierPath bezierPathWithOvalInRect:r].CGPath;
     _orbitLayer.path=p;
 }
 - (void)startAnimating {
@@ -1512,8 +1514,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIView *overlay=[self.view viewWithTag:4933];
         if(!overlay) return;
-        UIView *card=nil;
-        for(UIView *v in overlay.subviews) if([v isKindOfClass:[UIVisualEffectView class]]) card=nil;
         UILabel *title=nil;
         for(UIView *v in overlay.subviews) {
             if([v isKindOfClass:[UIVisualEffectView class]]) {
@@ -2301,7 +2301,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
             [b setTitle:langName forState:UIControlStateNormal];
             [b setTitleColor:[ZXTheme primaryText] forState:UIControlStateNormal];
             b.titleLabel.font=[ZXTheme body:15 weight:UIFontWeightMedium];
-            b.contentEdgeInsets=UIEdgeInsetsMake(0,16,0,16);
+            b.layoutMargins=UIEdgeInsetsMake(0,16,0,16);
             [stack addArrangedSubview:b];
             [b.heightAnchor constraintEqualToConstant:48].active=YES;
             [b addAction:[UIAction actionWithHandler:^(__kindof UIAction *action){
