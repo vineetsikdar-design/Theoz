@@ -1,4 +1,4 @@
-	//
+		//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -446,6 +446,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 - (UIImage *)preferredLogoImage;
 - (void)toggleSettingsKey:(UIButton *)sender;
 - (void)rebuildAllContainers;
+- (void)styleSecondaryButton:(UIButton *)button;
 @end
 
 @implementation ZentraxUI
@@ -1433,6 +1434,53 @@ static NSString *ZXLocalizedUI(NSString *text) {
 }
 
 #pragma mark - Startup Block & Bootstrap
+
+- (void)styleSecondaryButton:(UIButton *)button {
+    if (!button) return;
+
+    button.layer.cornerRadius = 16.0;
+    button.layer.borderWidth = 1.0;
+    button.layer.borderColor = [ZXTheme border].CGColor;
+    button.backgroundColor = [[ZXTheme surfaceRaised] colorWithAlphaComponent:0.88];
+
+    [button setTitleColor:[ZXTheme primaryText] forState:UIControlStateNormal];
+    [button setTitleColor:[ZXTheme accentPrimary] forState:UIControlStateHighlighted];
+    [button setTitleColor:[ZXTheme mutedText] forState:UIControlStateDisabled];
+
+    button.titleLabel.font = [ZXTheme body:14.0 weight:UIFontWeightSemibold];
+    button.contentEdgeInsets = UIEdgeInsetsMake(0.0, 18.0, 0.0, 18.0);
+
+    button.layer.shadowColor = [UIColor blackColor].CGColor;
+    button.layer.shadowOpacity = 0.18;
+    button.layer.shadowRadius = 10.0;
+    button.layer.shadowOffset = CGSizeMake(0.0, 4.0);
+    button.clipsToBounds = NO;
+
+    [button addTarget:self action:@selector(zxSecondaryButtonTouchDown:) forControlEvents:UIControlEventTouchDown];
+    [button addTarget:self action:@selector(zxSecondaryButtonTouchUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+}
+
+- (void)zxSecondaryButtonTouchDown:(UIButton *)button {
+    [UIView animateWithDuration:0.12
+                          delay:0.0
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        button.transform = CGAffineTransformMakeScale(0.97, 0.97);
+        button.alpha = 0.88;
+    } completion:nil];
+}
+
+- (void)zxSecondaryButtonTouchUp:(UIButton *)button {
+    [UIView animateWithDuration:0.28
+                          delay:0.0
+         usingSpringWithDamping:0.72
+          initialSpringVelocity:0.25
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        button.transform = CGAffineTransformIdentity;
+        button.alpha = 1.0;
+    } completion:nil];
+}
 
 - (void)setupStartupBlock {
     _startupBlockContainer = [[UIView alloc] init];
