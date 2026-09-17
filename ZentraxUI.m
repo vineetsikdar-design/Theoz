@@ -421,6 +421,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 @property(nonatomic,strong) UIScrollView *authScroll;
 
 @property(nonatomic,strong) UILabel *countdownLabel;
+@property(nonatomic,strong) UILabel *licenseStatusLabel;
 @property(nonatomic,strong) UILabel *settingsKeyLabel;
 @property(nonatomic,strong) UILabel *settingsExpiryLabel;
 @property(nonatomic,strong) UILabel *connectionLabel;
@@ -443,6 +444,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 @property(nonatomic,strong) UILabel *globalLoadingDetail;
 
 - (UIImage *)preferredLogoImage;
+- (void)toggleSettingsKey:(UIButton *)sender;
 - (void)rebuildAllContainers;
 @end
 
@@ -719,13 +721,13 @@ static NSString *ZXLocalizedUI(NSString *text) {
     logo.translatesAutoresizingMaskIntoConstraints = NO;
     [content addSubview:logo];
 
-    UILabel *title = [self label:@"ZENTRAX" size:28 weight:UIFontWeightHeavy color:[ZXTheme primaryText]];
-    [ZXTheme track:title spacing:2.0];
+    UILabel *title = [self label:@"SECURE ACCESS" size:24 weight:UIFontWeightHeavy color:[ZXTheme primaryText]];
+    [ZXTheme track:title spacing:1.5];
     title.textAlignment = NSTextAlignmentCenter;
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [content addSubview:title];
 
-    UILabel *subtitle = [self label:@"Authenticate to continue" size:15 weight:UIFontWeightMedium color:[ZXTheme secondaryText]];
+    UILabel *subtitle = [self label:@"Enter your infrastructure license key." size:14 weight:UIFontWeightMedium color:[ZXTheme secondaryText]];
     subtitle.textAlignment = NSTextAlignmentCenter;
     subtitle.translatesAutoresizingMaskIntoConstraints = NO;
     [content addSubview:subtitle];
@@ -785,7 +787,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
 - (void)handleLogin {
     [self.view endEditing:YES]; 
     
-    // Process Timeout Check
     NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
     NSDate *timeout = [d objectForKey:ZXLoginTimeoutKey];
     if (timeout && [timeout timeIntervalSinceNow] > 0) {
@@ -826,15 +827,16 @@ static NSString *ZXLocalizedUI(NSString *text) {
                 self.authStatus.text = ZXLocalizedUI(@"Access Granted");
                 [self showDashboard];
             } else {
+                NSString *finalErrorMsg = errorMsg; 
                 NSInteger attempts = [ud integerForKey:ZXLoginAttemptsKey] + 1;
                 [ud setInteger:attempts forKey:ZXLoginAttemptsKey];
                 if (attempts >= 5) {
                     [ud setObject:[[NSDate date] dateByAddingTimeInterval:600] forKey:ZXLoginTimeoutKey]; // 10 minutes
                     [ud removeObjectForKey:ZXLoginAttemptsKey];
-                    errorMsg = @"Too many failed attempts. You are timed out for 10 minutes.";
+                    finalErrorMsg = @"Too many failed attempts. You are timed out for 10 minutes.";
                 }
                 [ud synchronize];
-                [self presentAuthError:errorType message:errorMsg];
+                [self presentAuthError:errorType message:finalErrorMsg];
             }
         });
     };
@@ -1353,17 +1355,17 @@ static NSString *ZXLocalizedUI(NSString *text) {
         default: break;
     }
     
-    _licenseStatusLabel.text = text;
-    _licenseStatusLabel.textColor = color;
+    self.licenseStatusLabel.text = text;
+    self.licenseStatusLabel.textColor = color;
     
     if (isPermanent) {
-        _countdownLabel.text = ZXLocalizedUI(@"LIFETIME");
+        self.countdownLabel.text = ZXLocalizedUI(@"LIFETIME");
         [self stopLicenseCountdown];
     } else if (expiresAt) {
         [self startLicenseCountdown];
         [self refreshLicenseCountdown];
     } else if (status == ZXLicenseUIStatusUnactivated) {
-        _countdownLabel.text = ZXLocalizedUI(@"NOT STARTED");
+        self.countdownLabel.text = ZXLocalizedUI(@"NOT STARTED");
         [self stopLicenseCountdown];
     }
     if (self.settingsVisible) [self rebuildSettings];
@@ -1414,10 +1416,10 @@ static NSString *ZXLocalizedUI(NSString *text) {
     if (!self.expiresAt) return;
     NSTimeInterval remaining = [self.expiresAt timeIntervalSinceDate:[self estimatedServerNow]];
     if (remaining <= 0) {
-        _countdownLabel.text = ZXLocalizedUI(@"00:00:00");
-        _licenseStatusLabel.text = ZXLocalizedUI(@"EXPIRED");
-        _licenseStatusLabel.textColor = [ZXTheme error];
-        if (self.settingsVisible) self.settingsExpiryLabel.text = ZXLocalizedUI(@"EXPIRED");
+        self.countdownLabel.text = ZXLocalizedUI(@"00:00:00");
+        self.licenseStatusLabel.text = ZXLocalizedUI(@"EXPIRED");
+        self.licenseStatusLabel.textColor = [ZXTheme error];
+        if (self.settingsVisible && self.settingsExpiryLabel) self.settingsExpiryLabel.text = ZXLocalizedUI(@"EXPIRED");
         [self stopLicenseCountdown];
         return;
     }
@@ -1426,8 +1428,8 @@ static NSString *ZXLocalizedUI(NSString *text) {
     NSInteger hours = total / 3600; total %= 3600;
     NSInteger minutes = total / 60; NSInteger seconds = total % 60;
     
-    if (days > 0) _countdownLabel.text = [NSString stringWithFormat:@"%ldd %02ldh %02ldm", (long)days, (long)hours, (long)minutes];
-    else _countdownLabel.text = [NSString stringWithFormat:@"%02ld:%02ld:%02ld", (long)hours, (long)minutes, (long)seconds];
+    if (days > 0) self.countdownLabel.text = [NSString stringWithFormat:@"%ldd %02ldh %02ldm", (long)days, (long)hours, (long)minutes];
+    else self.countdownLabel.text = [NSString stringWithFormat:@"%02ld:%02ld:%02ld", (long)hours, (long)minutes, (long)seconds];
 }
 
 #pragma mark - Startup Block & Bootstrap
@@ -1641,10 +1643,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
     [self stopHeartbeatMonitor];
     self.heartbeatTimer = [NSTimer scheduledTimerWithTimeInterval:20.0 target:self selector:@selector(heartbeatTick) userInfo:nil repeats:YES];
     [[NSRunLoop mainRunLoop] addTimer:self.heartbeatTimer forMode:NSRunLoopCommonModes];
-    _connectionLabel.text = ZXLocalizedUI(@"SECURE");
-    _connectionLabel.textColor = [ZXTheme primaryText];
-    _connectionDot.backgroundColor = [ZXTheme success];
-    _connectionDot.layer.shadowColor = [ZXTheme success].CGColor;
 }
 - (void)stopHeartbeatMonitor { [self.heartbeatTimer invalidate]; self.heartbeatTimer = nil; }
 
@@ -1682,11 +1680,6 @@ static NSString *ZXLocalizedUI(NSString *text) {
 
 - (void)handleRevokedSessionEnvironment {
     [self stopHeartbeatMonitor];
-    _connectionLabel.text = ZXLocalizedUI(@"OFFLINE"); 
-    _connectionLabel.textColor = [ZXTheme mutedText];
-    _connectionDot.backgroundColor = [ZXTheme error];
-    _connectionDot.layer.shadowColor = [ZXTheme error].CGColor;
-    
     for (NSString *fid in self.functionControls) ((UIControl *)self.functionControls[fid]).userInteractionEnabled = NO;
     
     __weak typeof(self) weakSelf = self;
