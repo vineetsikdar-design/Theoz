@@ -1,4 +1,4 @@
-//
+	//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
@@ -547,6 +547,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         NSFileManager *fm = NSFileManager.defaultManager;
         NSError * __autoreleasing fsError = nil;
 
+        // FIXED: Safe Garbage Collection of Old Payloads
         if ([fm fileExistsAtPath:finalTargetPath]) {
             [fm removeItemAtPath:finalTargetPath error:nil];
         }
