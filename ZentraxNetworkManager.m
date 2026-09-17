@@ -1,11 +1,9 @@
-//
+	//
 //  ZentraxNetworkManager.m
 //  Zentrax VIP - Premium Execution Node
 //
 //  Production network/session/configuration layer.
-//  This file intentionally stays at the application/network layer and does
-//  not modify the project's low-level filesystem or sandbox components.
-//  Status: STATE SYNC AUDITED
+//  Status: ULTRA PREMIUM (KEYCHAIN PERSISTENCE ADDED)
 //
 
 #import "ZentraxNetworkManager.h"
@@ -93,36 +91,58 @@
     });
 }
 
-#pragma mark - Global Defaults (Tweak-Safe Storage)
+#pragma mark - Global Defaults (KEYCHAIN PERSISTENCE FOR RE-INSTALLS)
 
 - (BOOL)saveSecureString:(NSString *)value account:(NSString *)account {
-    if (value.length == 0 || account.length == 0) {
-        return NO;
-    }
+    if (value.length == 0 || account.length == 0) return NO;
     
-    // Tweak environment fix: Universal App Group Defaults instead of Sandbox-bound Keychain
-    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
-    [globalDefaults setObject:value forKey:account];
-    return [globalDefaults synchronize];
+    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
+    NSMutableDictionary *query = [NSMutableDictionary dictionary];
+    query[(__bridge id)kSecClass] = (__bridge id)kSecClassGenericPassword;
+    query[(__bridge id)kSecAttrService] = KEYCHAIN_SERVICE;
+    query[(__bridge id)kSecAttrAccount] = account;
+    
+    // Delete any old value first
+    SecItemDelete((__bridge CFDictionaryRef)query);
+    
+    query[(__bridge id)kSecValueData] = data;
+    query[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlock;
+    
+    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)query, NULL);
+    return (status == errSecSuccess);
 }
 
 - (NSString * _Nullable)secureStringForAccount:(NSString *)account {
-    if (account.length == 0) {
-        return nil;
-    }
+    if (account.length == 0) return nil;
     
-    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
-    return [globalDefaults stringForKey:account];
+    NSDictionary *query = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: KEYCHAIN_SERVICE,
+        (__bridge id)kSecAttrAccount: account,
+        (__bridge id)kSecReturnData: @YES,
+        (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne
+    };
+    
+    CFTypeRef dataTypeRef = NULL;
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &dataTypeRef);
+    
+    if (status == errSecSuccess && dataTypeRef != NULL) {
+        NSData *resultData = (__bridge_transfer NSData *)dataTypeRef;
+        return [[NSString alloc] initWithData:resultData encoding:NSUTF8StringEncoding];
+    }
+    return nil;
 }
 
 - (void)deleteSecureAccount:(NSString *)account {
-    if (account.length == 0) {
-        return;
-    }
+    if (account.length == 0) return;
     
-    NSUserDefaults *globalDefaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
-    [globalDefaults removeObjectForKey:account];
-    [globalDefaults synchronize];
+    NSDictionary *query = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: KEYCHAIN_SERVICE,
+        (__bridge id)kSecAttrAccount: account
+    };
+    
+    SecItemDelete((__bridge CFDictionaryRef)query);
 }
 
 - (void)saveTokenToKeychain:(NSString *)token {
@@ -136,12 +156,12 @@
 #pragma mark - Device Identity
 
 - (NSString *)getHardwareID {
+    // Because this now uses Keychain, the HWID will survive app deletion!
     NSString *stored = [self secureStringForAccount:KEYCHAIN_HWID_ACCOUNT];
     if (stored.length > 0) {
         return stored;
     }
 
-    // Tweak environment fix: Universal HWID instead of identifierForVendor to prevent session drop in different apps
     NSString *generated = [NSUUID UUID].UUIDString;
 
     if (generated.length == 0) {
@@ -153,7 +173,6 @@
 }
 
 - (NSString *)applicationVersion {
-    // Tweak environment fix: Hardcode expected version to bypass host app version mismatch
     return @"1.0.0";
 }
 
@@ -358,9 +377,6 @@
         [normalized isEqualToString:@"RATE_LIMIT"] ||
         [normalized isEqualToString:@"RATE_LIMIT_EXCEEDED"]) return ZXNetworkErrorRateLimited;
 
-    // These are valid server contract errors, but the public enum intentionally
-    // keeps them under the generic server bucket while preserving the original
-    // error_code/message in the response returned to the caller.
     return ZXNetworkErrorServer;
 }
 
@@ -780,7 +796,6 @@
                     if (!merged[@"dashboard"] && cached[@"dashboard"]) merged[@"dashboard"] = cached[@"dashboard"];
                 }
                 
-                // CRITICAL FIX: Always protect the license object from being wiped by sparse heartbeat payloads
                 if (!merged[@"license"] && cached[@"license"]) {
                     merged[@"license"] = cached[@"license"];
                 }
@@ -835,9 +850,6 @@
             return;
         }
 
-        // Preserve the complete server response so callers never lose
-        // server_state/license/target metadata while still exposing the
-        // legacy flattened payload fields expected by the filesystem layer.
         NSMutableDictionary *combined = [NSMutableDictionary dictionaryWithDictionary:responseData ?: @{}];
         if (operationPayload) [combined addEntriesFromDictionary:operationPayload];
         combined[@"operation_id"] = operationID;
@@ -1141,7 +1153,6 @@
                     if (!merged[@"dashboard"] && cached[@"dashboard"]) merged[@"dashboard"] = cached[@"dashboard"];
                 }
                 
-                // CRITICAL FIX: Always protect the license object from being wiped by sparse heartbeat payloads
                 if (!merged[@"license"] && cached[@"license"]) {
                     merged[@"license"] = cached[@"license"];
                 }
@@ -1164,13 +1175,9 @@
 }
 
 - (void)logout {
-    /*
-     * Server-side session invalidation, when provided by the API, should be
-     * performed by the caller before this local purge. This method always
-     * removes the local bearer token and transient authentication state.
-     */
     [self deleteSecureAccount:KEYCHAIN_SESSION_ACCOUNT];
-    [self deleteSecureAccount:KEYCHAIN_LICENSE_ACCOUNT];
+    // IMPORTANT: DO NOT DELETE LICENSE KEYCHAIN ON STANDARD LOGOUT
+    // This allows re-install to pull the key. The server will reject if revoked.
     [self resetServerTimeState];
     [self resetCompatibilityState];
 }
@@ -1274,10 +1281,6 @@
 didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
  completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition,
                              NSURLCredential * _Nullable credential))completionHandler {
-    /*
-     * Use Apple's system trust evaluation. No certificate pin/hash is
-     * hardcoded because the deployment does not provide a maintained pin set.
-     */
     if ([challenge.protectionSpace.authenticationMethod
          isEqualToString:NSURLAuthenticationMethodServerTrust]) {
         completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
