@@ -1,9 +1,9 @@
-	//
+//
 //  Tweak.m
 //  Zentrax VIP - Core System Hooks & Execution Bridge
 //
 //  Created by Zentrax Team.
-//  Status: PRODUCTION AUDITED (V11 - Dumb Overwrite Architecture)
+//  Status: PRODUCTION AUDITED (V11 - Strict Pure Overwrite & Auto-OFF Architecture)
 //
 
 @import UIKit;
@@ -437,7 +437,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     }];
 }
 
-#pragma mark - V11 UNIVERSAL OVERWRITE EXECUTION (NO BACKUPS)
+#pragma mark - V11 UNIVERSAL OVERWRITE EXECUTION (PURE REPLACEMENT)
 
 - (void)executeModulePayload:(NSDictionary *)modulePayload
                    functionId:(NSString *)functionId
@@ -459,6 +459,9 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
     NSString *bundleId = targetDict ? [targetDict[@"bundle_id"] description] : [modulePayload[@"bundle_id"] description];
     NSString *relativePath = targetDict ? [targetDict[@"relative_path"] description] : [modulePayload[@"relative_path"] description];
     NSString *targetFilename = targetDict ? [targetDict[@"target_filename"] description] : [modulePayload[@"target_filename"] description];
+
+    // Read auto_disabled array from server response
+    NSArray *autoDisabled = [modulePayload[@"auto_disabled"] isKindOfClass:[NSArray class]] ? modulePayload[@"auto_disabled"] : nil;
 
     if (operationId.length == 0 || resolvedFunctionId.length == 0 || target.length == 0) {
         [self finishModuleFailure:@"Invalid payload or target configuration." completion:completion];
@@ -496,7 +499,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
         return;
     }
 
-    // --- V11 DIRECT PAYLOAD OVERWRITE ---
+    // --- V11 STRICT OVERWRITE - NO DELETIONS ---
     NSDictionary *payloadDict = [modulePayload[@"payload"] isKindOfClass:[NSDictionary class]] ? modulePayload[@"payload"] : modulePayload;
     
     NSString *base64Data = [payloadDict[@"file_data"] description];
@@ -544,13 +547,7 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
 
-        NSFileManager *fm = NSFileManager.defaultManager;
         NSError * __autoreleasing fsError = nil;
-
-        // FIXED: Safe Garbage Collection of Old Payloads
-        if ([fm fileExistsAtPath:finalTargetPath]) {
-            [fm removeItemAtPath:finalTargetPath error:nil];
-        }
 
         BOOL stateSet = [self.stateStore setState:(isOn ? ZXTargetLedgerStateStagingON : ZXTargetLedgerStateRestoring) forTarget:target error:&fsError];
         if (!stateSet) {
@@ -561,11 +558,12 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             return;
         }
 
+        // PURE OVERWRITE ONLY - NO DELETION (removeItemAtPath is completely removed)
         BOOL written = [fileData writeToFile:finalTargetPath options:NSDataWritingAtomic error:&fsError];
         if (!written) {
             [self.stateStore failOperationWithId:operationId error:&fsError];
             [self releaseTargetOperation:target];
-            [self finishModuleFailure:[NSString stringWithFormat:@"Payload Write Failed: %@", fsError.localizedDescription] completion:completion];
+            [self finishModuleFailure:[NSString stringWithFormat:@"Payload Overwrite Failed: %@", fsError.localizedDescription] completion:completion];
             return;
         }
 
@@ -595,6 +593,21 @@ static void hook_activationViewDidLoad(id self, SEL _cmd) {
             [self releaseTargetOperation:target];
             [self finishModuleFailure:[NSString stringWithFormat:@"DB Active Reg Failed: %@", fsError.localizedDescription] completion:completion];
             return;
+        }
+
+        // Notify UI of any Auto-Disabled Functions sharing the same path
+        if (isOn && autoDisabled.count > 0) {
+            [self completeOnMain:^{
+                for (NSString *disabledFuncId in autoDisabled) {
+                    // Send universal notification so UI switches can listen and toggle OFF
+                    [[NSNotificationCenter defaultCenter] postNotificationName:@"ZXFunctionAutoDisabledNotification" object:disabledFuncId];
+                    
+                    // Directly call the UI Controller if supported
+                    if ([self.uiController respondsToSelector:NSSelectorFromString(@"forceDisableToggleForFunctionId:")]) {
+                        ((void(*)(id, SEL, id))objc_msgSend)(self.uiController, NSSelectorFromString(@"forceDisableToggleForFunctionId:"), disabledFuncId);
+                    }
+                }
+            }];
         }
 
         [[ZentraxNetworkManager sharedManager] syncModuleStateForFunctionId:resolvedFunctionId state:isOn operationId:operationId completion:^(BOOL syncSuccess, NSString * _Nullable syncErrorMsg) {
