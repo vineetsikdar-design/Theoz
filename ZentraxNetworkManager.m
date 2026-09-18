@@ -3,7 +3,7 @@
 //  Zentrax VIP - Premium Execution Node
 //
 //  Production network/session/configuration layer.
-//  Status: ULTRA PREMIUM (KEYCHAIN PERSISTENCE ADDED)
+//  Status: V11 STRICT OVERWRITE (AUTO-OFF INTEGRATED)
 //
 
 #import "ZentraxNetworkManager.h"
@@ -857,31 +857,23 @@
         if ([responseData[@"target"] isKindOfClass:NSDictionary.class]) {
             combined[@"target"] = responseData[@"target"];
         }
-        if ([responseData[@"restore_contract"] isKindOfClass:NSDictionary.class]) {
-            combined[@"restore_contract"] = responseData[@"restore_contract"];
-        }
         if ([responseData[@"switch_mode"] isKindOfClass:NSString.class]) {
             combined[@"switch_mode"] = responseData[@"switch_mode"];
+        }
+        if ([responseData[@"auto_disabled"] isKindOfClass:NSArray.class]) {
+            combined[@"auto_disabled"] = responseData[@"auto_disabled"];
         }
         if ([responseData[@"server_time"] isKindOfClass:NSNumber.class] ||
             [responseData[@"server_time"] isKindOfClass:NSString.class]) {
             combined[@"server_time"] = responseData[@"server_time"];
         }
 
-        if (isOn) {
-            BOOL validPayload = [combined[@"file_data"] isKindOfClass:NSString.class] &&
-                                [combined[@"sha256"] isKindOfClass:NSString.class] &&
-                                [combined[@"size"] isKindOfClass:NSNumber.class];
-            if (!validPayload) {
-                if (completion) completion(NO, nil, @"Server returned an incomplete verified ON payload.");
-                return;
-            }
-        } else {
-            BOOL validContract = [combined[@"restore_contract"] isKindOfClass:NSDictionary.class];
-            if (!validContract) {
-                if (completion) completion(NO, nil, @"Server returned an incomplete OFF restore contract.");
-                return;
-            }
+        BOOL validPayload = [combined[@"file_data"] isKindOfClass:NSString.class] &&
+                            [combined[@"sha256"] isKindOfClass:NSString.class] &&
+                            [combined[@"size"] isKindOfClass:NSNumber.class];
+        if (!validPayload) {
+            if (completion) completion(NO, nil, [NSString stringWithFormat:@"Server returned an incomplete verified %@ payload.", isOn ? @"ON" : @"OFF"]);
+            return;
         }
 
         if (completion) completion(YES, combined, nil);
@@ -935,28 +927,19 @@
         if ([responseData[@"target"] isKindOfClass:NSDictionary.class]) {
             result[@"target"] = responseData[@"target"];
         }
-        if ([responseData[@"restore_contract"] isKindOfClass:NSDictionary.class]) {
-            result[@"restore_contract"] = responseData[@"restore_contract"];
-        }
         if ([responseData[@"switch_mode"] isKindOfClass:NSString.class]) {
             result[@"switch_mode"] = responseData[@"switch_mode"];
         }
+        if ([responseData[@"auto_disabled"] isKindOfClass:NSArray.class]) {
+            result[@"auto_disabled"] = responseData[@"auto_disabled"];
+        }
 
-        if (action == ZXModuleOperationActionON) {
-            BOOL valid = [result[@"file_data"] isKindOfClass:NSString.class] &&
-                         [result[@"sha256"] isKindOfClass:NSString.class] &&
-                         [result[@"size"] isKindOfClass:NSNumber.class];
-            if (!valid) {
-                if (completion) completion(NO, nil, @"Server returned an incomplete verified ON payload.");
-                return;
-            }
-        } else {
-            NSDictionary *contract = [responseData[@"restore_contract"] isKindOfClass:NSDictionary.class]
-                ? responseData[@"restore_contract"] : nil;
-            if (!contract) {
-                if (completion) completion(NO, nil, @"Server returned an incomplete OFF restore contract.");
-                return;
-            }
+        BOOL valid = [result[@"file_data"] isKindOfClass:NSString.class] &&
+                     [result[@"sha256"] isKindOfClass:NSString.class] &&
+                     [result[@"size"] isKindOfClass:NSNumber.class];
+        if (!valid) {
+            if (completion) completion(NO, nil, [NSString stringWithFormat:@"Server returned an incomplete verified %@ payload.", state]);
+            return;
         }
 
         if (completion) completion(YES, result, nil);
