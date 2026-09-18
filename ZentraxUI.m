@@ -1,4 +1,4 @@
-	//
+		//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -446,6 +446,7 @@ static NSString *ZXLocalizedUI(NSString *text) {
 - (UIImage *)preferredLogoImage;
 - (void)toggleSettingsKey:(UIButton *)sender;
 - (void)rebuildAllContainers;
+- (void)styleSecondaryButton:(UIButton *)button;
 @end
 
 @implementation ZentraxUI
@@ -1433,6 +1434,21 @@ static NSString *ZXLocalizedUI(NSString *text) {
 }
 
 #pragma mark - Startup Block & Bootstrap
+
+- (void)styleSecondaryButton:(UIButton *)button {
+    if (!button) return;
+
+    button.backgroundColor = [[ZXTheme surfaceRaised] colorWithAlphaComponent:0.92];
+    button.layer.cornerRadius = 16.0;
+    button.layer.borderWidth = 1.0;
+    button.layer.borderColor = [ZXTheme border].CGColor;
+    button.clipsToBounds = YES;
+
+    button.titleLabel.font = [ZXTheme heading:15.0];
+    [button setTitleColor:[ZXTheme primaryText] forState:UIControlStateNormal];
+
+    [button setTitleColor:[ZXTheme secondaryText] forState:UIControlStateHighlighted];
+}
 
 - (void)setupStartupBlock {
     _startupBlockContainer = [[UIView alloc] init];
