@@ -1004,7 +1004,7 @@
         if (completion) completion(NO, @"Missing required identifiers for synchronization.");
         return;
     }
-
+ 
     NSDictionary *payload = @{
         @"action": @"sync_state",
         @"function_id": functionId,
