@@ -1,4 +1,4 @@
-			//
+				//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -581,6 +581,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 @property(nonatomic,strong) UILabel *countdownLabel;
 @property(nonatomic,strong) UILabel *licenseStatusLabel;
 @property(nonatomic,strong) UILabel *settingsKeyLabel;
+@property(nonatomic,strong) UIButton *settingsKeyEyeButton;
 @property(nonatomic,strong) UILabel *settingsExpiryLabel;
 @property(nonatomic,strong) UILabel *connectionLabel;
 @property(nonatomic,strong) UIView *connectionDot;
@@ -1396,8 +1397,18 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [pill addSubview:stateLabel];
     self.functionStateLabels[fid] = stateLabel;
 
-    ZXPremiumSwitch *toggle = [[ZXPremiumSwitch alloc] init];
-    [toggle setOn:on animated:NO];
+    // Use the native iOS switch for a stable, familiar control. The previous
+    // custom switch applied press transforms and could look compressed/jump on tap.
+    UISwitch *toggle = [[UISwitch alloc] initWithFrame:CGRectZero];
+    toggle.translatesAutoresizingMaskIntoConstraints = NO;
+    toggle.on = on;
+    toggle.onTintColor = [ZXTheme accentPrimary];
+    toggle.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.16];
+    toggle.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.055];
+    toggle.layer.cornerRadius = 15.5;
+    toggle.clipsToBounds = YES;
+    toggle.accessibilityLabel = ZXLocalizedUI(@"Function switch");
+    toggle.accessibilityValue = ZXLocalizedUI(on ? @"On" : @"Off");
     [toggle addTarget:self action:@selector(functionToggleChanged:) forControlEvents:UIControlEventValueChanged];
     [card addSubview:toggle];
     self.functionControls[fid] = toggle;
@@ -1422,6 +1433,8 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         
         [toggle.trailingAnchor constraintEqualToAnchor:card.blurView.contentView.trailingAnchor constant:-20],
         [toggle.topAnchor constraintEqualToAnchor:card.blurView.contentView.topAnchor constant:20],
+        [toggle.widthAnchor constraintEqualToConstant:51],
+        [toggle.heightAnchor constraintEqualToConstant:31],
         
         [title.leadingAnchor constraintEqualToAnchor:iconBg.trailingAnchor constant:16],
         [title.trailingAnchor constraintLessThanOrEqualToAnchor:toggle.leadingAnchor constant:-16],
@@ -1499,11 +1512,11 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     }
 }
 
-- (void)functionToggleChanged:(ZXPremiumSwitch *)sender {
+- (void)functionToggleChanged:(UIControl *)sender {
     NSString *fid=[self functionIdForControl:sender];
     if(!fid.length) return;
     if([self.functionProcessing[fid] boolValue]) return;
-    BOOL requested=sender.isOn;
+    BOOL requested=([sender isKindOfClass:[UISwitch class]] ? ((UISwitch *)sender).isOn : NO);
     NSArray<NSString *> *conflicts=requested ? [self conflictingFunctionIdsForFunctionId:fid] : @[];
     NSMutableDictionary<NSString *,NSNumber *> *previousConflictStates=[NSMutableDictionary dictionary];
     for(NSString *otherFID in conflicts){
@@ -1525,9 +1538,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     state.text=ZXLocalizedUI(@"PROCESSING"); state.textColor=[ZXTheme warning];
     pill.backgroundColor=[[ZXTheme warning] colorWithAlphaComponent:0.12];
     [card setEmphasized:YES animated:YES];
-    [UIView animateWithDuration:ZXMotionDuration(0.12) animations:^{ sender.transform=CGAffineTransformMakeScale(0.96,0.96); } completion:^(BOOL finished){
-        [UIView animateWithDuration:ZXMotionDuration(0.20) animations:^{ sender.transform=CGAffineTransformIdentity; }];
-    }];
+    sender.transform=CGAffineTransformIdentity;
     [[[UISelectionFeedbackGenerator alloc] init] selectionChanged];
 
     __weak typeof(self) weakSelf=self;
@@ -1586,10 +1597,15 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     }
     self.functionStates[fid]=@(isOn);
     UIControl *control=self.functionControls[fid];
-    if([control isKindOfClass:[ZXPremiumSwitch class]]) {
-        ZXPremiumSwitch *sw=(ZXPremiumSwitch *)control;
-        [sw setOn:isOn animated:animated];
-        if(![self.functionProcessing[fid] boolValue]) sw.userInteractionEnabled=YES;
+    if([control isKindOfClass:[UISwitch class]]) {
+        UISwitch *sw=(UISwitch *)control;
+        sw.userInteractionEnabled = ![self.functionProcessing[fid] boolValue];
+        sw.accessibilityValue = ZXLocalizedUI(isOn ? @"On" : @"Off");
+        if(animated) {
+            [sw setOn:isOn animated:YES];
+        } else {
+            [sw setOn:isOn animated:NO];
+        }
     }
     UILabel *label=self.functionStateLabels[fid];
     ZXGlassCard *card=(ZXGlassCard *)self.functionCards[fid];
@@ -2091,14 +2107,14 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     
     _settingsStack = [[UIStackView alloc] init];
     _settingsStack.axis = UILayoutConstraintAxisVertical;
-    _settingsStack.spacing = 20;
+    _settingsStack.spacing = 16;
     _settingsStack.translatesAutoresizingMaskIntoConstraints = NO;
     [_settingsScroll addSubview:_settingsStack];
     
     [NSLayoutConstraint activateConstraints:@[
         [_settingsScroll.leadingAnchor constraintEqualToAnchor:_settingsContainer.leadingAnchor constant:24],
         [_settingsScroll.trailingAnchor constraintEqualToAnchor:_settingsContainer.trailingAnchor constant:-24],
-        [_settingsScroll.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:24],
+        [_settingsScroll.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:20],
         [_settingsScroll.bottomAnchor constraintEqualToAnchor:_settingsContainer.bottomAnchor],
         
         [_settingsStack.leadingAnchor constraintEqualToAnchor:_settingsScroll.contentLayoutGuide.leadingAnchor],
@@ -2137,26 +2153,26 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [row addSubview:s];
     
     [NSLayoutConstraint activateConstraints:@[
-        [row.heightAnchor constraintGreaterThanOrEqualToConstant:80],
+        [row.heightAnchor constraintGreaterThanOrEqualToConstant:92],
         
         [iconBg.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:20],
         [iconBg.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-        [iconBg.widthAnchor constraintEqualToConstant:38],
-        [iconBg.heightAnchor constraintEqualToConstant:38],
+        [iconBg.widthAnchor constraintEqualToConstant:48],
+        [iconBg.heightAnchor constraintEqualToConstant:48],
         
         [iv.centerXAnchor constraintEqualToAnchor:iconBg.centerXAnchor],
         [iv.centerYAnchor constraintEqualToAnchor:iconBg.centerYAnchor],
-        [iv.widthAnchor constraintEqualToConstant:20],
-        [iv.heightAnchor constraintEqualToConstant:20],
+        [iv.widthAnchor constraintEqualToConstant:24],
+        [iv.heightAnchor constraintEqualToConstant:24],
         
         [t.leadingAnchor constraintEqualToAnchor:iconBg.trailingAnchor constant:16],
-        [t.topAnchor constraintEqualToAnchor:row.topAnchor constant:18],
+        [t.topAnchor constraintEqualToAnchor:row.topAnchor constant:20],
         [t.trailingAnchor constraintLessThanOrEqualToAnchor:row.trailingAnchor constant:-65],
         
         [s.leadingAnchor constraintEqualToAnchor:t.leadingAnchor],
-        [s.topAnchor constraintEqualToAnchor:t.bottomAnchor constant:4],
+        [s.topAnchor constraintEqualToAnchor:t.bottomAnchor constant:6],
         [s.trailingAnchor constraintLessThanOrEqualToAnchor:row.trailingAnchor constant:-65],
-        [s.bottomAnchor constraintLessThanOrEqualToAnchor:row.bottomAnchor constant:-18]
+        [s.bottomAnchor constraintLessThanOrEqualToAnchor:row.bottomAnchor constant:-20]
     ]];
     
     if (accessory) {
@@ -2204,6 +2220,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     UILabel *licLabel = [self label:@"LICENSE INFO" size:12 weight:UIFontWeightBold color:[ZXTheme mutedText]];
     [ZXTheme track:licLabel spacing:2.0];
     [self.settingsStack addArrangedSubview:licLabel];
+    licLabel.translatesAutoresizingMaskIntoConstraints=NO;
 
     NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
     NSString *currentKey = [d stringForKey:ZXLastKey];
@@ -2217,14 +2234,28 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     UIImageView *keyIcon=[[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"key.fill"]]; keyIcon.translatesAutoresizingMaskIntoConstraints=NO; keyIcon.tintColor=[ZXTheme accentSoft]; [keyIconBg addSubview:keyIcon];
     UILabel *keyTitle=[self label:ZXLocalizedUI(@"License Key") size:16 weight:UIFontWeightSemibold color:[ZXTheme primaryText]]; keyTitle.translatesAutoresizingMaskIntoConstraints=NO; [keyCard addSubview:keyTitle];
     UILabel *keySub=[self label:self.settingsKeyRevealed && currentKey.length ? currentKey : @"•••• •••• ••••" size:14 weight:UIFontWeightMedium color:self.settingsKeyRevealed?[UIColor whiteColor]:[ZXTheme secondaryText]]; keySub.translatesAutoresizingMaskIntoConstraints=NO; keySub.font=[ZXTheme mono:14 weight:UIFontWeightMedium]; keySub.adjustsFontSizeToFitWidth=YES; keySub.minimumScaleFactor=0.58; keySub.numberOfLines=1; self.settingsKeyLabel=keySub; [keyCard addSubview:keySub];
-    UIButton *eye=[UIButton buttonWithType:UIButtonTypeSystem]; eye.translatesAutoresizingMaskIntoConstraints=NO; eye.accessibilityLabel=ZXLocalizedUI(@"License Key"); eye.accessibilityHint=ZXLocalizedUI(@"Show or hide the saved license key."); eye.accessibilityTraits=UIAccessibilityTraitButton; [eye setImage:[UIImage systemImageNamed:self.settingsKeyRevealed?@"eye.fill":@"eye.slash.fill"] forState:UIControlStateNormal]; eye.tintColor=[ZXTheme mutedText]; eye.contentEdgeInsets=UIEdgeInsetsMake(10,10,10,10); eye.userInteractionEnabled=YES; [eye addTarget:self action:@selector(toggleSettingsKey:) forControlEvents:UIControlEventTouchUpInside]; [keyCard addSubview:eye];
+    UIButton *eye=[UIButton buttonWithType:UIButtonTypeSystem];
+    eye.translatesAutoresizingMaskIntoConstraints=NO;
+    eye.accessibilityLabel=ZXLocalizedUI(@"License Key");
+    eye.accessibilityHint=ZXLocalizedUI(@"Show or hide the saved license key.");
+    eye.accessibilityTraits=UIAccessibilityTraitButton;
+    eye.tintColor=[ZXTheme mutedText];
+    eye.contentHorizontalAlignment=UIControlContentHorizontalAlignmentCenter;
+    eye.contentVerticalAlignment=UIControlContentVerticalAlignmentCenter;
+    eye.adjustsImageWhenHighlighted=NO;
+    eye.layer.anchorPoint=CGPointMake(0.5, 0.5);
+    eye.imageView.contentMode=UIViewContentModeScaleAspectFit;
+    [eye setImage:[UIImage systemImageNamed:self.settingsKeyRevealed?@"eye.fill":@"eye.slash.fill"] forState:UIControlStateNormal];
+    [eye addTarget:self action:@selector(toggleSettingsKey:) forControlEvents:UIControlEventTouchUpInside];
+    self.settingsKeyEyeButton=eye;
+    [keyCard addSubview:eye];
     [NSLayoutConstraint activateConstraints:@[
-        [keyCard.heightAnchor constraintGreaterThanOrEqualToConstant:82],
-        [keyIconBg.leadingAnchor constraintEqualToAnchor:keyCard.blurView.contentView.leadingAnchor constant:20], [keyIconBg.centerYAnchor constraintEqualToAnchor:keyCard.blurView.contentView.centerYAnchor], [keyIconBg.widthAnchor constraintEqualToConstant:38], [keyIconBg.heightAnchor constraintEqualToConstant:38],
-        [keyIcon.centerXAnchor constraintEqualToAnchor:keyIconBg.centerXAnchor], [keyIcon.centerYAnchor constraintEqualToAnchor:keyIconBg.centerYAnchor], [keyIcon.widthAnchor constraintEqualToConstant:20], [keyIcon.heightAnchor constraintEqualToConstant:20],
-        [keyTitle.leadingAnchor constraintEqualToAnchor:keyIconBg.trailingAnchor constant:16], [keyTitle.topAnchor constraintEqualToAnchor:keyCard.blurView.contentView.topAnchor constant:17], [keyTitle.trailingAnchor constraintLessThanOrEqualToAnchor:eye.leadingAnchor constant:-10],
-        [keySub.leadingAnchor constraintEqualToAnchor:keyTitle.leadingAnchor], [keySub.topAnchor constraintEqualToAnchor:keyTitle.bottomAnchor constant:4], [keySub.trailingAnchor constraintEqualToAnchor:eye.leadingAnchor constant:-10], [keySub.bottomAnchor constraintLessThanOrEqualToAnchor:keyCard.blurView.contentView.bottomAnchor constant:-16],
-        [eye.trailingAnchor constraintEqualToAnchor:keyCard.blurView.contentView.trailingAnchor constant:-8], [eye.centerYAnchor constraintEqualToAnchor:keyCard.blurView.contentView.centerYAnchor], [eye.widthAnchor constraintGreaterThanOrEqualToConstant:44], [eye.heightAnchor constraintGreaterThanOrEqualToConstant:44]
+        [keyCard.heightAnchor constraintGreaterThanOrEqualToConstant:96],
+        [keyIconBg.leadingAnchor constraintEqualToAnchor:keyCard.blurView.contentView.leadingAnchor constant:20], [keyIconBg.centerYAnchor constraintEqualToAnchor:keyCard.blurView.contentView.centerYAnchor], [keyIconBg.widthAnchor constraintEqualToConstant:48], [keyIconBg.heightAnchor constraintEqualToConstant:48],
+        [keyIcon.centerXAnchor constraintEqualToAnchor:keyIconBg.centerXAnchor], [keyIcon.centerYAnchor constraintEqualToAnchor:keyIconBg.centerYAnchor], [keyIcon.widthAnchor constraintEqualToConstant:24], [keyIcon.heightAnchor constraintEqualToConstant:24],
+        [keyTitle.leadingAnchor constraintEqualToAnchor:keyIconBg.trailingAnchor constant:16], [keyTitle.topAnchor constraintEqualToAnchor:keyCard.blurView.contentView.topAnchor constant:20], [keyTitle.trailingAnchor constraintLessThanOrEqualToAnchor:eye.leadingAnchor constant:-10],
+        [keySub.leadingAnchor constraintEqualToAnchor:keyTitle.leadingAnchor], [keySub.topAnchor constraintEqualToAnchor:keyTitle.bottomAnchor constant:6], [keySub.trailingAnchor constraintEqualToAnchor:eye.leadingAnchor constant:-10], [keySub.bottomAnchor constraintLessThanOrEqualToAnchor:keyCard.blurView.contentView.bottomAnchor constant:-20],
+        [eye.trailingAnchor constraintEqualToAnchor:keyCard.blurView.contentView.trailingAnchor constant:-12], [eye.centerYAnchor constraintEqualToAnchor:keyCard.blurView.contentView.centerYAnchor], [eye.widthAnchor constraintEqualToConstant:48], [eye.heightAnchor constraintEqualToConstant:48]
     ]];
     [self.settingsStack addArrangedSubview:keyCard];
 
@@ -2250,6 +2281,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     UILabel *prefLabel = [self label:@"PREFERENCES" size:12 weight:UIFontWeightBold color:[ZXTheme mutedText]];
     [ZXTheme track:prefLabel spacing:2.0];
     [self.settingsStack addArrangedSubview:prefLabel];
+    prefLabel.translatesAutoresizingMaskIntoConstraints=NO;
     
     NSString *language = [d stringForKey:ZXLanguageKey] ?: @"English";
     [self.settingsStack addArrangedSubview:[self settingsRow:ZXLocalizedUI(@"Language") subtitle:language icon:@"globe" color:[ZXTheme accentSecondary] action:@selector(showLanguagePicker) accessory:nil]];
@@ -2257,6 +2289,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     UILabel *supportLabel = [self label:@"COMMUNITY" size:12 weight:UIFontWeightBold color:[ZXTheme mutedText]];
     [ZXTheme track:supportLabel spacing:2.0];
     [self.settingsStack addArrangedSubview:supportLabel];
+    supportLabel.translatesAutoresizingMaskIntoConstraints=NO;
 
     UIView *telegramRow = [self settingsRow:ZXLocalizedUI(@"ZENTRAX Community")
                                     subtitle:[NSString stringWithFormat:@"%@\n%@", ZXLocalizedUI(@"Support the free release • Join the official Telegram channel"), ZXTelegramChannelURL]
@@ -2278,19 +2311,36 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     UILabel *accLabel = [self label:@"SESSION" size:12 weight:UIFontWeightBold color:[ZXTheme mutedText]];
     [ZXTheme track:accLabel spacing:2.0];
     [self.settingsStack addArrangedSubview:accLabel];
+    accLabel.translatesAutoresizingMaskIntoConstraints=NO;
     [self.settingsStack addArrangedSubview:[self settingsRow:ZXLocalizedUI(@"Sign Out") subtitle:ZXLocalizedUI(@"Close the current secure session.") icon:@"rectangle.portrait.and.arrow.right" color:[ZXTheme error] action:@selector(handleLogout) accessory:nil]];
     ZXAuditAccessibilityTree(self.settingsContainer);
 }
 
 - (void)toggleSettingsKey:(UIButton *)sender {
-    self.settingsKeyRevealed=!self.settingsKeyRevealed;
     NSUserDefaults *d=[[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
     NSString *key=[d stringForKey:ZXLastKey];
-    if(self.settingsKeyRevealed && !key.length){
+    if(!key.length){
         self.settingsKeyRevealed=NO;
         [self showToast:ZXLocalizedUI(@"No saved license key is available.") success:NO];
+        return;
     }
-    [self rebuildSettings];
+
+    self.settingsKeyRevealed=!self.settingsKeyRevealed;
+
+    // Update the existing controls in-place. Do NOT rebuild the settings stack:
+    // rebuilding caused the eye control/card to be recreated and visually jump.
+    if(self.settingsKeyLabel){
+        self.settingsKeyLabel.text=self.settingsKeyRevealed ? key : @"•••• •••• ••••";
+        self.settingsKeyLabel.textColor=self.settingsKeyRevealed ? [ZXTheme primaryText] : [ZXTheme secondaryText];
+    }
+    UIButton *eye=self.settingsKeyEyeButton ?: sender;
+    UIImage *image=[UIImage systemImageNamed:self.settingsKeyRevealed ? @"eye.fill" : @"eye.slash.fill"];
+    [UIView performWithoutAnimation:^{
+        [eye setImage:image forState:UIControlStateNormal];
+        eye.tintColor=[ZXTheme mutedText];
+        eye.transform=CGAffineTransformIdentity;
+    }];
+    eye.accessibilityValue=self.settingsKeyRevealed ? ZXLocalizedUI(@"Visible") : ZXLocalizedUI(@"Hidden");
     UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, self.settingsKeyLabel);
 }
 
@@ -2299,13 +2349,11 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 
 - (void)scheduleTelegramSupportPrompt {
     if (self.telegramPromptPresentedThisSession) return;
-    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
-    if ([defaults boolForKey:ZXTelegramJoinedKey]) return;
-    // Deliberately session-scoped: auto-login and manual login both reach this method,
-    // while a user who dismisses without joining is reminded on the next app launch.
+    // Launch-scoped reminder: show once per fresh app session. The previous
+    // implementation permanently suppressed the prompt after a saved choice.
     dispatch_async(dispatch_get_main_queue(), ^{
         __weak typeof(self) weakSelf = self;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.38 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.18 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) self = weakSelf;
             if (!self || self.telegramPromptPresentedThisSession) return;
             [self presentTelegramSupportPromptIfNeeded];
@@ -2317,8 +2365,6 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     if (self.telegramSupportPromptView.superview || self.telegramPromptPresentedThisSession) return;
     if (!self.view.window) return;
 
-    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
-    if ([defaults boolForKey:ZXTelegramJoinedKey]) return;
     self.telegramPromptPresentedThisSession = YES;
 
     UIView *backdrop = [[UIView alloc] initWithFrame:CGRectZero];
@@ -2443,7 +2489,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [outside addTarget:self action:@selector(dismissTelegramPromptFromBackdrop:) forControlEvents:UIControlEventTouchUpInside];
 
     card.transform = CGAffineTransformMakeScale(0.965, 0.965);
-    [UIView animateWithDuration:ZXMotionDuration(0.38) delay:0 usingSpringWithDamping:0.86 initialSpringVelocity:0.25 options:UIViewAnimationOptionAllowUserInteraction animations:^{
+    [UIView animateWithDuration:ZXMotionDuration(0.24) delay:0 usingSpringWithDamping:0.86 initialSpringVelocity:0.25 options:UIViewAnimationOptionAllowUserInteraction animations:^{
         backdrop.alpha = 1;
         card.transform = CGAffineTransformIdentity;
     } completion:nil];
@@ -2675,7 +2721,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         UILayoutGuide *safe=self.view.safeAreaLayoutGuide;
         [NSLayoutConstraint activateConstraints:@[[v.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.view.leadingAnchor constant:20],[v.trailingAnchor constraintLessThanOrEqualToAnchor:self.view.trailingAnchor constant:-20],[v.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],[v.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-20],[i.leadingAnchor constraintEqualToAnchor:v.leadingAnchor constant:15],[i.centerYAnchor constraintEqualToAnchor:v.centerYAnchor],[i.widthAnchor constraintEqualToConstant:20],[i.heightAnchor constraintEqualToConstant:20],[l.leadingAnchor constraintEqualToAnchor:i.trailingAnchor constant:9],[l.trailingAnchor constraintEqualToAnchor:v.trailingAnchor constant:-15],[l.topAnchor constraintEqualToAnchor:v.topAnchor constant:13],[l.bottomAnchor constraintEqualToAnchor:v.bottomAnchor constant:-13]]];
         v.transform=CGAffineTransformMakeTranslation(0,12);v.alpha=0;
-        [UIView animateWithDuration:ZXMotionDuration(0.38) delay:0 usingSpringWithDamping:0.85 initialSpringVelocity:0.2 options:UIViewAnimationOptionAllowUserInteraction animations:^{v.transform=CGAffineTransformIdentity;v.alpha=1;} completion:nil];
+        [UIView animateWithDuration:ZXMotionDuration(0.24) delay:0 usingSpringWithDamping:0.85 initialSpringVelocity:0.2 options:UIViewAnimationOptionAllowUserInteraction animations:^{v.transform=CGAffineTransformIdentity;v.alpha=1;} completion:nil];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2.5*NSEC_PER_SEC)),dispatch_get_main_queue(),^{if(self.transientFeedbackView==v){[UIView animateWithDuration:ZXMotionDuration(0.2) animations:^{v.alpha=0;v.transform=CGAffineTransformMakeTranslation(0,8);} completion:^(BOOL done){[v removeFromSuperview];if(self.transientFeedbackView==v)self.transientFeedbackView=nil;}];}});
     });
 }
