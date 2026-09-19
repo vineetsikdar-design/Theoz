@@ -268,6 +268,8 @@ static void ZXEnsureMinimumTouchTarget(UIView *view) {
 
     _blurView=[[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterialDark]];
     _blurView.translatesAutoresizingMaskIntoConstraints=NO;
+    _blurView.userInteractionEnabled=YES;
+    _blurView.contentView.userInteractionEnabled=YES;
     _blurView.layer.cornerRadius=[ZXTheme radius:4];
     _blurView.layer.cornerCurve=kCACornerCurveContinuous;
     _blurView.layer.borderWidth=1.0;
@@ -368,9 +370,33 @@ static void ZXEnsureMinimumTouchTarget(UIView *view) {
         [_thumb.heightAnchor constraintEqualToConstant:26],
         [_thumb.centerYAnchor constraintEqualToAnchor:_track.centerYAnchor]
     ]];
-    [self addTarget:self action:@selector(zx_tap) forControlEvents:UIControlEventTouchUpInside];
+    self.userInteractionEnabled=YES;
+    [self addTarget:self action:@selector(zx_touchDown) forControlEvents:UIControlEventTouchDown];
+    [self addTarget:self action:@selector(zx_touchUp:) forControlEvents:UIControlEventTouchUpInside];
+    [self addTarget:self action:@selector(zx_touchCancel:) forControlEvents:UIControlEventTouchUpOutside|UIControlEventTouchCancel];
     [self setOn:NO animated:NO];
     return self;
+}
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    CGRect expanded=CGRectInset(self.bounds,-10.0,-10.0);
+    return CGRectContainsPoint(expanded, point);
+}
+- (void)zx_touchDown {
+    if(!self.enabled || !self.userInteractionEnabled) return;
+    [UIView animateWithDuration:ZXMotionDuration(0.08) animations:^{ self.transform=CGAffineTransformMakeScale(0.94,0.94); }];
+}
+- (void)zx_touchUp:(id)sender {
+    if(!self.enabled || !self.userInteractionEnabled) return;
+    [UIView animateWithDuration:ZXMotionDuration(0.12) animations:^{ self.transform=CGAffineTransformIdentity; }];
+    BOOL requested=!self.isOn;
+    [self setOn:requested animated:YES];
+    UISelectionFeedbackGenerator *feedback=[UISelectionFeedbackGenerator new];
+    [feedback prepare]; [feedback selectionChanged];
+    [self sendActionsForControlEvents:UIControlEventValueChanged];
+}
+- (void)zx_touchCancel:(id)sender {
+    if(!self.enabled) return;
+    [UIView animateWithDuration:ZXMotionDuration(0.12) animations:^{ self.transform=CGAffineTransformIdentity; }];
 }
 - (void)layoutSubviews {
     [super layoutSubviews];
@@ -404,14 +430,6 @@ static void ZXEnsureMinimumTouchTarget(UIView *view) {
     [super setHighlighted:highlighted];
     CGFloat scale=highlighted?0.94:1.0;
     [UIView animateWithDuration:ZXMotionDuration(0.10) animations:^{ self.transform=CGAffineTransformMakeScale(scale,scale); }];
-}
-- (void)zx_tap {
-    if(!self.userInteractionEnabled)return;
-    BOOL requested=!self.isOn;
-    [self setOn:requested animated:YES];
-    UISelectionFeedbackGenerator *feedback=[UISelectionFeedbackGenerator new];
-    [feedback prepare]; [feedback selectionChanged];
-    [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 @end
 
@@ -1337,6 +1355,9 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 // Ultra Premium Glass Function Card
 - (UIView *)functionCardForDefinition:(NSDictionary *)definition functionId:(NSString *)fid isOn:(BOOL)on {
     ZXGlassCard *card = [[ZXGlassCard alloc] init];
+    card.userInteractionEnabled=YES;
+    card.blurView.userInteractionEnabled=YES;
+    card.blurView.contentView.userInteractionEnabled=YES;
     
     card.blurView.layer.borderColor = on ? [ZXTheme borderAccent].CGColor : [ZXTheme border].CGColor;
     card.layer.shadowOpacity = on ? 0.42 : 0.25;
@@ -1389,8 +1410,8 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [card addSubview:detail];
 
     [NSLayoutConstraint activateConstraints:@[
-        [iconBg.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
-        [iconBg.topAnchor constraintEqualToAnchor:card.topAnchor constant:20],
+        [iconBg.leadingAnchor constraintEqualToAnchor:card.blurView.contentView.leadingAnchor constant:20],
+        [iconBg.topAnchor constraintEqualToAnchor:card.blurView.contentView.topAnchor constant:20],
         [iconBg.widthAnchor constraintEqualToConstant:44],
         [iconBg.heightAnchor constraintEqualToConstant:44],
         
@@ -1399,12 +1420,12 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         [icon.widthAnchor constraintEqualToConstant:22],
         [icon.heightAnchor constraintEqualToConstant:22],
         
-        [toggle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
-        [toggle.topAnchor constraintEqualToAnchor:card.topAnchor constant:20],
+        [toggle.trailingAnchor constraintEqualToAnchor:card.blurView.contentView.trailingAnchor constant:-20],
+        [toggle.topAnchor constraintEqualToAnchor:card.blurView.contentView.topAnchor constant:20],
         
         [title.leadingAnchor constraintEqualToAnchor:iconBg.trailingAnchor constant:16],
         [title.trailingAnchor constraintLessThanOrEqualToAnchor:toggle.leadingAnchor constant:-16],
-        [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:20],
+        [title.topAnchor constraintEqualToAnchor:card.blurView.contentView.topAnchor constant:20],
         
         [pill.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
         [pill.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:8],
@@ -1414,11 +1435,11 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         [stateLabel.topAnchor constraintEqualToAnchor:pill.topAnchor constant:4],
         [stateLabel.bottomAnchor constraintEqualToAnchor:pill.bottomAnchor constant:-4],
         
-        [detail.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
-        [detail.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
+        [detail.leadingAnchor constraintEqualToAnchor:card.blurView.contentView.leadingAnchor constant:20],
+        [detail.trailingAnchor constraintEqualToAnchor:card.blurView.contentView.trailingAnchor constant:-20],
         [detail.topAnchor constraintGreaterThanOrEqualToAnchor:pill.bottomAnchor constant:16],
         [detail.topAnchor constraintGreaterThanOrEqualToAnchor:iconBg.bottomAnchor constant:16],
-        [detail.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20]
+        [detail.bottomAnchor constraintEqualToAnchor:card.blurView.contentView.bottomAnchor constant:-20]
     ]];
     return card;
 }
@@ -1467,6 +1488,17 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     return result;
 }
 
+- (void)deactivateConflictingFunctionControlsForFunctionId:(NSString *)functionId {
+    NSArray<NSString *> *conflicts=[self conflictingFunctionIdsForFunctionId:functionId];
+    for(NSString *otherFID in conflicts){
+        [self.functionProcessing removeObjectForKey:otherFID];
+        [self.functionOperationTokens removeObjectForKey:otherFID];
+        [self applyFunctionVisualState:otherFID state:NO animated:YES];
+        UIControl *other=self.functionControls[otherFID];
+        other.userInteractionEnabled=NO;
+    }
+}
+
 - (void)functionToggleChanged:(ZXPremiumSwitch *)sender {
     NSString *fid=[self functionIdForControl:sender];
     if(!fid.length) return;
@@ -1479,6 +1511,8 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         [self.functionProcessing removeObjectForKey:otherFID];
         [self.functionOperationTokens removeObjectForKey:otherFID];
         [self applyFunctionVisualState:otherFID state:NO animated:YES];
+        UIControl *other=self.functionControls[otherFID];
+        other.userInteractionEnabled=NO;
     }
 
     self.functionProcessing[fid]=@YES;
@@ -1487,6 +1521,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     UILabel *state=self.functionStateLabels[fid];
     UIView *pill=state.superview;
     sender.userInteractionEnabled=NO;
+    sender.accessibilityValue=ZXLocalizedUI(@"PROCESSING");
     state.text=ZXLocalizedUI(@"PROCESSING"); state.textColor=[ZXTheme warning];
     pill.backgroundColor=[[ZXTheme warning] colorWithAlphaComponent:0.12];
     [card setEmphasized:YES animated:YES];
@@ -1504,6 +1539,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
             [self.functionProcessing removeObjectForKey:fid]; [self.functionOperationTokens removeObjectForKey:fid];
             sender.userInteractionEnabled=YES;
             if(success){
+                for(NSString *otherFID in conflicts){ self.functionControls[otherFID].userInteractionEnabled=YES; }
                 [self applyFunctionVisualState:fid state:requested animated:YES];
                 if(requested && conflicts.count){
                     NSString *name=self.functionDefinitions[fid][@"name"] ?: self.functionDefinitions[fid][@"title"] ?: fid;
@@ -1514,6 +1550,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
                     [self showFunctionFeedbackForFunctionId:fid title:(requested?@"FUNCTION ACTIVATED":@"FUNCTION DEACTIVATED") detail:name kind:@"success"];
                 }
             } else {
+                for(NSString *otherFID in conflicts){ self.functionControls[otherFID].userInteractionEnabled=YES; }
                 [self applyFunctionVisualState:fid state:!requested animated:YES];
                 for(NSString *otherFID in previousConflictStates){
                     if([previousConflictStates[otherFID] boolValue]) [self applyFunctionVisualState:otherFID state:YES animated:YES];
@@ -1542,9 +1579,18 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 
 - (void)applyFunctionVisualState:(NSString *)fid state:(BOOL)isOn animated:(BOOL)animated {
     if(!fid.length)return;
+    if(![NSThread isMainThread]) {
+        __weak typeof(self) weakSelf=self;
+        dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf applyFunctionVisualState:fid state:isOn animated:animated]; });
+        return;
+    }
     self.functionStates[fid]=@(isOn);
     UIControl *control=self.functionControls[fid];
-    if([control isKindOfClass:[ZXPremiumSwitch class]]) [(ZXPremiumSwitch *)control setOn:isOn animated:animated];
+    if([control isKindOfClass:[ZXPremiumSwitch class]]) {
+        ZXPremiumSwitch *sw=(ZXPremiumSwitch *)control;
+        [sw setOn:isOn animated:animated];
+        if(![self.functionProcessing[fid] boolValue]) sw.userInteractionEnabled=YES;
+    }
     UILabel *label=self.functionStateLabels[fid];
     ZXGlassCard *card=(ZXGlassCard *)self.functionCards[fid];
     if(!label || !card)return;
@@ -2164,18 +2210,21 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 
     ZXGlassCard *keyCard=[ZXGlassCard new];
     keyCard.translatesAutoresizingMaskIntoConstraints=NO;
+    keyCard.userInteractionEnabled=YES;
+    keyCard.blurView.userInteractionEnabled=YES;
+    keyCard.blurView.contentView.userInteractionEnabled=YES;
     UIView *keyIconBg=[UIView new]; keyIconBg.translatesAutoresizingMaskIntoConstraints=NO; keyIconBg.backgroundColor=[[ZXTheme accentPrimary] colorWithAlphaComponent:0.15]; keyIconBg.layer.cornerRadius=10; [keyCard addSubview:keyIconBg];
     UIImageView *keyIcon=[[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"key.fill"]]; keyIcon.translatesAutoresizingMaskIntoConstraints=NO; keyIcon.tintColor=[ZXTheme accentSoft]; [keyIconBg addSubview:keyIcon];
     UILabel *keyTitle=[self label:ZXLocalizedUI(@"License Key") size:16 weight:UIFontWeightSemibold color:[ZXTheme primaryText]]; keyTitle.translatesAutoresizingMaskIntoConstraints=NO; [keyCard addSubview:keyTitle];
     UILabel *keySub=[self label:self.settingsKeyRevealed && currentKey.length ? currentKey : @"•••• •••• ••••" size:14 weight:UIFontWeightMedium color:self.settingsKeyRevealed?[UIColor whiteColor]:[ZXTheme secondaryText]]; keySub.translatesAutoresizingMaskIntoConstraints=NO; keySub.font=[ZXTheme mono:14 weight:UIFontWeightMedium]; keySub.adjustsFontSizeToFitWidth=YES; keySub.minimumScaleFactor=0.58; keySub.numberOfLines=1; self.settingsKeyLabel=keySub; [keyCard addSubview:keySub];
-    UIButton *eye=[UIButton buttonWithType:UIButtonTypeSystem]; eye.translatesAutoresizingMaskIntoConstraints=NO; eye.accessibilityLabel=ZXLocalizedUI(@"License Key"); eye.accessibilityHint=ZXLocalizedUI(@"Show or hide the saved license key."); eye.accessibilityTraits=UIAccessibilityTraitButton; [eye setImage:[UIImage systemImageNamed:self.settingsKeyRevealed?@"eye.fill":@"eye.slash.fill"] forState:UIControlStateNormal]; eye.tintColor=[ZXTheme mutedText]; eye.contentEdgeInsets=UIEdgeInsetsMake(10,10,10,10); [eye addTarget:self action:@selector(toggleSettingsKey:) forControlEvents:UIControlEventTouchUpInside]; [keyCard addSubview:eye];
+    UIButton *eye=[UIButton buttonWithType:UIButtonTypeSystem]; eye.translatesAutoresizingMaskIntoConstraints=NO; eye.accessibilityLabel=ZXLocalizedUI(@"License Key"); eye.accessibilityHint=ZXLocalizedUI(@"Show or hide the saved license key."); eye.accessibilityTraits=UIAccessibilityTraitButton; [eye setImage:[UIImage systemImageNamed:self.settingsKeyRevealed?@"eye.fill":@"eye.slash.fill"] forState:UIControlStateNormal]; eye.tintColor=[ZXTheme mutedText]; eye.contentEdgeInsets=UIEdgeInsetsMake(10,10,10,10); eye.userInteractionEnabled=YES; [eye addTarget:self action:@selector(toggleSettingsKey:) forControlEvents:UIControlEventTouchUpInside]; [keyCard addSubview:eye];
     [NSLayoutConstraint activateConstraints:@[
         [keyCard.heightAnchor constraintGreaterThanOrEqualToConstant:82],
-        [keyIconBg.leadingAnchor constraintEqualToAnchor:keyCard.leadingAnchor constant:20], [keyIconBg.centerYAnchor constraintEqualToAnchor:keyCard.centerYAnchor], [keyIconBg.widthAnchor constraintEqualToConstant:38], [keyIconBg.heightAnchor constraintEqualToConstant:38],
+        [keyIconBg.leadingAnchor constraintEqualToAnchor:keyCard.blurView.contentView.leadingAnchor constant:20], [keyIconBg.centerYAnchor constraintEqualToAnchor:keyCard.blurView.contentView.centerYAnchor], [keyIconBg.widthAnchor constraintEqualToConstant:38], [keyIconBg.heightAnchor constraintEqualToConstant:38],
         [keyIcon.centerXAnchor constraintEqualToAnchor:keyIconBg.centerXAnchor], [keyIcon.centerYAnchor constraintEqualToAnchor:keyIconBg.centerYAnchor], [keyIcon.widthAnchor constraintEqualToConstant:20], [keyIcon.heightAnchor constraintEqualToConstant:20],
-        [keyTitle.leadingAnchor constraintEqualToAnchor:keyIconBg.trailingAnchor constant:16], [keyTitle.topAnchor constraintEqualToAnchor:keyCard.topAnchor constant:17], [keyTitle.trailingAnchor constraintLessThanOrEqualToAnchor:eye.leadingAnchor constant:-10],
-        [keySub.leadingAnchor constraintEqualToAnchor:keyTitle.leadingAnchor], [keySub.topAnchor constraintEqualToAnchor:keyTitle.bottomAnchor constant:4], [keySub.trailingAnchor constraintEqualToAnchor:eye.leadingAnchor constant:-10], [keySub.bottomAnchor constraintLessThanOrEqualToAnchor:keyCard.bottomAnchor constant:-16],
-        [eye.trailingAnchor constraintEqualToAnchor:keyCard.trailingAnchor constant:-8], [eye.centerYAnchor constraintEqualToAnchor:keyCard.centerYAnchor], [eye.widthAnchor constraintGreaterThanOrEqualToConstant:44], [eye.heightAnchor constraintGreaterThanOrEqualToConstant:44]
+        [keyTitle.leadingAnchor constraintEqualToAnchor:keyIconBg.trailingAnchor constant:16], [keyTitle.topAnchor constraintEqualToAnchor:keyCard.blurView.contentView.topAnchor constant:17], [keyTitle.trailingAnchor constraintLessThanOrEqualToAnchor:eye.leadingAnchor constant:-10],
+        [keySub.leadingAnchor constraintEqualToAnchor:keyTitle.leadingAnchor], [keySub.topAnchor constraintEqualToAnchor:keyTitle.bottomAnchor constant:4], [keySub.trailingAnchor constraintEqualToAnchor:eye.leadingAnchor constant:-10], [keySub.bottomAnchor constraintLessThanOrEqualToAnchor:keyCard.blurView.contentView.bottomAnchor constant:-16],
+        [eye.trailingAnchor constraintEqualToAnchor:keyCard.blurView.contentView.trailingAnchor constant:-8], [eye.centerYAnchor constraintEqualToAnchor:keyCard.blurView.contentView.centerYAnchor], [eye.widthAnchor constraintGreaterThanOrEqualToConstant:44], [eye.heightAnchor constraintGreaterThanOrEqualToConstant:44]
     ]];
     [self.settingsStack addArrangedSubview:keyCard];
 
@@ -2242,7 +2291,6 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         [self showToast:ZXLocalizedUI(@"No saved license key is available.") success:NO];
     }
     [self rebuildSettings];
-    sender.accessibilityValue=self.settingsKeyRevealed?ZXLocalizedUI(@"Visible"):ZXLocalizedUI(@"Hidden");
     UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, self.settingsKeyLabel);
 }
 
