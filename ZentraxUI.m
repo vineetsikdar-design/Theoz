@@ -1,4 +1,4 @@
-			//
+		//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -169,7 +169,7 @@ static void ZXAuditAccessibilityTree(UIView *root) {
     } else if ([root isKindOfClass:[UISwitch class]]) {
         UISwitch *sw = (UISwitch *)root;
         if (!sw.accessibilityLabel.length) sw.accessibilityLabel = ZXLocalizedUI(@"Function switch");
-        sw.accessibilityTraits |= UIAccessibilityTraitSwitch;
+        sw.accessibilityTraits |= UIAccessibilityTraitAdjustable;
     } else if ([root isKindOfClass:[UITextField class]]) {
         UITextField *field = (UITextField *)root;
         if (!field.accessibilityLabel.length) field.accessibilityLabel = ZXLocalizedUI(@"License Key");
@@ -316,7 +316,7 @@ static void ZXEnsureMinimumTouchTarget(UIView *view) {
 - (instancetype)init {
     self=[super initWithFrame:CGRectZero]; if(!self)return nil;
     self.translatesAutoresizingMaskIntoConstraints=NO;
-    self.accessibilityTraits=UIAccessibilityTraitSwitch;
+    self.accessibilityTraits=UIAccessibilityTraitAdjustable;
     _track=[[UIView alloc] initWithFrame:CGRectZero]; _track.translatesAutoresizingMaskIntoConstraints=NO; _track.layer.cornerRadius=16; _track.layer.cornerCurve=kCACornerCurveContinuous; _track.backgroundColor=[[UIColor whiteColor] colorWithAlphaComponent:0.065]; _track.layer.borderWidth=1; _track.layer.borderColor=[ZXTheme hairline].CGColor; [self addSubview:_track];
     _trackGradient=[CAGradientLayer layer]; _trackGradient.startPoint=CGPointMake(0,0); _trackGradient.endPoint=CGPointMake(1,1); _trackGradient.cornerRadius=16; [_track.layer addSublayer:_trackGradient];
     _thumb=[[UIView alloc] initWithFrame:CGRectZero]; _thumb.translatesAutoresizingMaskIntoConstraints=NO; _thumb.backgroundColor=[UIColor colorWithWhite:0.94 alpha:1]; _thumb.layer.cornerRadius=12; _thumb.layer.cornerCurve=kCACornerCurveContinuous; _thumb.layer.shadowColor=[UIColor blackColor].CGColor; _thumb.layer.shadowOpacity=0.28; _thumb.layer.shadowRadius=5; _thumb.layer.shadowOffset=CGSizeMake(0,2); [_track addSubview:_thumb];
@@ -333,7 +333,7 @@ static void ZXEnsureMinimumTouchTarget(UIView *view) {
     CGFloat travel=12.0;
     void (^changes)(void)=^{ self.thumb.transform=CGAffineTransformMakeTranslation(on?travel:-travel,0); self.thumb.layer.shadowOpacity=on?0.38:0.25; };
     if(animated)[UIView animateWithDuration:ZXMotionDuration(0.28) delay:0 usingSpringWithDamping:0.82 initialSpringVelocity:0.15 options:UIViewAnimationOptionAllowUserInteraction animations:changes completion:nil]; else changes();
-    self.accessibilityLabel=ZXLocalizedUI(@"Function switch"); self.accessibilityValue=ZXLocalizedUI(on?@"On":@"Off"); self.accessibilityTraits=UIAccessibilityTraitSwitch | (on?UIAccessibilityTraitSelected:0);
+    self.accessibilityLabel=ZXLocalizedUI(@"Function switch"); self.accessibilityValue=ZXLocalizedUI(on?@"On":@"Off"); self.accessibilityTraits=UIAccessibilityTraitAdjustable | (on?UIAccessibilityTraitSelected:0);
 }
 - (void)zx_tap { self.on=!self.on; [[[UISelectionFeedbackGenerator alloc] init] selectionChanged]; [self sendActionsForControlEvents:UIControlEventValueChanged]; }
 @end
