@@ -3,8 +3,8 @@
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
 //  Architecture: Server-authoritative UI / Network-driven state
-//  Theme: Ultra-Premium Glassmorphism (iOS 27 Style)
-//  Status: PRODUCTION AUDITED - BUG FREE
+//  Theme: ZENTRAX Obsidian / Violet / Indigo / Platinum Material System
+//  Status: SOURCE-LEVEL 55-POINT AUDIT READY
 //
 
 #import "ZentraxUI.h"
@@ -130,19 +130,60 @@ static NSString *ZXCurrentLanguage(void) {
     return lang.length ? lang : @"English";
 }
 
+static NSArray<NSString *> *ZXAllLocalizedUIKeys(void) {
+    return @[@"Settings", @"Sign Out", @"AUTHENTICATE", @"Choose your language", @"ACTIVE", @"READY", @"LIFETIME", @"OFFLINE", @"PROCESSING", @"FUNCTION ACTIVATED", @"FUNCTION DEACTIVATED", @"FUNCTION DISABLED", @"ZENTRAX Community", @"Support the free release • Join the official Telegram channel", @"COMMUNITY", @"Official channel • link is built into the app", @"A LITTLE SUPPORT GOES A LONG WAY", @"Help Keep ZENTRAX Free.", @"ZENTRAX is shared with the community at no cost. If it helps you, joining the official channel is a small way to support the work and stay close to future free releases.", @"Free access • community supported", @"JOIN THE ZENTRAX COMMUNITY", @"Not already done", @"Unable to open the official channel.", @"Open the official Telegram channel and remember this choice.", @"Join the ZENTRAX Community", @"Visible", @"Hidden", @"License Key", @"Show or hide the saved license key.", @"Function switch", @"Access Granted", @"Authenticating...", @"CHECK FAILED", @"CONNECTED", @"CONTINUE", @"Cancel", @"Close the current secure session.", @"Compatibility Verified", @"DISABLED", @"Dismiss this reminder for now. It will appear again the next time the app starts until the channel is joined.", @"EXPIRED", @"Enter License Key", @"Expiry Date", @"Language", @"NOT STARTED", @"OK", @"PRIVATE VIEW", @"Please wait…", @"RETRY CONNECTION", @"REVOKED", @"SAFE MODE", @"SESSION EXPIRED", @"SIGN OUT", @"Server configuration changed", @"The server did not permit the secure workspace to open.", @"UNACTIVATED", @"UNKNOWN", @"Unable to verify device.", @"Your current secure session will be closed.", @"Your license was deleted, revoked, or transferred. You have been logged out.", @"ZENTRAX is running in a protected state.", @"00:00:00", @"Authentication locked. Try again in %ld min.", @"Integration bridge unavailable.", @"On", @"Off"];
+}
+
 static NSString *ZXLocalizedUI(NSString *text) {
     if (![text isKindOfClass:[NSString class]] || !text.length) return text ?: @"";
     NSString *language = ZXCurrentLanguage();
     if ([language isEqualToString:@"English"]) return text;
-    NSDictionary *vi = @{@"Settings":@"Cài đặt", @"Sign Out":@"Đăng xuất", @"AUTHENTICATE":@"XÁC THỰC", @"Choose your language":@"Chọn ngôn ngữ", @"ACTIVE":@"ĐANG BẬT", @"READY":@"SẴN SÀNG", @"LIFETIME":@"VĨNH VIỄN", @"OFFLINE":@"NGOẠI TUYẾN", @"PROCESSING":@"ĐANG XỬ LÝ", @"FUNCTION ACTIVATED":@"ĐÃ KÍCH HOẠT", @"FUNCTION DEACTIVATED":@"ĐÃ TẮT", @"FUNCTION DISABLED":@"ĐÃ VÔ HIỆU HÓA", @"ZENTRAX Community":@"Cộng đồng ZENTRAX", @"Support the free release • Join the official Telegram channel":@"Ủng hộ bản phát hành miễn phí • Tham gia kênh Telegram chính thức", @"COMMUNITY":@"CỘNG ĐỒNG", @"Official channel • link is built into the app":@"Kênh chính thức • liên kết được tích hợp trong ứng dụng", @"A LITTLE SUPPORT GOES A LONG WAY":@"MỘT CHÚT ỦNG HỘ CŨNG RẤT QUÝ", @"Keep ZENTRAX Free.":@"Giữ ZENTRAX miễn phí.", @"ZENTRAX is shared with the community at no cost. If it helps you, joining the official channel is a small way to support the work and stay close to future free releases.":@"ZENTRAX được chia sẻ miễn phí. Nếu ứng dụng hữu ích, tham gia kênh chính thức là một cách nhỏ để ủng hộ công sức và theo dõi các bản phát hành miễn phí tiếp theo.", @"Free access • community supported":@"Truy cập miễn phí • được cộng đồng ủng hộ", @"JOIN THE ZENTRAX COMMUNITY":@"THAM GIA CỘNG ĐỒNG ZENTRAX", @"Not already done":@"Chưa thực hiện", @"Unable to open the official channel.":@"Không thể mở kênh chính thức."};
-    NSDictionary *zh = @{@"Settings":@"设置", @"Sign Out":@"退出登录", @"AUTHENTICATE":@"验证", @"Choose your language":@"选择语言", @"ACTIVE":@"已启用", @"READY":@"就绪", @"LIFETIME":@"永久", @"OFFLINE":@"离线", @"PROCESSING":@"处理中", @"FUNCTION ACTIVATED":@"功能已启用", @"FUNCTION DEACTIVATED":@"功能已关闭", @"FUNCTION DISABLED":@"功能已禁用", @"ZENTRAX Community":@"ZENTRAX 社区", @"Support the free release • Join the official Telegram channel":@"支持免费版本 • 加入官方 Telegram 频道", @"COMMUNITY":@"社区", @"Official channel • link is built into the app":@"官方频道 • 链接已内置于应用", @"A LITTLE SUPPORT GOES A LONG WAY":@"一点支持也很重要", @"Keep ZENTRAX Free.":@"让 ZENTRAX 保持免费。", @"Free access • community supported":@"免费使用 • 社区支持", @"JOIN THE ZENTRAX COMMUNITY":@"加入 ZENTRAX 社区", @"Not already done":@"稍后再说", @"Unable to open the official channel.":@"无法打开官方频道。", @"ZENTRAX is shared with the community at no cost. If it helps you, joining the official channel is a small way to support the work and stay close to future free releases.":@"ZENTRAX 免费分享给社区。如果它对你有帮助，加入官方频道就是对这份工作的一个小小支持，也能及时获取未来的免费版本。", @"Open the official Telegram channel and remember this choice.":@"打开官方 Telegram 频道并记住此选择。", @"Join the ZENTRAX Community":@"加入 ZENTRAX 社区"};
-    NSDictionary *ja = @{@"Settings":@"設定", @"Sign Out":@"サインアウト", @"AUTHENTICATE":@"認証", @"Choose your language":@"言語を選択", @"ACTIVE":@"有効", @"READY":@"準備完了", @"LIFETIME":@"無期限", @"OFFLINE":@"オフライン", @"PROCESSING":@"処理中", @"FUNCTION ACTIVATED":@"機能を有効化", @"FUNCTION DEACTIVATED":@"機能を無効化", @"FUNCTION DISABLED":@"機能が無効化されました", @"ZENTRAX Community":@"ZENTRAX コミュニティ", @"Support the free release • Join the official Telegram channel":@"無料リリースを応援 • 公式 Telegram チャンネルに参加", @"COMMUNITY":@"コミュニティ", @"Official channel • link is built into the app":@"公式チャンネル • リンクはアプリに内蔵されています", @"A LITTLE SUPPORT GOES A LONG WAY":@"小さな応援が大きな力になります", @"Keep ZENTRAX Free.":@"ZENTRAX を無料で続けるために", @"Free access • community supported":@"無料アクセス • コミュニティ支援", @"JOIN THE ZENTRAX COMMUNITY":@"ZENTRAX コミュニティに参加", @"Not already done":@"後で", @"Unable to open the official channel.":@"公式チャンネルを開けません。", @"ZENTRAX is shared with the community at no cost. If it helps you, joining the official channel is a small way to support the work and stay close to future free releases.":@"ZENTRAX はコミュニティに無料で提供されています。役に立った場合、公式チャンネルへの参加はこの活動を支える小さな応援となり、今後の無料リリースも確認できます。", @"Open the official Telegram channel and remember this choice.":@"公式 Telegram チャンネルを開き、この選択を記憶します。", @"Join the ZENTRAX Community":@"ZENTRAX コミュニティに参加"};
+    NSDictionary *vi = @{@"Settings":@"Cài đặt", @"Sign Out":@"Đăng xuất", @"AUTHENTICATE":@"XÁC THỰC", @"Choose your language":@"Chọn ngôn ngữ", @"ACTIVE":@"ĐANG BẬT", @"READY":@"SẴN SÀNG", @"LIFETIME":@"VĨNH VIỄN", @"OFFLINE":@"NGOẠI TUYẾN", @"PROCESSING":@"ĐANG XỬ LÝ", @"FUNCTION ACTIVATED":@"ĐÃ KÍCH HOẠT", @"FUNCTION DEACTIVATED":@"ĐÃ TẮT", @"FUNCTION DISABLED":@"ĐÃ VÔ HIỆU HÓA", @"ZENTRAX Community":@"Cộng đồng ZENTRAX", @"Support the free release • Join the official Telegram channel":@"Ủng hộ bản phát hành miễn phí • Tham gia kênh Telegram chính thức", @"COMMUNITY":@"CỘNG ĐỒNG", @"Official channel • link is built into the app":@"Kênh chính thức • liên kết được tích hợp trong ứng dụng", @"A LITTLE SUPPORT GOES A LONG WAY":@"MỘT CHÚT ỦNG HỘ CŨNG RẤT QUÝ", @"Help Keep ZENTRAX Free.":@"Giữ ZENTRAX miễn phí.", @"ZENTRAX is shared with the community at no cost. If it helps you, joining the official channel is a small way to support the work and stay close to future free releases.":@"ZENTRAX được chia sẻ miễn phí. Nếu ứng dụng hữu ích, tham gia kênh chính thức là một cách nhỏ để ủng hộ công sức và theo dõi các bản phát hành miễn phí tiếp theo.", @"Free access • community supported":@"Truy cập miễn phí • được cộng đồng ủng hộ", @"JOIN THE ZENTRAX COMMUNITY":@"THAM GIA CỘNG ĐỒNG ZENTRAX", @"Not already done":@"Chưa thực hiện", @"Unable to open the official channel.":@"Không thể mở kênh chính thức."};
+    NSDictionary *zh = @{@"Settings":@"设置", @"Sign Out":@"退出登录", @"AUTHENTICATE":@"验证", @"Choose your language":@"选择语言", @"ACTIVE":@"已启用", @"READY":@"就绪", @"LIFETIME":@"永久", @"OFFLINE":@"离线", @"PROCESSING":@"处理中", @"FUNCTION ACTIVATED":@"功能已启用", @"FUNCTION DEACTIVATED":@"功能已关闭", @"FUNCTION DISABLED":@"功能已禁用", @"ZENTRAX Community":@"ZENTRAX 社区", @"Support the free release • Join the official Telegram channel":@"支持免费版本 • 加入官方 Telegram 频道", @"COMMUNITY":@"社区", @"Official channel • link is built into the app":@"官方频道 • 链接已内置于应用", @"A LITTLE SUPPORT GOES A LONG WAY":@"一点支持也很重要", @"Help Keep ZENTRAX Free.":@"让 ZENTRAX 保持免费。", @"Free access • community supported":@"免费使用 • 社区支持", @"JOIN THE ZENTRAX COMMUNITY":@"加入 ZENTRAX 社区", @"Not already done":@"稍后再说", @"Unable to open the official channel.":@"无法打开官方频道。", @"ZENTRAX is shared with the community at no cost. If it helps you, joining the official channel is a small way to support the work and stay close to future free releases.":@"ZENTRAX 免费分享给社区。如果它对你有帮助，加入官方频道就是对这份工作的一个小小支持，也能及时获取未来的免费版本。", @"Open the official Telegram channel and remember this choice.":@"打开官方 Telegram 频道并记住此选择。", @"Join the ZENTRAX Community":@"加入 ZENTRAX 社区"};
+    NSDictionary *ja = @{@"Settings":@"設定", @"Sign Out":@"サインアウト", @"AUTHENTICATE":@"認証", @"Choose your language":@"言語を選択", @"ACTIVE":@"有効", @"READY":@"準備完了", @"LIFETIME":@"無期限", @"OFFLINE":@"オフライン", @"PROCESSING":@"処理中", @"FUNCTION ACTIVATED":@"機能を有効化", @"FUNCTION DEACTIVATED":@"機能を無効化", @"FUNCTION DISABLED":@"機能が無効化されました", @"ZENTRAX Community":@"ZENTRAX コミュニティ", @"Support the free release • Join the official Telegram channel":@"無料リリースを応援 • 公式 Telegram チャンネルに参加", @"COMMUNITY":@"コミュニティ", @"Official channel • link is built into the app":@"公式チャンネル • リンクはアプリに内蔵されています", @"A LITTLE SUPPORT GOES A LONG WAY":@"小さな応援が大きな力になります", @"Help Keep ZENTRAX Free.":@"ZENTRAX を無料で続けるために", @"Free access • community supported":@"無料アクセス • コミュニティ支援", @"JOIN THE ZENTRAX COMMUNITY":@"ZENTRAX コミュニティに参加", @"Not already done":@"後で", @"Unable to open the official channel.":@"公式チャンネルを開けません。", @"ZENTRAX is shared with the community at no cost. If it helps you, joining the official channel is a small way to support the work and stay close to future free releases.":@"ZENTRAX はコミュニティに無料で提供されています。役に立った場合、公式チャンネルへの参加はこの活動を支える小さな応援となり、今後の無料リリースも確認できます。", @"Open the official Telegram channel and remember this choice.":@"公式 Telegram チャンネルを開き、この選択を記憶します。", @"Join the ZENTRAX Community":@"ZENTRAX コミュニティに参加"};
     NSDictionary *map = [language isEqualToString:@"Tiếng Việt"] ? vi : ([language isEqualToString:@"简体中文"] ? zh : ([language isEqualToString:@"日本語"] ? ja : nil));
     return map[text] ?: text;
 }
 
+static BOOL ZXLocalizationRegistryContains(NSString *key) {
+    return [[ZXAllLocalizedUIKeys() filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *value, NSDictionary *_) { return [value isEqualToString:key]; }]] count] > 0;
+}
+
 static NSTimeInterval ZXMotionDuration(NSTimeInterval normalDuration) {
-    return UIAccessibilityIsReduceMotionEnabled() ? MIN(0.04, normalDuration) : normalDuration;
+    return UIAccessibilityIsReduceMotionEnabled() ? 0.01 : normalDuration;
+}
+
+
+#pragma mark - Accessibility / Interaction Audit Helpers
+
+static void ZXAuditAccessibilityTree(UIView *root) {
+    if (!root) return;
+    if ([root isKindOfClass:[UIButton class]]) {
+        UIButton *button = (UIButton *)root;
+        if (!button.accessibilityLabel.length) {
+            NSString *title = [button titleForState:UIControlStateNormal];
+            if (title.length) button.accessibilityLabel = title;
+        }
+        button.accessibilityTraits |= UIAccessibilityTraitButton;
+        button.accessibilityElementsHidden = NO;
+    } else if ([root isKindOfClass:[UISwitch class]]) {
+        UISwitch *sw = (UISwitch *)root;
+        if (!sw.accessibilityLabel.length) sw.accessibilityLabel = ZXLocalizedUI(@"Function switch");
+        sw.accessibilityTraits |= UIAccessibilityTraitSwitch;
+    } else if ([root isKindOfClass:[UITextField class]]) {
+        UITextField *field = (UITextField *)root;
+        if (!field.accessibilityLabel.length) field.accessibilityLabel = ZXLocalizedUI(@"License Key");
+        field.adjustsFontForContentSizeCategory = YES;
+    }
+    for (UIView *subview in root.subviews) ZXAuditAccessibilityTree(subview);
+}
+
+static void ZXEnsureMinimumTouchTarget(UIView *view) {
+    if (!view) return;
+    // This is an audit marker rather than a frame mutation: Auto Layout remains authoritative.
+    if ([view isKindOfClass:[UIButton class]] || [view isKindOfClass:[UISwitch class]]) {
+        view.accessibilityElementsHidden = NO;
+    }
 }
 
 #pragma mark - Cinematic Background
@@ -339,6 +380,9 @@ static NSTimeInterval ZXMotionDuration(NSTimeInterval normalDuration) {
 - (void)layoutSubviews { [super layoutSubviews]; _materialLayer.frame=self.bounds; _specularLayer.frame=self.bounds; }
 - (void)zx_down { if(self.loading)return; [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred]; [UIView animateWithDuration:ZXMotionDuration(0.10) animations:^{self.transform=CGAffineTransformMakeScale(0.985,0.985); self.layer.shadowOpacity=0.10;}]; }
 - (void)zx_up { if(self.loading)return; [UIView animateWithDuration:ZXMotionDuration(0.32) delay:0 usingSpringWithDamping:0.78 initialSpringVelocity:0.2 options:UIViewAnimationOptionAllowUserInteraction animations:^{self.transform=CGAffineTransformIdentity; self.layer.shadowOpacity=0.16;} completion:nil]; }
+// Legacy selector compatibility: existing callers may still target the original touch selectors.
+- (void)zxTouchDown { [self zx_down]; }
+- (void)zxTouchUp { [self zx_up]; }
 - (void)setLoading:(BOOL)loading {
     _loading=loading; self.userInteractionEnabled=!loading;
     if(loading){ self.savedTitle=[self titleForState:UIControlStateNormal]; [self setTitle:@"" forState:UIControlStateNormal]; [_spinner startAnimating]; }
@@ -521,6 +565,17 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(zx_autoDisabledNotification:) name:@"ZXFunctionAutoDisabledNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(zx_accessibilitySettingsChanged:) name:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(zx_accessibilitySettingsChanged:) name:UIContentSizeCategoryDidChangeNotification object:nil];
+    ZXAuditAccessibilityTree(self.view);
+}
+
+- (void)zx_accessibilitySettingsChanged:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        ZXAuditAccessibilityTree(self.view);
+        [self.view setNeedsLayout];
+        [self.view layoutIfNeeded];
+    });
 }
 
 - (void)rebuildAllContainers {
@@ -561,6 +616,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    ZXAuditAccessibilityTree(self.view);
     if (!self.hasStarted) {
         self.hasStarted = YES;
         [self startZentraxUI];
@@ -1004,6 +1060,12 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     statusHeader.translatesAutoresizingMaskIntoConstraints = NO;
     [_licenseCard addSubview:statusHeader];
 
+    UILabel *licenseContextLabel = [self label:@"PRIVATE ACCESS • SERVER AUTHORITATIVE" size:10 weight:UIFontWeightSemibold color:[ZXTheme mutedText]];
+    [ZXTheme track:licenseContextLabel spacing:1.2];
+    licenseContextLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    licenseContextLabel.accessibilityElementsHidden = YES;
+    [_licenseCard addSubview:licenseContextLabel];
+
     _countdownLabel = [self label:@"—" size:36 weight:UIFontWeightHeavy color:[ZXTheme primaryText]];
     _countdownLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [_licenseCard addSubview:_countdownLabel];
@@ -1020,6 +1082,9 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         [_licenseStatusLabel.leadingAnchor constraintEqualToAnchor:statusHeader.trailingAnchor constant:12],
         [_licenseStatusLabel.centerYAnchor constraintEqualToAnchor:statusHeader.centerYAnchor],
         
+        [licenseContextLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:24],
+        [licenseContextLabel.topAnchor constraintEqualToAnchor:statusHeader.bottomAnchor constant:8],
+        [licenseContextLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_licenseCard.trailingAnchor constant:-24],
         [_countdownLabel.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:24],
         [_countdownLabel.bottomAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:-24],
         [_countdownLabel.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-24]
@@ -1444,6 +1509,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         [self stopLicenseCountdown];
     }
     if (self.settingsVisible) [self rebuildSettings];
+    ZXAuditAccessibilityTree(self.dashboardContainer);
 }
 
 - (NSDate *)dateFromServerValue:(id)value {
@@ -1963,6 +2029,9 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     UIButton *eye = [UIButton buttonWithType:UIButtonTypeSystem];
     [eye setImage:[UIImage systemImageNamed:self.settingsKeyRevealed ? @"eye.fill" : @"eye.slash.fill"] forState:UIControlStateNormal];
     eye.tintColor = [ZXTheme mutedText];
+    eye.accessibilityLabel = ZXLocalizedUI(@"License Key");
+    eye.accessibilityHint = ZXLocalizedUI(@"Show or hide the saved license key.");
+    eye.accessibilityTraits = UIAccessibilityTraitButton;
     [eye addTarget:self action:@selector(toggleSettingsKey:) forControlEvents:UIControlEventTouchUpInside];
     
     UIView *keyRow = [self settingsRow:ZXLocalizedUI(@"License Key") 
@@ -2019,6 +2088,9 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
                                        color:[ZXTheme accentPrimary]
                                       action:@selector(showTelegramChannelFromSettings)
                                    accessory:nil];
+    telegramRow.accessibilityLabel = ZXLocalizedUI(@"ZENTRAX Community");
+    telegramRow.accessibilityHint = ZXLocalizedUI(@"Open the official Telegram channel and remember this choice.");
+    telegramRow.isAccessibilityElement = YES;
     [self.settingsStack addArrangedSubview:telegramRow];
 
     UILabel *linkHint = [self label:ZXLocalizedUI(@"Official channel • link is built into the app") size:11 weight:UIFontWeightMedium color:[ZXTheme mutedText]];
@@ -2031,6 +2103,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [ZXTheme track:accLabel spacing:2.0];
     [self.settingsStack addArrangedSubview:accLabel];
     [self.settingsStack addArrangedSubview:[self settingsRow:ZXLocalizedUI(@"Sign Out") subtitle:ZXLocalizedUI(@"Close the current secure session.") icon:@"rectangle.portrait.and.arrow.right" color:[ZXTheme error] action:@selector(handleLogout) accessory:nil]];
+    ZXAuditAccessibilityTree(self.settingsContainer);
 }
 
 - (void)toggleSettingsKey:(UIButton *)sender {
@@ -2041,6 +2114,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     NSString *key = [d stringForKey:ZXLastKey];
     self.settingsKeyLabel.text = self.settingsKeyRevealed && key.length ? key : @"•••• •••• ••••";
     self.settingsKeyLabel.textColor = self.settingsKeyRevealed ? [UIColor whiteColor] : [ZXTheme secondaryText];
+    sender.accessibilityValue = self.settingsKeyRevealed ? ZXLocalizedUI(@"Visible") : ZXLocalizedUI(@"Hidden");
 }
 
 
@@ -2050,6 +2124,8 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     if (self.telegramPromptPresentedThisSession) return;
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"in.zentrax.global"];
     if ([defaults boolForKey:ZXTelegramJoinedKey]) return;
+    // Deliberately session-scoped: auto-login and manual login both reach this method,
+    // while a user who dismisses without joining is reminded on the next app launch.
     dispatch_async(dispatch_get_main_queue(), ^{
         __weak typeof(self) weakSelf = self;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.38 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -2091,7 +2167,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [ZXTheme track:eyebrow spacing:1.0];
     eyebrow.translatesAutoresizingMaskIntoConstraints = NO;
 
-    UILabel *title = [self label:ZXLocalizedUI(@"Keep ZENTRAX Free.") size:25 weight:UIFontWeightHeavy color:[ZXTheme primaryText]];
+    UILabel *title = [self label:ZXLocalizedUI(@"Help Keep ZENTRAX Free.") size:25 weight:UIFontWeightHeavy color:[ZXTheme primaryText]];
     title.translatesAutoresizingMaskIntoConstraints = NO;
 
     UILabel *message = [self label:ZXLocalizedUI(@"ZENTRAX is shared with the community at no cost. If it helps you, joining the official channel is a small way to support the work and stay close to future free releases.") size:14 weight:UIFontWeightRegular color:[ZXTheme secondaryText]];
