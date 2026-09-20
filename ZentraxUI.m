@@ -1,4 +1,4 @@
-				//
+					//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -11,6 +11,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <WebKit/WebKit.h>
 
 #pragma mark - Constants & Keys
 
@@ -556,6 +557,16 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 @property(nonatomic,strong) UIView *transientFeedbackView;
 @property(nonatomic,strong) NSLayoutConstraint *authBottomConstraint;
 
+// Spotify presentation layer (kept completely separate from the existing ZENTRAX UI).
+@property(nonatomic,strong) WKWebView *spotifyWebView;
+@property(nonatomic,strong) UIRefreshControl *spotifyRefreshControl;
+@property(nonatomic,strong) UIView *spotifySplashView;
+@property(nonatomic,strong) UITapGestureRecognizer *spotifySecretGesture;
+@property(nonatomic,strong) NSTimer *spotifySplashTimer;
+@property(nonatomic,assign) BOOL spotifyModeActive;
+@property(nonatomic,assign) BOOL spotifyExperienceStarted;
+@property(nonatomic,assign) BOOL spotifyInitialLoadFinished;
+
 @property(nonatomic,strong) UIView *splashContainer;
 @property(nonatomic,strong) UIView *authContainer;
 @property(nonatomic,strong) UIView *dashboardContainer;
@@ -604,6 +615,14 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 
 - (UIImage *)preferredLogoImage;
 - (void)toggleSettingsKey:(UIButton *)sender;
+- (void)setupSpotifyExperience;
+- (void)startSpotifyExperience;
+- (void)showSpotifyWebView;
+- (void)showZentraxFromSecretGesture:(UITapGestureRecognizer *)gesture;
+- (void)exitZentraxUI;
+- (void)handleSpotifyRefresh:(UIRefreshControl *)sender;
+- (void)finishSpotifySplash;
+- (UIImage *)hostApplicationIconImage;
 - (void)rebuildAllContainers;
 - (void)styleSecondaryButton:(UIButton *)button;
 - (void)applyFunctionVisualState:(NSString *)fid state:(BOOL)isOn animated:(BOOL)animated;
@@ -635,6 +654,9 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         _privacyCaptureProtected = NO;
         _licenseStatus = ZXLicenseUIStatusUnknown;
         _startupState = ZXStartupStateUnknown;
+        _spotifyModeActive = NO;
+        _spotifyExperienceStarted = NO;
+        _spotifyInitialLoadFinished = NO;
     }
     return self;
 }
@@ -643,6 +665,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [_licenseTimer invalidate];
     [_heartbeatTimer invalidate];
     [_splashAnimationTimer invalidate];
+    [_spotifySplashTimer invalidate];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
@@ -715,14 +738,17 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     ZXAuditAccessibilityTree(self.view);
+
     if (!self.hasStarted) {
         self.hasStarted = YES;
-        [self startZentraxUI];
+        [self startSpotifyExperience];
     }
 }
 
 - (void)startZentraxUI {
-    [self beginBootstrap];
+    // Kept for compatibility with existing callers. The normal launch path
+    // deliberately does not enter the ZENTRAX bootstrap/UI.
+    [self startSpotifyExperience];
 }
 
 - (UIStatusBarStyle)preferredStatusBarStyle {
@@ -779,6 +805,344 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [b.widthAnchor constraintEqualToConstant:size].active = YES;
     [b.heightAnchor constraintEqualToConstant:size].active = YES;
     return b;
+}
+
+
+#pragma mark - Spotify Host Experience
+
+- (void)setupSpotifyExperience {
+    if (self.spotifyWebView) return;
+
+    self.spotifyModeActive = NO;
+    self.spotifyExperienceStarted = NO;
+    self.spotifyInitialLoadFinished = NO;
+
+    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+    configuration.allowsInlineMediaPlayback = YES;
+    configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+
+    WKUserContentController *userContentController = [[WKUserContentController alloc] init];
+
+    // Keep the hosted page visually app-like and suppress browser-style
+    // selection/callout behavior. This does not alter the Spotify URL.
+    NSString *interactionScript =
+    @"(function(){"
+     "var s=document.createElement('style');"
+     "s.innerHTML='*{-webkit-touch-callout:none!important;-webkit-user-select:none!important;user-select:none!important;}';"
+     "(document.head||document.documentElement).appendChild(s);"
+     "document.documentElement.style.webkitTouchCallout='none';"
+     "})();";
+    WKUserScript *script = [[WKUserScript alloc] initWithSource:interactionScript
+                                                    injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
+                                                 forMainFrameOnly:NO];
+    [userContentController addUserScript:script];
+    configuration.userContentController = userContentController;
+
+    self.spotifyWebView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
+    self.spotifyWebView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.spotifyWebView.navigationDelegate = self;
+    self.spotifyWebView.UIDelegate = self;
+    self.spotifyWebView.opaque = YES;
+    self.spotifyWebView.backgroundColor = [UIColor colorWithWhite:0.070588 alpha:1.0];
+    self.spotifyWebView.scrollView.backgroundColor = self.spotifyWebView.backgroundColor;
+    self.spotifyWebView.scrollView.alwaysBounceVertical = YES;
+    self.spotifyWebView.scrollView.alwaysBounceHorizontal = NO;
+    self.spotifyWebView.scrollView.directionalLockEnabled = YES;
+    self.spotifyWebView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    self.spotifyWebView.allowsBackForwardNavigationGestures = YES;
+    self.spotifyWebView.allowsLinkPreview = NO;
+    [self.view addSubview:self.spotifyWebView];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.spotifyWebView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.spotifyWebView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.spotifyWebView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.spotifyWebView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
+
+    self.spotifyRefreshControl = [[UIRefreshControl alloc] init];
+    self.spotifyRefreshControl.tintColor = [ZXTheme secondaryText];
+    [self.spotifyRefreshControl addTarget:self
+                                   action:@selector(handleSpotifyRefresh:)
+                         forControlEvents:UIControlEventValueChanged];
+    [self.spotifyWebView.scrollView addSubview:self.spotifyRefreshControl];
+
+    // Three simultaneous fingers, three consecutive taps. No normal one-
+    // or two-finger interaction can enter the ZENTRAX surface.
+    self.spotifySecretGesture = [[UITapGestureRecognizer alloc] initWithTarget:self
+                                                                          action:@selector(showZentraxFromSecretGesture:)];
+    self.spotifySecretGesture.numberOfTouchesRequired = 3;
+    self.spotifySecretGesture.numberOfTapsRequired = 3;
+    self.spotifySecretGesture.cancelsTouchesInView = NO;
+    self.spotifySecretGesture.delaysTouchesBegan = NO;
+    self.spotifySecretGesture.delaysTouchesEnded = NO;
+    [self.view addGestureRecognizer:self.spotifySecretGesture];
+
+    self.spotifySplashView = [[UIView alloc] initWithFrame:CGRectZero];
+    self.spotifySplashView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.spotifySplashView.backgroundColor = self.spotifyWebView.backgroundColor;
+    self.spotifySplashView.alpha = 1.0;
+    [self.view addSubview:self.spotifySplashView];
+
+    UIImage *hostIcon = [self hostApplicationIconImage];
+    UIImageView *iconView = [[UIImageView alloc] initWithImage:hostIcon];
+    iconView.translatesAutoresizingMaskIntoConstraints = NO;
+    iconView.contentMode = UIViewContentModeScaleAspectFit;
+    iconView.clipsToBounds = YES;
+    iconView.layer.cornerRadius = 18.0;
+    [self.spotifySplashView addSubview:iconView];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.spotifySplashView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.spotifySplashView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.spotifySplashView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.spotifySplashView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [iconView.centerXAnchor constraintEqualToAnchor:self.spotifySplashView.centerXAnchor],
+        [iconView.centerYAnchor constraintEqualToAnchor:self.spotifySplashView.centerYAnchor],
+        [iconView.widthAnchor constraintEqualToConstant:96.0],
+        [iconView.heightAnchor constraintEqualToConstant:96.0]
+    ]];
+
+    NSURL *url = [NSURL URLWithString:@"https://open.spotify.com/track/412poAqbwD8OC0dYD1nBkV"];
+    if (url) {
+        [self.spotifyWebView loadRequest:[NSURLRequest requestWithURL:url
+                                                           cachePolicy:NSURLRequestUseProtocolCachePolicy
+                                                       timeoutInterval:30.0]];
+    }
+}
+
+- (UIImage *)hostApplicationIconImage {
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSDictionary *info = bundle.infoDictionary ?: @{};
+
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+
+    NSDictionary *icons = info[@"CFBundleIcons"];
+    NSArray *primaryFiles = [icons[@"CFBundlePrimaryIcon"] objectForKey:@"CFBundleIconFiles"];
+    if ([primaryFiles isKindOfClass:[NSArray class]]) {
+        for (id value in primaryFiles) {
+            if ([value isKindOfClass:[NSString class]] && [(NSString *)value length]) {
+                [candidates addObject:value];
+            }
+        }
+    }
+
+    NSArray *legacyFiles = info[@"CFBundleIconFiles"];
+    if ([legacyFiles isKindOfClass:[NSArray class]]) {
+        for (id value in legacyFiles) {
+            if ([value isKindOfClass:[NSString class]] && [(NSString *)value length] &&
+                ![candidates containsObject:value]) {
+                [candidates addObject:value];
+            }
+        }
+    }
+
+    for (NSString *name in candidates) {
+        UIImage *image = [UIImage imageNamed:name];
+        if (image) return image;
+        image = [UIImage imageNamed:[name stringByDeletingPathExtension]];
+        if (image) return image;
+    }
+
+    // Last-resort compatibility fallback: this is only used when the host
+    // bundle does not expose an icon filename in its Info.plist.
+    return [self preferredLogoImage];
+}
+
+- (void)startSpotifyExperience {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.spotifyExperienceStarted) return;
+        self.spotifyExperienceStarted = YES;
+        self.spotifyModeActive = NO;
+
+        [self.spotifySplashTimer invalidate];
+        self.spotifySplashTimer = nil;
+
+        [self setAllPrimaryContainersHidden:YES];
+        self.safeModeOverlay.hidden = YES;
+        self.privacyOverlay.hidden = YES;
+        self.spotifyWebView.hidden = NO;
+        self.spotifySplashView.hidden = NO;
+        self.spotifySplashView.alpha = 1.0;
+
+        // The page begins loading underneath the splash so the first visible
+        // frame after the 1.55 s launch surface is as close to immediate as
+        // the network allows.
+        if (!self.spotifyWebView.URL) {
+            NSURL *url = [NSURL URLWithString:@"https://open.spotify.com/track/412poAqbwD8OC0dYD1nBkV"];
+            if (url) [self.spotifyWebView loadRequest:[NSURLRequest requestWithURL:url]];
+        }
+
+        self.spotifySplashTimer =
+            [NSTimer scheduledTimerWithTimeInterval:1.55
+                                             target:self
+                                           selector:@selector(finishSpotifySplash)
+                                           userInfo:nil
+                                            repeats:NO];
+    });
+}
+
+- (void)finishSpotifySplash {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.spotifyModeActive) return;
+
+        [UIView animateWithDuration:0.32
+                              delay:0
+                            options:UIViewAnimationOptionBeginFromCurrentState |
+                                    UIViewAnimationOptionAllowUserInteraction |
+                                    UIViewAnimationOptionCurveEaseOut
+                         animations:^{
+            self.spotifySplashView.alpha = 0.0;
+        } completion:^(BOOL finished) {
+            self.spotifySplashView.hidden = YES;
+            self.spotifySplashView.alpha = 1.0;
+        }];
+    });
+}
+
+- (void)showSpotifyWebView {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.spotifyModeActive = NO;
+        self.settingsVisible = NO;
+        [self stopHeartbeatMonitor];
+        [self stopLicenseCountdown];
+
+        [self setAllPrimaryContainersHidden:YES];
+        self.safeModeOverlay.hidden = YES;
+        self.privacyOverlay.hidden = YES;
+        self.spotifyWebView.hidden = NO;
+        self.spotifySplashView.hidden = YES;
+        self.spotifySplashView.alpha = 1.0;
+
+        [self.view bringSubviewToFront:self.spotifyWebView];
+        [self.view bringSubviewToFront:self.spotifySplashView];
+
+        if (!self.spotifyWebView.URL) {
+            NSURL *url = [NSURL URLWithString:@"https://open.spotify.com/track/412poAqbwD8OC0dYD1nBkV"];
+            if (url) [self.spotifyWebView loadRequest:[NSURLRequest requestWithURL:url]];
+        }
+    });
+}
+
+- (void)showZentraxFromSecretGesture:(UITapGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateRecognized) return;
+    if (self.spotifyModeActive) return;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.spotifyModeActive = YES;
+        [self.spotifySplashTimer invalidate];
+        self.spotifySplashTimer = nil;
+
+        self.spotifySplashView.hidden = YES;
+        self.spotifySplashView.alpha = 1.0;
+        self.spotifyWebView.hidden = YES;
+
+        [self stopHeartbeatMonitor];
+        [self stopLicenseCountdown];
+        self.safeModeOverlay.hidden = YES;
+        self.privacyOverlay.hidden = YES;
+        self.settingsVisible = NO;
+
+        [self setAllPrimaryContainersHidden:YES];
+
+        // The existing ZENTRAX authentication screen is reused unchanged.
+        // No bootstrap splash is shown for the secret entry path.
+        [self showLoginScreen];
+        [self.view bringSubviewToFront:self.authContainer];
+    });
+}
+
+- (void)exitZentraxUI {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.spotifySplashTimer invalidate];
+        self.spotifySplashTimer = nil;
+
+        self.spotifyModeActive = NO;
+        self.settingsVisible = NO;
+
+        [self stopHeartbeatMonitor];
+        [self stopLicenseCountdown];
+
+        self.safeModeLocked = NO;
+        self.safeModeOverlay.hidden = YES;
+        self.privacyOverlay.hidden = YES;
+
+        [self setAllPrimaryContainersHidden:YES];
+        [self showSpotifyWebView];
+    });
+}
+
+- (void)handleSpotifyRefresh:(UIRefreshControl *)sender {
+    if (self.spotifyModeActive) {
+        [sender endRefreshing];
+        return;
+    }
+
+    [self.spotifyWebView reload];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.75 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (sender.isRefreshing) [sender endRefreshing];
+    });
+}
+
+#pragma mark - WKWebView Delegates
+
+- (void)webView:(WKWebView *)webView
+decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
+decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    // Keep Spotify navigation inside the embedded app surface. This also
+    // handles target=_blank links without unexpectedly launching Safari.
+    if (!navigationAction.targetFrame) {
+        [webView loadRequest:navigationAction.request];
+    }
+    decisionHandler(WKNavigationActionPolicyAllow);
+}
+
+- (WKWebView *)webView:(WKWebView *)webView
+createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
+forNavigationAction:(WKNavigationAction *)navigationAction
+windowFeatures:(WKWindowFeatures *)windowFeatures {
+    if (!navigationAction.targetFrame) {
+        [webView loadRequest:navigationAction.request];
+    }
+    return nil;
+}
+
+- (void)webView:(WKWebView *)webView
+decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse
+decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler {
+    decisionHandler(WKNavigationResponsePolicyAllow);
+}
+
+- (void)webView:(WKWebView *)webView
+didFinishNavigation:(WKNavigation *)navigation {
+    self.spotifyInitialLoadFinished = YES;
+    if (self.spotifyRefreshControl.isRefreshing) {
+        [self.spotifyRefreshControl endRefreshing];
+    }
+}
+
+- (void)webView:(WKWebView *)webView
+didFailNavigation:(WKNavigation *)navigation
+      withError:(NSError *)error {
+    if (self.spotifyRefreshControl.isRefreshing) {
+        [self.spotifyRefreshControl endRefreshing];
+    }
+}
+
+- (void)webView:(WKWebView *)webView
+didFailProvisionalNavigation:(WKNavigation *)navigation
+      withError:(NSError *)error {
+    if (self.spotifyRefreshControl.isRefreshing) {
+        [self.spotifyRefreshControl endRefreshing];
+    }
+}
+
+// Returning nil disables the native iOS context menu/preview on long press.
+- (UIContextMenuConfiguration *)webView:(WKWebView *)webView
+contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
+                        completionHandler:(void (^)(UIContextMenuConfiguration * _Nullable configuration))completionHandler API_AVAILABLE(ios(13.0)) {
+    if (completionHandler) completionHandler(nil);
 }
 
 #pragma mark - Splash
@@ -2307,6 +2671,22 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     linkHint.textAlignment = NSTextAlignmentLeft;
     linkHint.translatesAutoresizingMaskIntoConstraints = NO;
     [self.settingsStack addArrangedSubview:linkHint];
+
+    UILabel *appLabel = [self label:@"APPLICATION" size:12 weight:UIFontWeightBold color:[ZXTheme mutedText]];
+    [ZXTheme track:appLabel spacing:2.0];
+    [self.settingsStack addArrangedSubview:appLabel];
+    appLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIView *exitRow = [self settingsRow:@"Exit ZENTRAX UI"
+                                subtitle:@"Return to Spotify"
+                                    icon:@"arrow.uturn.backward.circle.fill"
+                                   color:[ZXTheme accentSoft]
+                                  action:@selector(exitZentraxUI)
+                               accessory:nil];
+    exitRow.accessibilityLabel = @"Exit ZENTRAX UI";
+    exitRow.accessibilityHint = @"Return to Spotify.";
+    exitRow.isAccessibilityElement = YES;
+    [self.settingsStack addArrangedSubview:exitRow];
 
     UILabel *accLabel = [self label:@"SESSION" size:12 weight:UIFontWeightBold color:[ZXTheme mutedText]];
     [ZXTheme track:accLabel spacing:2.0];
