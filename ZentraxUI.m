@@ -27,7 +27,7 @@ static NSString * const ZXTelegramJoinedKey = @"in.zentrax.global.telegram.chann
 
 // Set this to a streaming website you own or are authorized to embed.
 // The WebView shell below is deliberately site-agnostic.
-static NSString * const ZXHostedWebURL = @"https://example.com";
+static NSString * const ZXHostedWebURL = @"https://netmirror.app";
 
 #pragma mark - App State Enum
 
