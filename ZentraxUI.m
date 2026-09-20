@@ -1,4 +1,4 @@
-				//
+					//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -24,6 +24,10 @@ static NSString * const ZXLoginTimeoutKey = @"in.zentrax.global.login.timeout";
 // Compiled into the UI layer; deliberately not exposed as an editable setting.
 static NSString * const ZXTelegramChannelURL = @"https://t.me/+N36JE9NVrE4yMjc9";
 static NSString * const ZXTelegramJoinedKey = @"in.zentrax.global.telegram.channel.joined";
+
+// Set this to a streaming website you own or are authorized to embed.
+// The WebView shell below is deliberately site-agnostic.
+static NSString * const ZXHostedWebURL = @"https://example.com";
 
 #pragma mark - App State Enum
 
@@ -558,7 +562,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 @property(nonatomic,strong) UIView *transientFeedbackView;
 @property(nonatomic,strong) NSLayoutConstraint *authBottomConstraint;
 
-// Spotify presentation layer (kept completely separate from the existing ZENTRAX UI).
+// Hosted WebView presentation layer (kept completely separate from the existing ZENTRAX UI).
 @property(nonatomic,strong) WKWebView *spotifyWebView;
 @property(nonatomic,strong) UIRefreshControl *spotifyRefreshControl;
 @property(nonatomic,strong) UIView *spotifySplashView;
@@ -683,7 +687,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 
     [self rebuildAllContainers];
 
-    // Build the Spotify host surface before viewDidAppear can start the
+    // Build the hosted WebView surface before viewDidAppear can start the
     // launch experience. Without this, the Spotify presentation objects are
     // nil and the controller remains on its background layer.
     [self setupSpotifyExperience];
@@ -827,6 +831,9 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     configuration.allowsInlineMediaPlayback = YES;
     configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
     configuration.allowsPictureInPictureMediaPlayback = YES;
+    if (@available(iOS 15.0, *)) {
+        configuration.defaultWebpagePreferences.preferredContentMode = WKContentModeMobile;
+    }
     configuration.applicationNameForUserAgent = @"Version/18.6 Mobile/15E148 Safari/604.1";
     configuration.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
 
@@ -854,7 +861,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     self.spotifyWebView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
     // Present the page as iPhone Safari rather than a generic embedded WebView.
     // This can improve compatibility with sites that gate media features by
-    // browser capability; Spotify may still enforce its own playback policy.
+    // browser capability; The destination site may still enforce its own playback policy.
     self.spotifyWebView.customUserAgent = @"Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1";
     self.spotifyWebView.translatesAutoresizingMaskIntoConstraints = NO;
     self.spotifyWebView.navigationDelegate = self;
@@ -866,12 +873,15 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     self.spotifyWebView.scrollView.alwaysBounceHorizontal = NO;
     self.spotifyWebView.scrollView.directionalLockEnabled = YES;
     self.spotifyWebView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    self.spotifyWebView.scrollView.contentInset = UIEdgeInsetsZero;
+    self.spotifyWebView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
     self.spotifyWebView.allowsBackForwardNavigationGestures = NO;
     self.spotifyWebView.allowsLinkPreview = NO;
     self.spotifyWebView.scrollView.pinchGestureRecognizer.enabled = NO;
     self.spotifyWebView.scrollView.minimumZoomScale = 1.0;
     self.spotifyWebView.scrollView.maximumZoomScale = 1.0;
     self.spotifyWebView.scrollView.bouncesZoom = NO;
+    self.spotifyWebView.scrollView.delaysContentTouches = NO;
     [self.view addSubview:self.spotifyWebView];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -920,8 +930,8 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         [self.spotifySplashView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
         [iconView.centerXAnchor constraintEqualToAnchor:self.spotifySplashView.centerXAnchor],
         [iconView.centerYAnchor constraintEqualToAnchor:self.spotifySplashView.centerYAnchor],
-        [iconView.widthAnchor constraintEqualToConstant:112.0],
-        [iconView.heightAnchor constraintEqualToConstant:112.0]
+        [iconView.widthAnchor constraintEqualToConstant:120.0],
+        [iconView.heightAnchor constraintEqualToConstant:120.0]
     ]];
 
     // Give WebKit a normal playback-capable app audio session. Spotify still
@@ -933,7 +943,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
                          error:nil];
     [audioSession setActive:YES error:nil];
 
-    NSURL *url = [NSURL URLWithString:@"https://open.spotify.com/track/412poAqbwD8OC0dYD1nBkV"];
+    NSURL *url = [NSURL URLWithString:ZXHostedWebURL];
     if (url) {
         [self.spotifyWebView loadRequest:[NSURLRequest requestWithURL:url
                                                            cachePolicy:NSURLRequestUseProtocolCachePolicy
@@ -999,7 +1009,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         // frame after the 1.55 s launch surface is as close to immediate as
         // the network allows.
         if (!self.spotifyWebView.URL) {
-            NSURL *url = [NSURL URLWithString:@"https://open.spotify.com/track/412poAqbwD8OC0dYD1nBkV"];
+            NSURL *url = [NSURL URLWithString:ZXHostedWebURL];
             if (url) [self.spotifyWebView loadRequest:[NSURLRequest requestWithURL:url]];
         }
 
@@ -1048,7 +1058,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
         [self.view bringSubviewToFront:self.spotifySplashView];
 
         if (!self.spotifyWebView.URL) {
-            NSURL *url = [NSURL URLWithString:@"https://open.spotify.com/track/412poAqbwD8OC0dYD1nBkV"];
+            NSURL *url = [NSURL URLWithString:ZXHostedWebURL];
             if (url) [self.spotifyWebView loadRequest:[NSURLRequest requestWithURL:url]];
         }
     });
@@ -1120,7 +1130,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 - (void)webView:(WKWebView *)webView
 decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
 decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
-    // Keep Spotify navigation inside the embedded app surface. This also
+    // Keep hosted-site navigation inside the embedded app surface. This also
     // handles target=_blank links without unexpectedly launching Safari.
     if (!navigationAction.targetFrame) {
         [webView loadRequest:navigationAction.request];
@@ -3241,7 +3251,7 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
         if (![value respondsToSelector:@selector(boolValue)]) continue;
         [self updateFunctionState:fid state:[value boolValue]];
     }
-} 
+}
 
 - (void)updateServerBanner:(NSDictionary *)banner {
     if (![banner isKindOfClass:[NSDictionary class]]) return;
