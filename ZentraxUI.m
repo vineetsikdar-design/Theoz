@@ -1,4 +1,4 @@
-					//
+				//
 //  ZentraxUI.m
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
@@ -681,6 +681,11 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     self.telegramPromptPresentedThisSession = NO;
 
     [self rebuildAllContainers];
+
+    // Build the Spotify host surface before viewDidAppear can start the
+    // launch experience. Without this, the Spotify presentation objects are
+    // nil and the controller remains on its background layer.
+    [self setupSpotifyExperience];
     [self setAllPrimaryContainersHidden:YES];
     
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
