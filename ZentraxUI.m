@@ -12,6 +12,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <WebKit/WebKit.h>
+#import <AVFoundation/AVFoundation.h>
 
 #pragma mark - Constants & Keys
 
@@ -825,25 +826,36 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     configuration.allowsInlineMediaPlayback = YES;
     configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+    configuration.allowsPictureInPictureMediaPlayback = YES;
+    configuration.applicationNameForUserAgent = @"Version/18.6 Mobile/15E148 Safari/604.1";
+    configuration.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
 
     WKUserContentController *userContentController = [[WKUserContentController alloc] init];
 
-    // Keep the hosted page visually app-like and suppress browser-style
-    // selection/callout behavior. This does not alter the Spotify URL.
+    // Keep the hosted page visually app-like, prevent page-level pinch zoom,
+    // and suppress browser-style selection/callout behavior.
     NSString *interactionScript =
     @"(function(){"
      "var s=document.createElement('style');"
-     "s.innerHTML='*{-webkit-touch-callout:none!important;-webkit-user-select:none!important;user-select:none!important;}';"
+     "s.innerHTML='html,body,*{-webkit-touch-callout:none!important;-webkit-user-select:none!important;user-select:none!important;}';"
      "(document.head||document.documentElement).appendChild(s);"
+     "var m=document.querySelector('meta[name=\"viewport\"]');"
+     "if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}"
+     "m.setAttribute('content','width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover');"
      "document.documentElement.style.webkitTouchCallout='none';"
+     "document.documentElement.style.touchAction='pan-y';"
      "})();";
     WKUserScript *script = [[WKUserScript alloc] initWithSource:interactionScript
-                                                    injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
+                                                    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                                                  forMainFrameOnly:NO];
     [userContentController addUserScript:script];
     configuration.userContentController = userContentController;
 
     self.spotifyWebView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
+    // Present the page as iPhone Safari rather than a generic embedded WebView.
+    // This can improve compatibility with sites that gate media features by
+    // browser capability; Spotify may still enforce its own playback policy.
+    self.spotifyWebView.customUserAgent = @"Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1";
     self.spotifyWebView.translatesAutoresizingMaskIntoConstraints = NO;
     self.spotifyWebView.navigationDelegate = self;
     self.spotifyWebView.UIDelegate = self;
@@ -854,15 +866,19 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     self.spotifyWebView.scrollView.alwaysBounceHorizontal = NO;
     self.spotifyWebView.scrollView.directionalLockEnabled = YES;
     self.spotifyWebView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-    self.spotifyWebView.allowsBackForwardNavigationGestures = YES;
+    self.spotifyWebView.allowsBackForwardNavigationGestures = NO;
     self.spotifyWebView.allowsLinkPreview = NO;
+    self.spotifyWebView.scrollView.pinchGestureRecognizer.enabled = NO;
+    self.spotifyWebView.scrollView.minimumZoomScale = 1.0;
+    self.spotifyWebView.scrollView.maximumZoomScale = 1.0;
+    self.spotifyWebView.scrollView.bouncesZoom = NO;
     [self.view addSubview:self.spotifyWebView];
 
     [NSLayoutConstraint activateConstraints:@[
         [self.spotifyWebView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.spotifyWebView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.spotifyWebView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.spotifyWebView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+        [self.spotifyWebView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.spotifyWebView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor]
     ]];
 
     self.spotifyRefreshControl = [[UIRefreshControl alloc] init];
@@ -900,13 +916,22 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
     [NSLayoutConstraint activateConstraints:@[
         [self.spotifySplashView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.spotifySplashView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.spotifySplashView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.spotifySplashView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.spotifySplashView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.spotifySplashView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
         [iconView.centerXAnchor constraintEqualToAnchor:self.spotifySplashView.centerXAnchor],
         [iconView.centerYAnchor constraintEqualToAnchor:self.spotifySplashView.centerYAnchor],
-        [iconView.widthAnchor constraintEqualToConstant:96.0],
-        [iconView.heightAnchor constraintEqualToConstant:96.0]
+        [iconView.widthAnchor constraintEqualToConstant:112.0],
+        [iconView.heightAnchor constraintEqualToConstant:112.0]
     ]];
+
+    // Give WebKit a normal playback-capable app audio session. Spotify still
+    // controls whether a given account/browser session is allowed to stream.
+    AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+    [audioSession setCategory:AVAudioSessionCategoryPlayback
+                          mode:AVAudioSessionModeDefault
+                       options:AVAudioSessionCategoryOptionAllowAirPlay | AVAudioSessionCategoryOptionAllowBluetoothA2DP
+                         error:nil];
+    [audioSession setActive:YES error:nil];
 
     NSURL *url = [NSURL URLWithString:@"https://open.spotify.com/track/412poAqbwD8OC0dYD1nBkV"];
     if (url) {
@@ -3216,7 +3241,7 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
         if (![value respondsToSelector:@selector(boolValue)]) continue;
         [self updateFunctionState:fid state:[value boolValue]];
     }
-}
+} 
 
 - (void)updateServerBanner:(NSDictionary *)banner {
     if (![banner isKindOfClass:[NSDictionary class]]) return;
