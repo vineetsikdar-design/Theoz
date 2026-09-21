@@ -149,7 +149,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             url = [bundle URLForResource:name withExtension:@"mp4"];
             if (!url) url = [bundle URLForResource:[name stringByDeletingPathExtension] withExtension:@"mp4"];
             if (!url) {
-                NSString *exactPath = [bundle pathForResource:name withExtension:nil];
+                NSString *exactPath = [bundle pathForResource:name ofType:nil];
                 if (exactPath.length) url = [NSURL fileURLWithPath:exactPath];
             }
             if (!url) {
@@ -619,7 +619,7 @@ static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
 
 #pragma mark - Main Controller
 
-@interface ZentraxUI () <UITextFieldDelegate>
+@interface ZentraxUI () <UITextFieldDelegate, WKNavigationDelegate, WKUIDelegate>
 @property(nonatomic,strong) ZXCinematicBackgroundView *backgroundEnvironment;
 @property(nonatomic,assign) ZXAppState currentState;
 @property(nonatomic,assign) ZXStartupState startupState;
