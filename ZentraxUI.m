@@ -3,7 +3,7 @@
 //  Zentrax VIP - Premium Security Infrastructure UI
 //
 //  Architecture: Server-authoritative UI / Network-driven state
-//  Theme: ZENTRAX Obsidian / Violet / Indigo / Platinum Material System
+//  Theme: ZENTRAX Minimal Monochrome / White Paper UI
 //  Status: SOURCE-LEVEL 55-POINT AUDIT READY
 //
 
@@ -119,6 +119,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 @property(nonatomic,strong) AVPlayerLayer *playerLayer;
 @property(nonatomic,strong) id endObserver;
 @property(nonatomic,strong) AVPlayerItem *playerItem;
+@property(nonatomic,strong) AVPlayerLooper *playerLooper;
 @property(nonatomic,assign) BOOL didStartPlayback;
 - (instancetype)initWithResourceNamed:(NSString *)name;
 - (void)play;
@@ -190,7 +191,8 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
             __strong typeof(weakSelf) self = weakSelf;
             if (!self.player) return;
             [self.player seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero completionHandler:^(BOOL finished) {
-                if (finished && self.window) [self.player playImmediatelyAtRate:1.0];
+                if (!self || !self.player) return;
+                [self.player playImmediatelyAtRate:1.0];
             }];
         }];
     }
@@ -1372,23 +1374,17 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
     _authContainer.translatesAutoresizingMaskIntoConstraints = NO;
     _authContainer.backgroundColor = [UIColor whiteColor];
     [self.view addSubview:_authContainer];
-    
-    _authScroll = [[UIScrollView alloc] init];
-    _authScroll.alwaysBounceVertical = YES;
-    _authScroll.showsVerticalScrollIndicator = NO;
-    _authScroll.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
-    _authScroll.translatesAutoresizingMaskIntoConstraints = NO;
-    [_authContainer addSubview:_authScroll];
 
+    // Authentication is intentionally a fixed, non-scrollable composition.
+    // The supplied video already contains its own torn-paper transition and
+    // artwork; do not draw a second paper layer or a separate logo over it.
     UIView *content = [[UIView alloc] init];
     content.translatesAutoresizingMaskIntoConstraints = NO;
-    [content setBackgroundColor:[UIColor whiteColor]];
-    [_authScroll addSubview:content];
+    content.backgroundColor = [UIColor whiteColor];
+    [_authContainer addSubview:content];
 
-    _authVideoView = [[ZXLoopingVideoView alloc] initWithResourceNamed:@"dp"];
+    _authVideoView = [[ZXLoopingVideoView alloc] initWithResourceNamed:@"dp.mp4"];
     [content addSubview:_authVideoView];
-    ZXPaperEdgeView *paper = [ZXPaperEdgeView new];
-    [content addSubview:paper];
 
     UILabel *title = [self label:@"Welcome Back!" size:30 weight:UIFontWeightBold color:[ZXTheme primaryText]];
     title.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1417,28 +1413,50 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
     [content addSubview:_authStatus];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_authContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],[_authContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],[_authContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],[_authContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-        [_authScroll.leadingAnchor constraintEqualToAnchor:_authContainer.leadingAnchor],[_authScroll.trailingAnchor constraintEqualToAnchor:_authContainer.trailingAnchor],[_authScroll.topAnchor constraintEqualToAnchor:_authContainer.topAnchor],[_authScroll.bottomAnchor constraintEqualToAnchor:_authContainer.bottomAnchor],
-        [content.leadingAnchor constraintEqualToAnchor:_authScroll.contentLayoutGuide.leadingAnchor], [content.trailingAnchor constraintEqualToAnchor:_authScroll.contentLayoutGuide.trailingAnchor], [content.topAnchor constraintEqualToAnchor:_authScroll.contentLayoutGuide.topAnchor], [content.bottomAnchor constraintEqualToAnchor:_authScroll.contentLayoutGuide.bottomAnchor], [content.widthAnchor constraintEqualToAnchor:_authScroll.frameLayoutGuide.widthAnchor], [content.heightAnchor constraintGreaterThanOrEqualToAnchor:_authScroll.frameLayoutGuide.heightAnchor],
-        [_authVideoView.topAnchor constraintEqualToAnchor:content.topAnchor], [_authVideoView.leadingAnchor constraintEqualToAnchor:content.leadingAnchor], [_authVideoView.trailingAnchor constraintEqualToAnchor:content.trailingAnchor], [_authVideoView.widthAnchor constraintEqualToAnchor:_authVideoView.heightAnchor multiplier:910.0/512.0],
-        [paper.leadingAnchor constraintEqualToAnchor:_authVideoView.leadingAnchor], [paper.trailingAnchor constraintEqualToAnchor:_authVideoView.trailingAnchor], [paper.bottomAnchor constraintEqualToAnchor:_authVideoView.bottomAnchor], [paper.heightAnchor constraintEqualToConstant:38],
-        [title.topAnchor constraintEqualToAnchor:_authVideoView.bottomAnchor constant:-2], [title.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24], [title.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
-        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:10], [subtitle.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24], [subtitle.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
-        [_keyInput.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:24], [_keyInput.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24], [_keyInput.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
-        [_loginBtn.topAnchor constraintEqualToAnchor:_keyInput.bottomAnchor constant:14], [_loginBtn.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24], [_loginBtn.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24], [_loginBtn.heightAnchor constraintEqualToConstant:58],
-        [_authStatus.topAnchor constraintEqualToAnchor:_loginBtn.bottomAnchor constant:14], [_authStatus.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24], [_authStatus.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24], [_authStatus.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-28]
+        [_authContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_authContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_authContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [_authContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+
+        // Keep the whole login composition inside the fixed screen.
+        [content.leadingAnchor constraintEqualToAnchor:_authContainer.leadingAnchor],
+        [content.trailingAnchor constraintEqualToAnchor:_authContainer.trailingAnchor],
+        [content.topAnchor constraintEqualToAnchor:_authContainer.safeAreaLayoutGuide.topAnchor],
+        [content.bottomAnchor constraintEqualToAnchor:_authContainer.safeAreaLayoutGuide.bottomAnchor],
+
+        // 910:512 is the native asset ratio. ResizeAspect preserves it.
+        [_authVideoView.topAnchor constraintEqualToAnchor:content.topAnchor constant:0],
+        [_authVideoView.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+        [_authVideoView.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+        [_authVideoView.heightAnchor constraintEqualToAnchor:_authVideoView.widthAnchor multiplier:512.0/910.0],
+
+        // Tight, deliberate spacing — no giant dead area below the video.
+        [title.topAnchor constraintEqualToAnchor:_authVideoView.bottomAnchor constant:18],
+        [title.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24],
+        [title.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
+        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:8],
+        [subtitle.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24],
+        [subtitle.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
+        [_keyInput.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:20],
+        [_keyInput.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24],
+        [_keyInput.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
+        [_keyInput.heightAnchor constraintEqualToConstant:62],
+        [_loginBtn.topAnchor constraintEqualToAnchor:_keyInput.bottomAnchor constant:12],
+        [_loginBtn.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24],
+        [_loginBtn.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
+        [_loginBtn.heightAnchor constraintEqualToConstant:56],
+        [_authStatus.topAnchor constraintEqualToAnchor:_loginBtn.bottomAnchor constant:8],
+        [_authStatus.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24],
+        [_authStatus.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
+        [_authStatus.bottomAnchor constraintLessThanOrEqualToAnchor:content.bottomAnchor constant:-8]
     ]];
     [_authVideoView play];
 }
-
 - (void)keyboardWillShow:(NSNotification *)note {
-    CGSize kbSize = [[note.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue].size;
-    self.authScroll.contentInset = UIEdgeInsetsMake(0.0, 0.0, kbSize.height, 0.0);
-    self.authScroll.scrollIndicatorInsets = self.authScroll.contentInset;
+    // Login is a fixed composition. Do not turn the whole screen into a scroll view.
 }
 - (void)keyboardWillHide:(NSNotification *)note {
-    self.authScroll.contentInset = UIEdgeInsetsZero;
-    self.authScroll.scrollIndicatorInsets = UIEdgeInsetsZero;
+    // Intentionally empty.
 }
 
 - (void)handleLogin {
@@ -1556,11 +1574,12 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
         [_connectionLabel.trailingAnchor constraintEqualToAnchor:settingsBtn.leadingAnchor constant:-14],[_connectionLabel.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],[_connectionDot.trailingAnchor constraintEqualToAnchor:_connectionLabel.leadingAnchor constant:-7],[_connectionDot.centerYAnchor constraintEqualToAnchor:_connectionLabel.centerYAnchor],[_connectionDot.widthAnchor constraintEqualToConstant:6],[_connectionDot.heightAnchor constraintEqualToConstant:6],[settingsBtn.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],[settingsBtn.centerYAnchor constraintEqualToAnchor:header.centerYAnchor]
     ]];
 
-    _dashboardVideoView=[[ZXLoopingVideoView alloc] initWithResourceNamed:@"dp"]; [_dashboardContainer addSubview:_dashboardVideoView];
-    ZXPaperEdgeView *paper=[ZXPaperEdgeView new]; [_dashboardContainer addSubview:paper];
+    _dashboardVideoView=[[ZXLoopingVideoView alloc] initWithResourceNamed:@"dp.mp4"]; [_dashboardContainer addSubview:_dashboardVideoView];
     [NSLayoutConstraint activateConstraints:@[
-        [_dashboardVideoView.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor],[_dashboardVideoView.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor],[_dashboardVideoView.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:8],[_dashboardVideoView.widthAnchor constraintEqualToAnchor:_dashboardVideoView.heightAnchor multiplier:910.0/512.0],
-        [paper.leadingAnchor constraintEqualToAnchor:_dashboardVideoView.leadingAnchor],[paper.trailingAnchor constraintEqualToAnchor:_dashboardVideoView.trailingAnchor],[paper.bottomAnchor constraintEqualToAnchor:_dashboardVideoView.bottomAnchor],[paper.heightAnchor constraintEqualToConstant:34]
+        [_dashboardVideoView.leadingAnchor constraintEqualToAnchor:_dashboardContainer.leadingAnchor],
+        [_dashboardVideoView.trailingAnchor constraintEqualToAnchor:_dashboardContainer.trailingAnchor],
+        [_dashboardVideoView.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:0],
+        [_dashboardVideoView.heightAnchor constraintEqualToAnchor:_dashboardVideoView.widthAnchor multiplier:512.0/910.0]
     ]];
 
     _licenseCard=[[ZXGlassCard alloc] init]; [_dashboardContainer addSubview:_licenseCard];
@@ -1663,8 +1682,8 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
             UIView *headerWrapper = [[UIView alloc] init];
             headerWrapper.translatesAutoresizingMaskIntoConstraints = NO;
             
-            UILabel *cat = [self label:categoryName size:12 weight:UIFontWeightBold color:[ZXTheme mutedText]];
-            [ZXTheme track:cat spacing:2.0];
+            UILabel *cat = [self label:categoryName size:13 weight:UIFontWeightBold color:[ZXTheme primaryText]];
+            [ZXTheme track:cat spacing:1.8];
             cat.translatesAutoresizingMaskIntoConstraints = NO;
             [headerWrapper addSubview:cat];
             [NSLayoutConstraint activateConstraints:@[[cat.leadingAnchor constraintEqualToAnchor:headerWrapper.leadingAnchor constant:4],[cat.trailingAnchor constraintEqualToAnchor:headerWrapper.trailingAnchor constant:-4],[cat.topAnchor constraintEqualToAnchor:headerWrapper.topAnchor constant:12],[cat.bottomAnchor constraintEqualToAnchor:headerWrapper.bottomAnchor constant:-2]]];
@@ -2542,11 +2561,6 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
     card.translatesAutoresizingMaskIntoConstraints = NO;
     [backdrop addSubview:card];
 
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"paperplane.circle.fill"]];
-    icon.translatesAutoresizingMaskIntoConstraints = NO;
-    icon.tintColor = [ZXTheme primaryText];
-    icon.contentMode = UIViewContentModeScaleAspectFit;
-
     UILabel *eyebrow = [self label:ZXLocalizedUI(@"A LITTLE SUPPORT GOES A LONG WAY") size:10 weight:UIFontWeightBold color:[ZXTheme accentSoft]];
     [ZXTheme track:eyebrow spacing:1.0];
     eyebrow.translatesAutoresizingMaskIntoConstraints = NO;
@@ -2583,14 +2597,13 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
 
     UIButton *later = [UIButton buttonWithType:UIButtonTypeSystem];
     later.translatesAutoresizingMaskIntoConstraints = NO;
-    [later setTitle:ZXLocalizedUI(@"Not already done") forState:UIControlStateNormal];
+    [later setTitle:ZXLocalizedUI(@"Not now") forState:UIControlStateNormal];
     later.titleLabel.font = [ZXTheme body:12 weight:UIFontWeightMedium];
     [later setTitleColor:[ZXTheme mutedText] forState:UIControlStateNormal];
-    later.accessibilityLabel = ZXLocalizedUI(@"Not already done");
+    later.accessibilityLabel = ZXLocalizedUI(@"Not now");
     later.accessibilityHint = ZXLocalizedUI(@"Dismiss this reminder for now. It will appear again the next time the app starts until the channel is joined.");
     [later addTarget:self action:@selector(dismissTelegramSupportPrompt:) forControlEvents:UIControlEventTouchUpInside];
 
-    [card addSubview:icon];
     [card addSubview:eyebrow];
     [card addSubview:title];
     [card addSubview:message];
@@ -2613,11 +2626,7 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
         [card.centerXAnchor constraintEqualToAnchor:backdrop.centerXAnchor],
         [card.centerYAnchor constraintEqualToAnchor:backdrop.centerYAnchor],
         [card.widthAnchor constraintLessThanOrEqualToConstant:390],
-        [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:26],
-        [icon.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
-        [icon.widthAnchor constraintEqualToConstant:42],
-        [icon.heightAnchor constraintEqualToConstant:42],
-        [eyebrow.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:18],
+        [eyebrow.topAnchor constraintEqualToAnchor:card.topAnchor constant:26],
         [eyebrow.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:26],
         [eyebrow.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-26],
         [title.topAnchor constraintEqualToAnchor:eyebrow.bottomAnchor constant:7],
