@@ -105,12 +105,12 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 + (CGFloat)space:(NSInteger)step { static const CGFloat v[] = {0,4,8,12,16,20,24,28,32,40,48}; return (step >= 0 && step <= 10) ? v[step] : 16.0; }
 + (CGFloat)radius:(NSInteger)tier { static const CGFloat v[] = {0,10,14,18,22}; return (tier >= 0 && tier <= 4) ? v[tier] : 18.0; }
 + (void)track:(UILabel *)label spacing:(CGFloat)spacing {
-+    if (!label) return;
-+    NSMutableAttributedString *m = [[NSMutableAttributedString alloc] initWithString:label.text ?: @"" attributes:@{NSFontAttributeName: label.font ?: [UIFont systemFontOfSize:12]}];
-+    [m addAttribute:NSKernAttributeName value:@(spacing) range:NSMakeRange(0, m.length)];
-+    label.attributedText = m;
-+}
-+@end
+    if (!label) return;
+    NSMutableAttributedString *m = [[NSMutableAttributedString alloc] initWithString:label.text ?: @"" attributes:@{NSFontAttributeName: label.font ?: [UIFont systemFontOfSize:12]}];
+    [m addAttribute:NSKernAttributeName value:@(spacing) range:NSMakeRange(0, m.length)];
+    label.attributedText = m;
+}
+@end
 
 #pragma mark - Local Offline Video
 
@@ -118,6 +118,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 @property(nonatomic,strong) AVPlayer *player;
 @property(nonatomic,strong) AVPlayerLayer *playerLayer;
 @property(nonatomic,strong) id endObserver;
+@property(nonatomic,strong) AVPlayerItem *playerItem;
 @property(nonatomic,assign) BOOL didStartPlayback;
 - (instancetype)initWithResourceNamed:(NSString *)name;
 - (void)play;
@@ -134,29 +135,47 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     
     NSURL *url = nil;
     NSBundle *main = [NSBundle mainBundle];
-    if (name.length) url = [main URLForResource:name withExtension:@"mp4"];
-    if (!url && name.length) {
-        NSBundle *classBundle = [NSBundle bundleForClass:[ZentraxUI class]];
-        url = [classBundle URLForResource:name withExtension:@"mp4"];
+    NSBundle *classBundle = [NSBundle bundleForClass:[ZentraxUI class]];
+
+    // Primary location: the host .app root. The tweak is injected into the
+    // host application, so this remains available even when no resource
+    // bundle is present. Both `dp.mp4` and the extensionless form are tried.
+    NSArray<NSBundle *> *bundles = classBundle && classBundle != main
+        ? @[main, classBundle]
+        : @[main];
+    for (NSBundle *bundle in bundles) {
+        if (!bundle) continue;
+        if (name.length) {
+            url = [bundle URLForResource:name withExtension:@"mp4"];
+            if (!url) url = [bundle URLForResource:[name stringByDeletingPathExtension] withExtension:@"mp4"];
+            if (!url) {
+                NSString *exactPath = [bundle pathForResource:name withExtension:nil];
+                if (exactPath.length) url = [NSURL fileURLWithPath:exactPath];
+            }
+            if (!url) {
+                NSString *exactPath = [bundle pathForResource:[name stringByDeletingPathExtension] ofType:@"mp4"];
+                if (exactPath.length) url = [NSURL fileURLWithPath:exactPath];
+            }
+        }
+        if (url) break;
     }
-    if (!url) {
-        NSString *resourcePath = [main pathForResource:name ofType:@"mp4"];
-        if (resourcePath.length) url = [NSURL fileURLWithPath:resourcePath];
-    }
-    if (!url) {
-        NSString *resourcePath = [main pathForResource:name ofType:nil];
-        if (resourcePath.length) url = [NSURL fileURLWithPath:resourcePath];
-    }
+
+    // Optional resource bundle fallback.
     if (!url) {
         NSString *bundlePath = [main pathForResource:@"ZentraxResources" ofType:@"bundle"];
         if (bundlePath.length) {
             NSBundle *resourceBundle = [NSBundle bundleWithPath:bundlePath];
-            url = [resourceBundle URLForResource:name withExtension:@"mp4"];
+            url = [resourceBundle URLForResource:[name stringByDeletingPathExtension] withExtension:@"mp4"];
+            if (!url) {
+                NSString *exactPath = [resourceBundle pathForResource:name ofType:nil];
+                if (exactPath.length) url = [NSURL fileURLWithPath:exactPath];
+            }
         }
     }
     
     if (url) {
         AVPlayerItem *item = [AVPlayerItem playerItemWithURL:url];
+        _playerItem = item;
         _player = [AVPlayer playerWithPlayerItem:item];
         _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
         _player.muted = YES;
@@ -186,9 +205,27 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
     if (self.window) [self play];
 }
 - (void)play {
-    if (!_player) return;
+    if (!_player || !_playerItem) return;
     self.didStartPlayback = YES;
-    [_player playImmediatelyAtRate:1.0];
+    if (_playerItem.status == AVPlayerItemStatusReadyToPlay) {
+        [_player playImmediatelyAtRate:1.0];
+        return;
+    }
+
+    // The asset is local, but AVFoundation can still need a short prepare
+    // phase. Retry on the main queue rather than depending on network state.
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || !self.player || !self.playerItem) return;
+        if (self.playerItem.status == AVPlayerItemStatusReadyToPlay) {
+            [self.player playImmediatelyAtRate:1.0];
+        } else if (self.playerItem.status == AVPlayerItemStatusUnknown) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self play];
+            });
+        }
+    });
 }
 - (void)stop {
     [_player pause];
@@ -196,6 +233,8 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 - (void)dealloc {
     if (_endObserver) [[NSNotificationCenter defaultCenter] removeObserver:_endObserver];
     [_player pause];
+    _player = nil;
+    _playerItem = nil;
 }
 @end
 
@@ -219,7 +258,7 @@ typedef NS_ENUM(NSInteger, ZXAppState) {
 }
 @end
 
-#pragma mark - Localization / UI helpers@end
+#pragma mark - Localization / UI helpers
 
 #pragma mark - Localization / UI helpers
 
@@ -322,7 +361,7 @@ static void ZXEnsureMinimumTouchTarget(UIView *view) {
 - (void)didMoveToWindow { [super didMoveToWindow]; [self.layer removeAllAnimations]; }
 @end
 
-#pragma mark - Glass Material@end
+#pragma mark - Glass Material
 
 #pragma mark - Glass Material
 
@@ -379,7 +418,7 @@ static void ZXEnsureMinimumTouchTarget(UIView *view) {
 }
 @end
 
-#pragma mark - Premium Switch@end
+#pragma mark - Premium Switch
 
 #pragma mark - Premium Switch
 
@@ -546,7 +585,7 @@ static void ZXEnsureMinimumTouchTarget(UIView *view) {
 - (void)setLoading:(BOOL)loading { _loading=loading; self.userInteractionEnabled=!loading; if(loading){self.savedTitle=[self titleForState:UIControlStateNormal];[self setTitle:@"" forState:UIControlStateNormal];[_spinner startAnimating];} else {[self setTitle:self.savedTitle ?: @"" forState:UIControlStateNormal];[_spinner stopAnimating];} }
 @end
 
-#pragma mark - Premium Field@end
+#pragma mark - Premium Field
 
 #pragma mark - Premium Field
 
@@ -574,8 +613,6 @@ static void ZXEnsureMinimumTouchTarget(UIView *view) {
 - (void)textChanged { _clearBtn.hidden=(_textField.text.length==0); }
 - (void)clearText { _textField.text=@""; _clearBtn.hidden=YES; [_textField sendActionsForControlEvents:UIControlEventEditingChanged]; }
 @end
-
-static const void *ZXConfirmationBackdropKey@end
 
 static const void *ZXConfirmationBackdropKey = &ZXConfirmationBackdropKey;
 static const void *ZXConfirmationCompletionKey = &ZXConfirmationCompletionKey;
@@ -1587,9 +1624,11 @@ contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo
         return;
     }
     
-    NSArray *categories = configuration[@"categories"];
+    NSArray *categories = configuration[@"categories"] ?: configuration[@"groups"] ?: configuration[@"sections"];
     NSArray *modules = configuration[@"modules"] ?: configuration[@"functions"];
-    if (![categories isKindOfClass:[NSArray class]] || !categories.count) categories = modules;
+    if (![categories isKindOfClass:[NSArray class]] || !categories.count) {
+        categories = modules;
+    }
     
     BOOL incomingHasUsableData = NO;
     for (id rawCategory in ([categories isKindOfClass:[NSArray class]] ? categories : @[])) {
