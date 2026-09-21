@@ -1,4 +1,4 @@
-        //
+            //
 //  ZentraxUI.h
 //  Zentrax VIP - Flagship Premium UI Layer
 //
@@ -153,6 +153,7 @@ typedef NS_ENUM(NSInteger, ZXDeviceCompatibilityUIStatus) {
 
 /// Updates multiple function states.
 - (void)updateFunctionStates:(NSDictionary<NSString *, NSNumber *> *)states;
+- (void)forceDisableToggleForFunctionId:(NSString *)functionId;
 
 /// Updates server-controlled banners/notices.
 - (void)updateServerBanner:(NSDictionary * _Nullable)banner;
